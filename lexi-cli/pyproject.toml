@@ -32,7 +32,7 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-"lexi_cli" = ["providers/**/*", "default-aliases.json"]
+"lexi_cli" = ["providers/**/*", "apis/**/*", "default-aliases.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
