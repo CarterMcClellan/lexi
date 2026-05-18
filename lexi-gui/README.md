@@ -13,7 +13,9 @@ npm run dev            # Development mode with --watch
 
 Or use the convenience script:
 ```bash
-./launch-gui.sh
+./launch-gui.sh        # Kills existing instance, then starts on port 3000
+./launch-gui.sh --kill # Stop the running GUI
+PORT=8080 ./launch-gui.sh  # Use a custom port
 ```
 
 ## How It Works
