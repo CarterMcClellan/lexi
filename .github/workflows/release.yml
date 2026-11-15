@@ -41,6 +41,17 @@ jobs:
     env:
       WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
       WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      # True only when an Apple cert is configured. The Apple env vars must NOT be
+      # passed (even empty) to a build that isn't signing — an empty
+      # APPLE_CERTIFICATE still makes Tauri attempt (and fail) macOS codesigning.
+      APPLE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' }}
+      RELEASE_BODY: |
+        Lexi desktop app — a thin shell over the Rust lexi-core engine.
+        Python wheels for the engine (`import lexi`) are attached too.
+
+        Unless signed, these builds are **unsigned**:
+        - macOS: right-click the app → Open (to bypass Gatekeeper the first time).
+        - Windows: SmartScreen → More info → Run anyway.
     steps:
       - uses: actions/checkout@v4
 
@@ -80,12 +91,14 @@ jobs:
           $json | ConvertTo-Json -Depth 32 | Set-Content $conf
           Write-Host "Configured Windows signing with thumbprint $($cert.Thumbprint)"
 
-      - uses: tauri-apps/tauri-action@v0
+      # macOS signing + notarization: tauri-action builds a temporary keychain
+      # from APPLE_CERTIFICATE, signs with APPLE_SIGNING_IDENTITY, and notarizes
+      # via the Apple ID creds. Runs ONLY when a cert secret exists.
+      - name: Build (Apple-signed)
+        if: matrix.os == 'macos-latest' && env.APPLE_SIGNING == 'true'
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS signing + notarization. tauri-action sets up a temporary
-          # keychain from APPLE_CERTIFICATE and signs with APPLE_SIGNING_IDENTITY;
-          # notarizes via the Apple ID credentials. All empty -> unsigned build.
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -97,11 +110,23 @@ jobs:
           args: ${{ matrix.args }}
           tagName: ${{ github.ref_name }}
           releaseName: "Lexi ${{ github.ref_name }}"
-          releaseBody: |
-            Lexi desktop app — a thin shell over the Rust lexi-core engine.
+          releaseBody: ${{ env.RELEASE_BODY }}
+          releaseDraft: true
+          prerelease: false
 
-            Unless signed (see the Release workflow), these builds are **unsigned**:
-            - macOS: right-click the app → Open (to bypass Gatekeeper the first time).
-            - Windows: SmartScreen → More info → Run anyway.
+      # Default build: Linux, Windows (signs via the tauri.conf thumbprint set
+      # above when a Windows cert exists), and macOS without an Apple cert. No
+      # APPLE_* env, so Tauri never attempts macOS codesigning.
+      - name: Build
+        if: matrix.os != 'macos-latest' || env.APPLE_SIGNING != 'true'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: lexi-desktop
+          args: ${{ matrix.args }}
+          tagName: ${{ github.ref_name }}
+          releaseName: "Lexi ${{ github.ref_name }}"
+          releaseBody: ${{ env.RELEASE_BODY }}
           releaseDraft: true
           prerelease: false
