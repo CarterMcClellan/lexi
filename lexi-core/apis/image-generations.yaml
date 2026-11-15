@@ -1,0 +1,71 @@
+name: image-generations
+description: "OpenAI Images API (/v1/images/generations) — text to image."
+
+auth:
+  header: Authorization
+  value_prefix: "Bearer "
+
+request:
+  method: POST
+  path: /images/generations
+  body_schema:
+    type: object
+    required: [model, prompt]
+    properties:
+      model:
+        type: string
+        description: "Image model ID (e.g. gpt-image-1, dall-e-3)."
+        x-bind: { from: model }
+      prompt:
+        type: string
+        description: "Text prompt describing the image."
+        x-bind: { from: prompt }
+      n:
+        type: integer
+        minimum: 1
+        maximum: 10
+        description: "Number of images to generate."
+        x-cli: { flag: --n }
+      size:
+        type: string
+        description: "Image size (e.g. 1024x1024, 1792x1024, auto)."
+        x-cli: { flag: --size }
+      quality:
+        type: string
+        description: "Rendering quality (model-specific: standard/hd or low/medium/high/auto)."
+        x-cli: { flag: --quality }
+      style:
+        type: string
+        enum: [vivid, natural]
+        description: "dall-e-3 style."
+        x-cli: { flag: --style }
+      response_format:
+        type: string
+        enum: [url, b64_json]
+        description: "Return image URLs or base64 (dall-e; gpt-image-1 always b64)."
+        x-cli: { flag: --response-format }
+      background:
+        type: string
+        enum: [transparent, opaque, auto]
+        description: "gpt-image-1 background."
+        x-cli: { flag: --background }
+      user:
+        type: string
+        x-cli: { flag: --user }
+
+# Text in, image out.
+capabilities:
+  input: [text]
+  output: [image]
+
+response:
+  # No text output; extract image artifacts from data[].
+  artifacts:
+    items_path: data
+    type: image
+    fields:
+      url: url
+      b64: b64_json
+      revised_prompt: revised_prompt
+  metadata:
+    created: created

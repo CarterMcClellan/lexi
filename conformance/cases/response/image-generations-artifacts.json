@@ -1,0 +1,20 @@
+{
+  "name": "image-generations-artifacts",
+  "description": "Image-gen response has no text; artifacts are extracted from data[] with present fields only.",
+  "api": "image-generations",
+  "response": {
+    "created": 1710000000,
+    "data": [
+      { "url": "https://img.example/a.png", "revised_prompt": "A refined watercolor cat" },
+      { "url": "https://img.example/b.png" }
+    ]
+  },
+  "expect": {
+    "text": "",
+    "artifacts": [
+      { "type": "image", "url": "https://img.example/a.png", "revised_prompt": "A refined watercolor cat" },
+      { "type": "image", "url": "https://img.example/b.png" }
+    ],
+    "metadata": { "created": 1710000000 }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "image-generations-basic",
+  "description": "A text prompt composes a minimal Images API body (prompt bound as a string, no content parts).",
+  "api": "image-generations",
+  "compose": {
+    "prompt_payload": { "prompt": "A watercolor cat", "role": "user", "model": "gpt-image-1" }
+  },
+  "expect_body": {
+    "model": "gpt-image-1",
+    "prompt": "A watercolor cat"
+  }
+}

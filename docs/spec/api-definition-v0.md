@@ -331,3 +331,35 @@ This keeps text composition byte-identical to v0 while making image input
 additive. The three shipped defs map: Anthropic → `text`/`image(source.url)`;
 Chat Completions → `text`/`image_url` (string content when text-only); Responses
 → `input_text`/`input_image`.
+
+---
+
+## 10. `artifacts` — typed output (v0.1 — image generation)
+
+APIs that produce **binary output** (generated images, audio, …) instead of text
+declare an `artifacts` block in place of (or alongside) `text_extract`:
+
+```yaml
+response:
+  artifacts:
+    items_path: data        # list of artifact items in the response
+    type: image             # artifact type assigned to each
+    fields:                 # output field -> path within each item
+      url: url
+      b64: b64_json
+      revised_prompt: revised_prompt
+```
+
+`extract_artifacts` walks `items_path`; for each item it emits
+`{ "type": <type>, **fields }`, reading each field via its path **relative to the
+item** and **omitting** any whose source resolves to null/absent. Returns `[]`
+when nothing matches.
+
+**Validation:** a `response` block must define `text_extract` *or* `artifacts`
+(or both). `artifacts`, when present, must be a dict.
+
+The shipped `image-generations` API family (OpenAI Images API) uses this with
+`capabilities: { input: [text], output: [image] }` — so a non-vision caller is
+rejected before the request, and the result is a list of typed image artifacts.
+Binary payloads cross layer boundaries as **references** (a URL, or inline
+base64), never as decoded bytes in the engine.

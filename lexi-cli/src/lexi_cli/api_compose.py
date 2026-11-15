@@ -452,6 +452,45 @@ def _all_kv_match(item: Any, kv_filter: Mapping[str, Any] | None) -> bool:
     return all(item.get(k) == expected for k, expected in kv_filter.items())
 
 
+def extract_artifacts(
+    response: Any, artifacts_cfg: Mapping[str, Any] | None
+) -> list[dict]:
+    """Return typed output artifacts (e.g. generated images) from ``response``.
+
+    Config::
+
+        artifacts:
+          items_path: data        # list of artifact items in the response
+          type: image             # artifact type assigned to each
+          fields:                 # output field -> path within each item
+            url: url
+            b64: b64_json
+            revised_prompt: revised_prompt
+
+    Each artifact is ``{"type": <type>, **present_fields}``; a field whose source
+    path resolves to ``None`` is omitted. Returns ``[]`` when nothing matches.
+    """
+    if not artifacts_cfg:
+        return []
+    items_path = artifacts_cfg.get("items_path")
+    if not items_path:
+        return []
+    items = get_path(response, items_path)
+    if not isinstance(items, list):
+        return []
+    atype = artifacts_cfg.get("type", "file")
+    fields = artifacts_cfg.get("fields") or {}
+    out: list[dict] = []
+    for item in items:
+        artifact: dict = {"type": atype}
+        for out_name, src in fields.items():
+            value = get_path(item, src)
+            if value is not None:
+                artifact[out_name] = value
+        out.append(artifact)
+    return out
+
+
 def extract_text(response: Any, text_extract_cfg: Mapping[str, Any] | None) -> str:
     """Return the assistant text from ``response`` per ``text_extract`` config.
 

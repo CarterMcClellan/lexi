@@ -115,6 +115,10 @@ def test_response_extraction(case_path: Path) -> None:
         meta = {k: api_compose.get_path(response, path) for k, path in meta_map.items()}
         assert meta == expect["metadata"], f"{case['name']}: metadata mismatch"
 
+    if "artifacts" in expect:
+        artifacts = api_compose.extract_artifacts(response, resp_cfg.get("artifacts"))
+        assert artifacts == expect["artifacts"], f"{case['name']}: artifacts mismatch"
+
 
 # ---------------------------------------------------------------------------
 # Message IR (canonical message -> lowered bindings)
@@ -142,9 +146,7 @@ def test_message_ir(case_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "case_path", CAPABILITY_CASES, ids=[_case_id(p) for p in CAPABILITY_CASES]
-)
+@pytest.mark.parametrize("case_path", CAPABILITY_CASES, ids=[_case_id(p) for p in CAPABILITY_CASES])
 def test_capabilities(case_path: Path) -> None:
     case = _load_json(case_path)
     api_def = _load_api(case["api"])

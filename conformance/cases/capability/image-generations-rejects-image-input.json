@@ -1,0 +1,10 @@
+{
+  "name": "image-generations-rejects-image-input",
+  "description": "An image-gen model accepts text input only, so an image part is rejected.",
+  "api": "image-generations",
+  "message": {
+    "role": "user",
+    "content": [ { "type": "image", "url": "https://example.com/cat.jpg" } ]
+  },
+  "expect_errors": ["model does not accept image input"]
+}

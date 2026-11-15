@@ -185,6 +185,13 @@ fn response_extraction() {
                 ));
             }
         }
+
+        if let Some(Value::Array(exp_arts)) = expect.get("artifacts") {
+            let got = core::extract_artifacts(response, resp_cfg.get("artifacts"));
+            if &got != exp_arts {
+                failures.push(format!("{nm}: artifacts mismatch (got {got:?})"));
+            }
+        }
     }
     finish("response", failures);
 }
