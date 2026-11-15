@@ -40,6 +40,8 @@ pub enum HostError {
     Io(#[from] std::io::Error),
     #[error("yaml error: {0}")]
     Yaml(#[from] serde_yaml::Error),
+    #[error("json error: {0}")]
+    Json(#[from] serde_json::Error),
 }
 
 pub use generate::{generate_images_text, generate_images_with_effective, SavedArtifact};

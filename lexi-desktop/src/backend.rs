@@ -15,9 +15,15 @@ pub async fn handle(method: &str, path: &str, body: Option<Value>) -> Result<Val
     let base = path.split('?').next().unwrap_or(path);
     match (method, base) {
         ("GET", "/api/providers") | ("GET", "/api/providers/") => providers(),
-        ("GET", "/api/config") | ("GET", "/api/config/") => Ok(json!({})),
-        ("GET", "/api/prompts") => Ok(json!({ "prompts": [] })),
+        ("GET", "/api/config") | ("GET", "/api/config/") => Ok(config_get()),
+        ("GET", "/api/prompts") => prompts_list(),
         ("GET", p) if p.starts_with("/api/models") => models(path),
+        ("GET", p) if p.starts_with("/api/definitions/raw/") => api_raw(base),
+        ("GET", "/api/definitions") | ("GET", "/api/definitions/") => api_list(),
+        ("GET", p) if p.starts_with("/api/definitions/validate/") => Err(format!(
+            "endpoint not available in the desktop app: {method} {base}"
+        )),
+        ("GET", p) if p.starts_with("/api/definitions/") => api_show(base),
         ("GET", p) if p.starts_with("/api/respond/options") => Ok(json!({ "presets": [] })),
         ("POST", "/api/respond") => respond(body.unwrap_or(Value::Null)).await,
         _ => Err(format!(
@@ -87,6 +93,78 @@ fn models(path: &str) -> Result<Value, String> {
         })
         .collect();
     Ok(json!({ "provider": provider, "models": models }))
+}
+
+/// `GET /api/config` — the CLI app settings, the saved `config.json` layered
+/// over built-in defaults. Never errors (defaults stand in on any read failure).
+fn config_get() -> Value {
+    let mut cfg = json!({
+        "cli_name": "lexi",
+        "prompt": "lexi",
+        "prompt_delimiter": ">",
+        "edit_mode": "emacs",
+    });
+    if let Ok(Value::Object(saved)) = config::load_config() {
+        let base = cfg.as_object_mut().unwrap();
+        for (k, v) in saved {
+            base.insert(k, v);
+        }
+    }
+    cfg
+}
+
+/// `GET /api/prompts` — the saved prompt library. Flattens each prompt's body
+/// into `{ name, ...body, isActive }`; the `$$` prompt is the active one.
+fn prompts_list() -> Result<Value, String> {
+    let prompts = config::load_prompts().map_err(|e| e.to_string())?;
+    let prompts: Vec<Value> = prompts
+        .into_iter()
+        .map(|(name, body)| {
+            let mut obj = Map::new();
+            obj.insert("name".into(), json!(name));
+            if let Value::Object(b) = body {
+                for (k, v) in b {
+                    obj.insert(k, v);
+                }
+            }
+            obj.insert("isActive".into(), json!(name == "$$"));
+            Value::Object(obj)
+        })
+        .collect();
+    Ok(json!({ "prompts": prompts }))
+}
+
+/// `GET /api/definitions` — the available API definitions as `{ name, description }`.
+fn api_list() -> Result<Value, String> {
+    let defs = config::list_api_defs().map_err(|e| e.to_string())?;
+    let apis: Vec<Value> = defs
+        .into_iter()
+        .map(|(name, description)| json!({ "name": name, "description": description }))
+        .collect();
+    Ok(json!({ "apis": apis }))
+}
+
+/// `GET /api/definitions/{name}` — a single definition, parsed.
+fn api_show(base: &str) -> Result<Value, String> {
+    let name = def_name(base, "/api/definitions/");
+    let definition = config::load_api_def(&name).map_err(|e| e.to_string())?;
+    Ok(json!({ "name": name, "definition": definition }))
+}
+
+/// `GET /api/definitions/raw/{name}` — a definition's raw YAML text (for the editor).
+fn api_raw(base: &str) -> Result<Value, String> {
+    let name = def_name(base, "/api/definitions/raw/");
+    let yaml = config::load_api_raw(&name).map_err(|e| e.to_string())?;
+    Ok(json!({ "name": name, "yaml": yaml }))
+}
+
+/// Extract (and percent-decode) a definition name from a `/api/definitions/...` path.
+fn def_name(base: &str, prefix: &str) -> String {
+    let rest = base
+        .strip_prefix(prefix)
+        .unwrap_or("")
+        .trim_end_matches('/');
+    percent_decode(rest)
 }
 
 /// Extract a single query-string parameter from a shimmed request path.
@@ -246,5 +324,22 @@ mod tests {
     fn percent_decode_handles_escapes_and_plus() {
         assert_eq!(percent_decode("meta%2Fllama+3"), "meta/llama 3");
         assert_eq!(percent_decode("plain"), "plain");
+    }
+
+    #[test]
+    fn def_name_strips_prefix_and_decodes() {
+        use super::def_name;
+        assert_eq!(
+            def_name("/api/definitions/messages", "/api/definitions/"),
+            "messages"
+        );
+        assert_eq!(
+            def_name("/api/definitions/raw/chat/", "/api/definitions/raw/"),
+            "chat"
+        );
+        assert_eq!(
+            def_name("/api/definitions/a%20b", "/api/definitions/"),
+            "a b"
+        );
     }
 }
