@@ -24,6 +24,23 @@ jobs:
           - os: windows-latest
             args: ""
     runs-on: ${{ matrix.os }}
+    # Code-signing is OPT-IN: the APPLE_* / WINDOWS_* secrets below are empty
+    # until you add them, and the steps that use them no-op when empty — so
+    # builds stay unsigned (and the workflow green) until the secrets exist.
+    #
+    # macOS (Developer ID + notarization) — add as repo secrets:
+    #   APPLE_CERTIFICATE           base64 of your Developer ID .p12
+    #   APPLE_CERTIFICATE_PASSWORD  the .p12 password
+    #   APPLE_SIGNING_IDENTITY      e.g. "Developer ID Application: You (TEAMID)"
+    #   APPLE_ID                    your Apple ID email
+    #   APPLE_PASSWORD              an app-specific password for that Apple ID
+    #   APPLE_TEAM_ID               your 10-char Developer Team ID
+    # Windows (Authenticode) — add as repo secrets:
+    #   WINDOWS_CERTIFICATE          base64 of your code-signing .pfx
+    #   WINDOWS_CERTIFICATE_PASSWORD the .pfx password
+    env:
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -40,12 +57,41 @@ jobs:
           targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
       - uses: Swatinem/rust-cache@v2
 
-      # NOTE: builds are UNSIGNED. macOS notarization needs an Apple Developer ID
-      # and Windows needs an Authenticode cert — wire those in via secrets when
-      # available (see lexi-desktop/README.md).
+      # Windows Authenticode: import the .pfx and point tauri.conf.json at its
+      # thumbprint. Runs only when a cert secret is present (else unsigned).
+      - name: Set up Windows code signing
+        if: matrix.os == 'windows-latest' && env.WINDOWS_CERTIFICATE != ''
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pfx = Join-Path $env:RUNNER_TEMP 'codesign.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $pw = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $pw
+          Remove-Item $pfx
+          $conf = 'lexi-desktop/tauri.conf.json'
+          $json = Get-Content $conf -Raw | ConvertFrom-Json
+          $win = [ordered]@{
+            certificateThumbprint = $cert.Thumbprint
+            digestAlgorithm       = 'sha256'
+            timestampUrl          = 'http://timestamp.digicert.com'
+          }
+          $json.bundle | Add-Member -NotePropertyName windows -NotePropertyValue $win -Force
+          $json | ConvertTo-Json -Depth 32 | Set-Content $conf
+          Write-Host "Configured Windows signing with thumbprint $($cert.Thumbprint)"
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS signing + notarization. tauri-action sets up a temporary
+          # keychain from APPLE_CERTIFICATE and signs with APPLE_SIGNING_IDENTITY;
+          # notarizes via the Apple ID credentials. All empty -> unsigned build.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: lexi-desktop
           args: ${{ matrix.args }}
@@ -54,7 +100,7 @@ jobs:
           releaseBody: |
             Lexi desktop app — a thin shell over the Rust lexi-core engine.
 
-            These builds are **unsigned**:
+            Unless signed (see the Release workflow), these builds are **unsigned**:
             - macOS: right-click the app → Open (to bypass Gatekeeper the first time).
             - Windows: SmartScreen → More info → Run anyway.
           releaseDraft: true
