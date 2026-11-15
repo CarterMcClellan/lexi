@@ -1,6 +1,6 @@
 //! Lexi desktop app (Tauri) — a thin webview shell over `lexi-host`.
 //!
-//! The reused `lexi-gui` frontend speaks the Node server's `/api/*` contract; a
+//! The reused web frontend speaks the old Node server's `/api/*` contract; a
 //! `fetch`-shim in the webview routes those calls to the `api` command below,
 //! which is dispatched in [`backend`]. No Node, no Python, no localhost server.
 

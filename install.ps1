@@ -24,18 +24,8 @@ Pop-Location
 
 Write-Host "Lexi CLI installed. Run 'lexi' to start."
 
-# Optionally install GUI
-try {
-    $nodeVersion = (node -v) -replace '^v', '' -replace '\..*', ''
-    if ([int]$nodeVersion -ge 18) {
-        Write-Host "Installing Lexi GUI..."
-        Push-Location "$scriptDir\lexi-gui"
-        npm install --quiet
-        Pop-Location
-        Write-Host "Lexi GUI installed. Run 'npm start' in lexi-gui\ to launch."
-    } else {
-        Write-Host "Skipping GUI install: Node >= 18 required."
-    }
-} catch {
-    Write-Host "Skipping GUI install: Node.js not found."
-}
+# The desktop app (lexi-desktop) is a native Tauri shell over the same engine.
+# Grab a prebuilt installer from the GitHub Releases page, or build locally:
+#   cargo install tauri-cli --version '^2'
+#   cd lexi-desktop; cargo tauri build
+Write-Host "Desktop app: see lexi-desktop\README.md (prebuilt installers on GitHub Releases)."

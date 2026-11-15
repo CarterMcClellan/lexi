@@ -24,17 +24,8 @@ pip install -e . --quiet
 
 echo "Lexi CLI installed. Run 'lexi' to start."
 
-# Optionally install GUI
-if command -v node &>/dev/null; then
-    NODE_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
-    if [ "$NODE_VERSION" -ge 18 ]; then
-        echo "Installing Lexi GUI..."
-        cd "$SCRIPT_DIR/lexi-gui"
-        npm install --quiet
-        echo "Lexi GUI installed. Run 'npm start' in lexi-gui/ to launch."
-    else
-        echo "Skipping GUI install: Node >= 18 required (found v$NODE_VERSION)."
-    fi
-else
-    echo "Skipping GUI install: Node.js not found."
-fi
+# The desktop app (lexi-desktop) is a native Tauri shell over the same engine.
+# Grab a prebuilt installer from the GitHub Releases page, or build locally:
+#   cargo install tauri-cli --version '^2'
+#   cd lexi-desktop && cargo tauri build
+echo "Desktop app: see lexi-desktop/README.md (prebuilt installers on GitHub Releases)."

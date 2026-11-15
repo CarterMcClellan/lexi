@@ -5,17 +5,16 @@ This document describes Lexi's internal architecture for developers working on t
 ## System Overview
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      User                               │
-│                                                         │
-│    Interactive Shell ◄──► lexi CLI (cli.py)             │
-│                              │                          │
-│    Web Browser ◄──► lexi-gui server (index.js)          │
-│                        │                                │
-│    Electron App ◄──► lexi-gui server (index.js)         │
-│                        │                                │
-│                        └──► lexi CLI (subprocess)       │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                          User                                │
+│                                                              │
+│  Python CLI (cli.py) ──► lexi wheel (PyO3) ┐                 │
+│                                            │                 │
+│  Rust CLI (lexi-cli-rs) ──► lexi-host ─────┤                 │
+│                                            ├──► lexi-core    │
+│  Desktop app (lexi-desktop, Tauri)         │    (pure engine)│
+│    webview → invoke → backend.rs → lexi-host                 │
+└──────────────────────────────────────────────────────────────┘
                               │
                     ┌─────────┴──────────┐
                     │  ~/.lexi-cli/      │
@@ -37,11 +36,17 @@ This document describes Lexi's internal architecture for developers working on t
 
 ### Components
 
-**lexi-cli** (`lexi-cli/src/lexi_cli/cli.py`) — A single-file Python CLI (~95KB) that implements all core functionality: command parsing, provider management, model management, prompt handling, API calls, and configuration. Runs as an interactive shell or in single-command mode.
+**lexi-core** (`lexi-core/`) — The Rust engine: pure (no-I/O) schema-driven request composition, response extraction, the message IR, and API-definition validation/preview. Behavioral parity is pinned by the `conformance/` oracle (run from Rust and the wheel).
 
-**lexi-gui** (`lexi-gui/src/server/index.js`) — A Node.js HTTP server that serves a single-page web UI (`public/index.html`) and proxies user actions to the CLI via subprocess calls. Also has an Electron wrapper (`src/electron/main.js`) for desktop use.
+**lexi-host** (`lexi-host/`) — The Rust runtime (I/O layer): HTTP/SSE transport, config/key loading, auth, streaming, polling, uploads, hosted-model discovery, and the admin read/write helpers over `~/.lexi-cli/`.
 
-**~/.lexi-cli/** — All persistent state. The CLI reads and writes YAML/JSON files here. The GUI operates through the CLI, so both share the same configuration.
+**lexi-python** (`lexi-python/`) — A PyO3 wheel wrapping `lexi-core` (`import lexi`); the single engine the Python CLI uses.
+
+**lexi-cli** (`lexi-cli/src/lexi_cli/cli.py`) — The Python CLI, an application on the `lexi` wheel. **lexi-cli-rs** (`lexi-cli-rs/`) is the thin Rust CLI (`lexi`) over `lexi-host`.
+
+**lexi-desktop** (`lexi-desktop/`) — A native Tauri app: a thin webview shell whose reused frontend's `/api/*` calls route (via a `fetch`-shim → Tauri `invoke`) to `src/backend.rs`, which dispatches to `lexi-host` in-process. No Node, no Python, no localhost server. Replaced the old Node/Electron `lexi-gui`.
+
+**~/.lexi-cli/** — All persistent state (YAML/JSON). Every surface reads and writes the same files, so the CLI and desktop app share one configuration.
 
 ## CLI Internals
 
@@ -186,28 +191,21 @@ providers:
 
 The migration maps old `respond_kind` values (`responses`, `messages`, `chat-completions`) to their equivalent `auth`, `request`, and `response` blocks at runtime. The on-disk config is not modified — migration happens in memory each time.
 
-## GUI Architecture
+## Desktop App Architecture
 
-### Server (`src/server/index.js`)
+`lexi-desktop` is a native [Tauri](https://tauri.app) v2 app — a thin webview shell over `lexi-host`, with **no** Node, Python, or localhost server. A native build is ~4 MB.
 
-The Node.js server:
-- Serves static files from `public/`
-- Exposes REST endpoints that map to CLI commands
-- Executes `lexi <command>` as a subprocess and returns the output
-- Routes include: prompts CRUD, provider listing, model management, respond, config
+### Frontend (`lexi-desktop/frontend/index.html`)
 
-The `LEXI_BIN` environment variable overrides the CLI binary path. Falls back to `lexi` on PATH, then to `lexi-cli/cli` in the repo.
+A snapshot of the original single-page UI. It still speaks the old Node server's `/api/*` HTTP contract, but a small `fetch`-shim injected into the page reroutes every `/api/*` call to a Tauri command (`invoke('api', …)`), and streaming (`/api/respond/stream`) to a `ReadableStream` fed by a Tauri `Channel`.
 
-### Frontend (`public/index.html`)
+### Backend (`lexi-desktop/src/backend.rs`)
 
-Single-page application — all HTML, CSS, and JavaScript in one file. Communicates with the server via fetch calls to `/api/*` endpoints.
+The `api` / `api_stream` Tauri commands dispatch here. `handle(method, path, body)` matches each `/api/*` route and serves it **in-process** from `lexi-host` — chat (buffered + streaming), providers, models (incl. hosted discovery), prompts, config, and the full API-definition surface (list/show/raw/validate/create/save/delete/preview). Response shapes match the original Node handlers, so the reused frontend needs no changes.
 
-### Electron (`src/electron/main.js`)
+### Packaging
 
-Wraps the web UI in a desktop window:
-- Starts the Node.js server as a child process
-- Opens a `BrowserWindow` pointing to `http://localhost:3000`
-- `scripts/prepare-cli.js` bundles the CLI and Python runtime for distribution
+`cargo tauri build` produces native installers; `.github/workflows/release.yml` builds macOS/Linux/Windows installers on a `v*` tag via `tauri-action`. See `lexi-desktop/README.md`.
 
 ## Testing
 
