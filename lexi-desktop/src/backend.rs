@@ -17,6 +17,11 @@ pub async fn handle(method: &str, path: &str, body: Option<Value>) -> Result<Val
         ("GET", "/api/providers") | ("GET", "/api/providers/") => providers(),
         ("GET", "/api/config") | ("GET", "/api/config/") => Ok(config_get()),
         ("GET", "/api/prompts") => prompts_list(),
+        ("GET", p) if p.starts_with("/api/models/default") => models_default_get(path),
+        ("GET", p) if p.starts_with("/api/models/aliases") => models_aliases_get(path),
+        ("GET", p) if p.starts_with("/api/models/hosted") => Err(format!(
+            "endpoint not available in the desktop app: {method} {base}"
+        )),
         ("GET", p) if p.starts_with("/api/models") => models(path),
         ("GET", p) if p.starts_with("/api/definitions/raw/") => api_raw(base),
         ("GET", "/api/definitions") | ("GET", "/api/definitions/") => api_list(),
@@ -31,6 +36,12 @@ pub async fn handle(method: &str, path: &str, body: Option<Value>) -> Result<Val
         ("POST", "/api/prompts") => prompt_save(body.unwrap_or(Value::Null)),
         ("POST", "/api/prompts/active") => prompt_active(body.unwrap_or(Value::Null)),
         ("POST", "/api/prompts/delete") => prompt_delete(body.unwrap_or(Value::Null)),
+        ("POST", "/api/models/default") => models_set_default(body.unwrap_or(Value::Null)),
+        ("POST", "/api/models/aliases") => models_set_alias(body.unwrap_or(Value::Null)),
+        ("POST", "/api/models/aliases/delete") => models_delete_alias(body.unwrap_or(Value::Null)),
+        ("POST", "/api/models/add") => models_upsert(body.unwrap_or(Value::Null), false),
+        ("POST", "/api/models/set") => models_upsert(body.unwrap_or(Value::Null), true),
+        ("POST", "/api/models/delete") => models_delete(body.unwrap_or(Value::Null)),
         ("POST", "/api/respond") => respond(body.unwrap_or(Value::Null)).await,
         _ => Err(format!(
             "endpoint not available in the desktop app: {method} {base}"
@@ -99,6 +110,117 @@ fn models(path: &str) -> Result<Value, String> {
         })
         .collect();
     Ok(json!({ "provider": provider, "models": models }))
+}
+
+/// `GET /api/models/default?provider=X` — the provider's current default model.
+fn models_default_get(path: &str) -> Result<Value, String> {
+    let provider = require_provider(path)?;
+    let default = config::default_model(&provider).map_err(|e| e.to_string())?;
+    Ok(json!({ "provider": provider, "default_model": default }))
+}
+
+/// `GET /api/models/aliases?provider=X` — the provider's `alias -> model` map.
+fn models_aliases_get(path: &str) -> Result<Value, String> {
+    let provider = require_provider(path)?;
+    let aliases = config::model_aliases(&provider).map_err(|e| e.to_string())?;
+    Ok(json!({ "provider": provider, "aliases": aliases }))
+}
+
+/// `POST /api/models/default` — set the provider's default model.
+fn models_set_default(body: Value) -> Result<Value, String> {
+    let provider = require_field(&body, "provider")?;
+    let model = require_field(&body, "model")?;
+    config::set_default_model(&provider, Some(&model)).map_err(|e| e.to_string())?;
+    Ok(json!({ "provider": provider, "default_model": model, "output": "" }))
+}
+
+/// `POST /api/models/aliases` — point an alias at a model.
+fn models_set_alias(body: Value) -> Result<Value, String> {
+    let provider = require_field(&body, "provider")?;
+    let alias = require_field(&body, "alias")?;
+    let model = require_field(&body, "model")?;
+    config::set_model_alias(&provider, &alias, &model).map_err(|e| e.to_string())?;
+    Ok(json!({ "provider": provider, "alias": alias, "model": model, "output": "" }))
+}
+
+/// `POST /api/models/aliases/delete` — remove an alias.
+fn models_delete_alias(body: Value) -> Result<Value, String> {
+    let provider = require_field(&body, "provider")?;
+    let alias = require_field(&body, "alias")?;
+    config::delete_model_alias(&provider, &alias).map_err(|e| e.to_string())?;
+    Ok(json!({ "provider": provider, "alias": alias, "output": "" }))
+}
+
+/// `POST /api/models/add` and `/api/models/set` — add or update a model (both
+/// upsert-merge). `is_set` only affects the reported action word.
+fn models_upsert(body: Value, is_set: bool) -> Result<Value, String> {
+    let provider = require_field(&body, "provider")?;
+    let model = require_field(&body, "model")?;
+
+    let mut meta = Map::new();
+    for key in ["name", "description"] {
+        if let Some(v) = body
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            meta.insert(key.into(), json!(v));
+        }
+    }
+    for key in ["max_tokens", "context_window"] {
+        if let Some(v) = int_field(&body, key) {
+            meta.insert(key.into(), v);
+        }
+    }
+    let set_default = body
+        .get("set_default")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    let existed =
+        config::upsert_model(&provider, &model, &meta, set_default).map_err(|e| e.to_string())?;
+    let action = if is_set && existed {
+        "Updated"
+    } else {
+        "Added"
+    };
+    Ok(json!({
+        "provider": provider,
+        "model": model,
+        "output": format!("{action} model {model} for {provider}."),
+    }))
+}
+
+/// `POST /api/models/delete` — remove a model (fixing the default if needed).
+fn models_delete(body: Value) -> Result<Value, String> {
+    let provider = require_field(&body, "provider")?;
+    let model = require_field(&body, "model")?;
+    config::delete_model(&provider, &model).map_err(|e| e.to_string())?;
+    Ok(json!({ "provider": provider, "model": model, "output": "" }))
+}
+
+/// Require a `provider` query param from a request path.
+fn require_provider(path: &str) -> Result<String, String> {
+    query_param(path, "provider").ok_or_else(|| "provider query param is required".to_string())
+}
+
+/// Require a non-empty string field from a request body.
+fn require_field(body: &Value, key: &str) -> Result<String, String> {
+    body.get(key)
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| format!("{key} is required"))
+}
+
+/// Coerce an integer body field (number or numeric string), else `None`.
+fn int_field(body: &Value, key: &str) -> Option<Value> {
+    match body.get(key) {
+        Some(Value::Number(n)) if n.is_i64() || n.is_u64() => Some(Value::Number(n.clone())),
+        Some(Value::Number(n)) => n.as_f64().map(|f| json!(f as i64)),
+        Some(Value::String(s)) => s.trim().parse::<i64>().ok().map(|i| json!(i)),
+        _ => None,
+    }
 }
 
 /// `GET /api/config` — the CLI app settings, the saved `config.json` layered
@@ -437,5 +559,18 @@ mod tests {
         assert_eq!(num_field(&body, "c"), None);
         assert_eq!(num_field(&body, "d"), None);
         assert_eq!(num_field(&body, "missing"), None);
+    }
+
+    #[test]
+    fn int_field_coerces_to_integers() {
+        use super::int_field;
+        use serde_json::json;
+        let body = json!({ "a": 4096, "b": "128000", "c": 1.9, "d": "x", "e": true });
+        assert_eq!(int_field(&body, "a"), Some(json!(4096)));
+        assert_eq!(int_field(&body, "b"), Some(json!(128000)));
+        assert_eq!(int_field(&body, "c"), Some(json!(1))); // truncates floats
+        assert_eq!(int_field(&body, "d"), None);
+        assert_eq!(int_field(&body, "e"), None);
+        assert_eq!(int_field(&body, "missing"), None);
     }
 }
