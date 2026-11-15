@@ -20,7 +20,8 @@ pub enum ContentPart {
         text: String,
     },
     Image {
-        url: String,
+        url: Option<String>,
+        data: Option<String>, // base64-encoded image bytes
         media_type: Option<String>,
     },
 }
@@ -33,6 +34,14 @@ impl ContentPart {
         }
     }
 
+    /// For images: `"base64"` when inline `data` is present, else `"url"`.
+    pub fn source_kind(&self) -> Option<&'static str> {
+        match self {
+            ContentPart::Image { data, .. } => Some(if data.is_some() { "base64" } else { "url" }),
+            _ => None,
+        }
+    }
+
     pub fn to_value(&self) -> Value {
         let mut m = Map::new();
         match self {
@@ -40,9 +49,18 @@ impl ContentPart {
                 m.insert("type".into(), Value::from(TEXT));
                 m.insert("text".into(), Value::from(text.clone()));
             }
-            ContentPart::Image { url, media_type } => {
+            ContentPart::Image {
+                url,
+                data,
+                media_type,
+            } => {
                 m.insert("type".into(), Value::from(IMAGE));
-                m.insert("url".into(), Value::from(url.clone()));
+                if let Some(u) = url {
+                    m.insert("url".into(), Value::from(u.clone()));
+                }
+                if let Some(d) = data {
+                    m.insert("data".into(), Value::from(d.clone()));
+                }
                 if let Some(mt) = media_type {
                     m.insert("media_type".into(), Value::from(mt.clone()));
                 }
@@ -58,12 +76,20 @@ impl ContentPart {
             ContentPart::Text { text } => {
                 m.insert("text".into(), Value::from(text.clone()));
             }
-            ContentPart::Image { url, media_type } => {
-                m.insert("url".into(), Value::from(url.clone()));
-                m.insert(
-                    "media_type".into(),
-                    Value::from(media_type.clone().unwrap_or_default()),
-                );
+            ContentPart::Image {
+                url,
+                data,
+                media_type,
+            } => {
+                let mt = media_type.clone().unwrap_or_default();
+                let data_uri = match data {
+                    Some(d) => format!("data:{mt};base64,{d}"),
+                    None => url.clone().unwrap_or_default(),
+                };
+                m.insert("url".into(), Value::from(url.clone().unwrap_or_default()));
+                m.insert("data".into(), Value::from(data.clone().unwrap_or_default()));
+                m.insert("media_type".into(), Value::from(mt));
+                m.insert("data_uri".into(), Value::from(data_uri));
             }
         }
         m
@@ -109,17 +135,30 @@ pub fn part_from_dict(data: &Value) -> Result<ContentPart, String> {
                 .unwrap_or("")
                 .to_string(),
         }),
-        IMAGE => Ok(ContentPart::Image {
-            url: data
-                .get("url")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string(),
-            media_type: data
+        IMAGE => {
+            let media_type = data
                 .get("media_type")
                 .and_then(Value::as_str)
-                .map(String::from),
-        }),
+                .map(String::from);
+            if let Some(d) = data.get("data").and_then(Value::as_str) {
+                Ok(ContentPart::Image {
+                    url: None,
+                    data: Some(d.to_string()),
+                    media_type,
+                })
+            } else {
+                Ok(ContentPart::Image {
+                    url: Some(
+                        data.get("url")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string(),
+                    ),
+                    data: None,
+                    media_type,
+                })
+            }
+        }
         other => Err(format!(
             "unsupported content part type {other:?} (supported: \"text\", \"image\")"
         )),
@@ -210,11 +249,23 @@ pub fn to_prompt_bindings(message: &Message) -> Result<Value, String> {
     Ok(Value::Object(m))
 }
 
+/// Pick a part's wire template: a `by_source` sub-template keyed by the part's
+/// `source_kind` (image url vs base64), else the flat `template`.
+fn select_template<'a>(part: &ContentPart, spec: &'a Value) -> Option<&'a Value> {
+    match spec.get("by_source") {
+        Some(by_source) => part
+            .source_kind()
+            .and_then(|kind| by_source.get(kind))
+            .and_then(|sub| sub.get("template")),
+        None => spec.get("template"),
+    }
+}
+
 /// Render one content part into a provider's wire shape via its template.
 fn lower_content_part(part: &ContentPart, parts_mapping: &Map<String, Value>) -> Value {
     match parts_mapping
         .get(part.type_name())
-        .and_then(|spec| spec.get("template"))
+        .and_then(|spec| select_template(part, spec))
     {
         Some(template) => render_template(template, &part.render_vars()),
         None => part.to_value(), // no mapping: best-effort passthrough

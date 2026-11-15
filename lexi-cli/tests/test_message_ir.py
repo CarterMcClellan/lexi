@@ -152,3 +152,53 @@ def test_lower_message_with_image():
 def test_lower_message_without_mapping_falls_back_to_prompt():
     msg = message_ir.text_message("Hi", role="user")
     assert message_ir.lower_message(msg, None) == {"role": "user", "prompt": "Hi"}
+
+
+# --- base64 image source (Phase I.5) ---------------------------------------
+
+
+def test_image_part_base64_parse_and_source_kind():
+    part = message_ir.part_from_dict({"type": "image", "data": "QUJD", "media_type": "image/png"})
+    assert part == message_ir.ImagePart(data="QUJD", media_type="image/png")
+    assert part.source_kind == "base64"
+    assert part.to_dict() == {"type": "image", "data": "QUJD", "media_type": "image/png"}
+
+
+def test_image_part_url_source_kind():
+    assert message_ir.ImagePart(url="https://x/c.jpg").source_kind == "url"
+
+
+def test_image_part_base64_render_vars_build_data_uri():
+    part = message_ir.ImagePart(data="QUJD", media_type="image/png")
+    assert part.render_vars()["data_uri"] == "data:image/png;base64,QUJD"
+
+
+_ANTHROPIC_BY_SOURCE = {
+    "parts": {
+        "image": {
+            "by_source": {
+                "url": {"template": {"type": "image", "source": {"type": "url", "url": "{{url}}"}}},
+                "base64": {
+                    "template": {
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": "{{media_type}}", "data": "{{data}}"},
+                    }
+                },
+            }
+        }
+    },
+}
+
+
+def test_lower_message_base64_picks_base64_template():
+    msg = Message(role="user", content=[message_ir.ImagePart(data="QUJD", media_type="image/png")])
+    assert message_ir.lower_message(msg, _ANTHROPIC_BY_SOURCE)["content"] == [
+        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "QUJD"}}
+    ]
+
+
+def test_lower_message_url_picks_url_template():
+    msg = Message(role="user", content=[message_ir.ImagePart(url="https://x/c.jpg")])
+    assert message_ir.lower_message(msg, _ANTHROPIC_BY_SOURCE)["content"] == [
+        {"type": "image", "source": {"type": "url", "url": "https://x/c.jpg"}}
+    ]

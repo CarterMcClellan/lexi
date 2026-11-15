@@ -131,3 +131,26 @@ Text chat is **byte-identical** to v0 (the shipped API-def templates now bind
 `{{content}}`, and lowering reproduces the former inline content). Pinned by the
 `conformance/cases/request/*-image-url.json` fixtures plus the unchanged text
 fixtures.
+
+### Image sources: URL and base64 (`by_source`)
+
+An `ImagePart` carries **either** a `url` **or** inline base64 `data`
+(+ `media_type`); `source_kind` is `"base64"` when `data` is present, else
+`"url"`. Because providers render the two differently, the image entry in
+`content_mapping.parts` uses a **`by_source`** map keyed by source kind instead
+of a single flat `template`:
+
+```yaml
+image:
+  by_source:
+    url:    { template: { type: image, source: { type: url, url: "{{url}}" } } }
+    base64: { template: { type: image, source: { type: base64, media_type: "{{media_type}}", data: "{{data}}" } } }
+```
+
+`lower_content_part` selects the sub-template by the part's `source_kind`, then
+renders it with the part's variables: `{{url}}`, `{{data}}`, `{{media_type}}`,
+and `{{data_uri}}` (a precomputed `data:<media_type>;base64,<data>` URI used by
+providers that take base64 as a data URI — OpenAI Chat Completions / Responses).
+The three shipped defs map base64 to: Anthropic → structured `base64` source;
+Chat Completions / Responses → a `data:` URI in `image_url`. Pinned by the
+`*-image-base64.json` request fixtures. URL output is unchanged.

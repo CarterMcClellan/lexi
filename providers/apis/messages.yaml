@@ -106,9 +106,15 @@ content_mapping:
     text:
       template: { type: text, text: "{{text}}" }
     image:
-      template:
-        type: image
-        source: { type: url, url: "{{url}}" }
+      by_source:
+        url:
+          template:
+            type: image
+            source: { type: url, url: "{{url}}" }
+        base64:
+          template:
+            type: image
+            source: { type: base64, media_type: "{{media_type}}", data: "{{data}}" }
 
 # Input/output modalities this API family can carry (per-model overrides refine).
 capabilities:

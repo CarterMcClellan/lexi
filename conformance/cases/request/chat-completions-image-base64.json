@@ -1,0 +1,27 @@
+{
+  "name": "chat-completions-image-base64",
+  "description": "A base64 image part lowers to a data: URI in Chat Completions' image_url.",
+  "api": "chat-completions",
+  "compose": {
+    "prompt_payload": { "model": "gpt-4o" },
+    "message": {
+      "role": "user",
+      "content": [
+        { "type": "text", "text": "Describe this image." },
+        { "type": "image", "data": "QUJD", "media_type": "image/png" }
+      ]
+    }
+  },
+  "expect_body": {
+    "model": "gpt-4o",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          { "type": "text", "text": "Describe this image." },
+          { "type": "image_url", "image_url": { "url": "data:image/png;base64,QUJD" } }
+        ]
+      }
+    ]
+  }
+}

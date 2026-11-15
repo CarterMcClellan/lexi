@@ -39,20 +39,36 @@ class TextPart:
 
 @dataclass(frozen=True)
 class ImagePart:
-    """An image content part referenced by URL (v0.1: URL sources only)."""
+    """An image content part, sourced by URL or inline base64 ``data``."""
 
-    url: str
+    url: str | None = None
+    data: str | None = None  # base64-encoded image bytes
     media_type: str | None = None
     type: str = IMAGE
 
+    @property
+    def source_kind(self) -> str:
+        """``"base64"`` when inline ``data`` is present, else ``"url"``."""
+        return "base64" if self.data is not None else "url"
+
     def to_dict(self) -> dict:
-        d: dict[str, Any] = {"type": self.type, "url": self.url}
+        d: dict[str, Any] = {"type": self.type}
+        if self.url is not None:
+            d["url"] = self.url
+        if self.data is not None:
+            d["data"] = self.data
         if self.media_type is not None:
             d["media_type"] = self.media_type
         return d
 
     def render_vars(self) -> dict:
-        return {"url": self.url, "media_type": self.media_type or ""}
+        data_uri = f"data:{self.media_type or ''};base64,{self.data}" if self.data is not None else (self.url or "")
+        return {
+            "url": self.url or "",
+            "data": self.data or "",
+            "media_type": self.media_type or "",
+            "data_uri": data_uri,
+        }
 
 
 ContentPart = Union[TextPart, ImagePart]
@@ -80,6 +96,8 @@ def part_from_dict(data: Mapping[str, Any]) -> ContentPart:
     if part_type == TEXT:
         return TextPart(text=data.get("text", ""))
     if part_type == IMAGE:
+        if "data" in data:
+            return ImagePart(data=data["data"], media_type=data.get("media_type"))
         return ImagePart(url=data.get("url", ""), media_type=data.get("media_type"))
     raise ValueError(f"unsupported content part type {part_type!r} (supported: {TEXT!r}, {IMAGE!r})")
 
@@ -126,12 +144,27 @@ def to_prompt_bindings(message: Message) -> dict:
     return {"role": message.role, "prompt": text_of(message)}
 
 
+def _select_template(part: ContentPart, spec: Mapping[str, Any]) -> Any:
+    """Pick a part's wire template: a ``by_source`` sub-template keyed by the
+    part's ``source_kind`` (e.g. image url vs base64), else the flat ``template``.
+    """
+    by_source = spec.get("by_source")
+    if isinstance(by_source, Mapping):
+        source_kind = getattr(part, "source_kind", None)
+        sub = by_source.get(source_kind) if source_kind else None
+        return sub.get("template") if isinstance(sub, Mapping) else None
+    return spec.get("template")
+
+
 def lower_content_part(part: ContentPart, parts_mapping: Mapping[str, Any]) -> Any:
     """Render one content part into a provider's wire shape via its template."""
     spec = parts_mapping.get(part.type)
-    if not isinstance(spec, Mapping) or "template" not in spec:
+    if not isinstance(spec, Mapping):
         raise ValueError(f"no content mapping for part type {part.type!r}")
-    return render_template(spec["template"], part.render_vars())
+    template = _select_template(part, spec)
+    if template is None:
+        raise ValueError(f"no content mapping template for part type {part.type!r}")
+    return render_template(template, part.render_vars())
 
 
 def lower_message(message: Message, content_mapping: Mapping[str, Any] | None) -> dict:
