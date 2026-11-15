@@ -354,9 +354,15 @@ def validate_api_definition(data: dict) -> list[str]:
                     f"use 'response.text_extract' instead."
                 )
         te = resp.get("text_extract")
-        if not isinstance(te, dict):
-            errors.append("Missing or invalid 'response.text_extract' (must be a dict).")
-        else:
+        arts = resp.get("artifacts")
+        if te is None and arts is None:
+            errors.append(
+                "response must define 'text_extract' (text output) or "
+                "'artifacts' (binary output)."
+            )
+        if te is not None and not isinstance(te, dict):
+            errors.append("'response.text_extract' must be a dict.")
+        elif isinstance(te, dict):
             has_path = isinstance(te.get("text_path"), str) and te["text_path"]
             has_items = isinstance(te.get("items_path"), str) and te["items_path"]
             if has_path and has_items:
@@ -375,6 +381,8 @@ def validate_api_definition(data: dict) -> list[str]:
                     errors.append(
                         f"'response.text_extract.{opt_dict}' must be a dict of field=value pairs."
                     )
+        if arts is not None and not isinstance(arts, dict):
+            errors.append("'response.artifacts' must be a dict.")
         meta = resp.get("metadata")
         if meta is not None and not isinstance(meta, dict):
             errors.append("'response.metadata' must be a dict.")

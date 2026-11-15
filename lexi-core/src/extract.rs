@@ -30,6 +30,46 @@ fn as_str_or<'a>(cfg: &'a Value, key: &str, default: &'a str) -> &'a str {
     cfg.get(key).and_then(Value::as_str).unwrap_or(default)
 }
 
+/// Extract typed output artifacts (e.g. generated images) from a response.
+///
+/// Each artifact is `{ "type": <type>, **present_fields }`; a field whose source
+/// path resolves to null/absent is omitted. Returns `[]` when nothing matches.
+pub fn extract_artifacts(response: &Value, cfg: Option<&Value>) -> Vec<Value> {
+    let cfg = match cfg {
+        Some(c) if c.is_object() => c,
+        _ => return Vec::new(),
+    };
+    let items_path = match cfg.get("items_path").and_then(Value::as_str) {
+        Some(p) if !p.is_empty() => p,
+        _ => return Vec::new(),
+    };
+    let items = match get_path(response, items_path) {
+        Some(Value::Array(a)) => a,
+        _ => return Vec::new(),
+    };
+    let atype = cfg.get("type").and_then(Value::as_str).unwrap_or("file");
+    let fields = cfg.get("fields").and_then(Value::as_object);
+
+    let mut out = Vec::new();
+    for item in items {
+        let mut artifact = Map::new();
+        artifact.insert("type".into(), Value::from(atype));
+        if let Some(fields) = fields {
+            for (out_name, src) in fields {
+                if let Some(src) = src.as_str() {
+                    if let Some(v) = get_path(item, src) {
+                        if !v.is_null() {
+                            artifact.insert(out_name.clone(), v.clone());
+                        }
+                    }
+                }
+            }
+        }
+        out.push(Value::Object(artifact));
+    }
+    out
+}
+
 /// Extract the assistant text per `text_extract` config (Mode A or Mode B).
 pub fn extract_text(response: &Value, cfg: Option<&Value>) -> String {
     let cfg = match cfg {

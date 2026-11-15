@@ -1,0 +1,6 @@
+{
+  "name": "image-generations-output",
+  "description": "The image-generations family takes text input and produces image output.",
+  "api": "image-generations",
+  "expect_capabilities": { "input": ["text"], "output": ["image"], "limits": {} }
+}
