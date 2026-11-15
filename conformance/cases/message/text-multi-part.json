@@ -1,0 +1,12 @@
+{
+  "name": "text-multi-part",
+  "description": "Multiple text parts concatenate (joiner \"\") when lowered.",
+  "message": {
+    "role": "user",
+    "content": [
+      { "type": "text", "text": "Hello " },
+      { "type": "text", "text": "world" }
+    ]
+  },
+  "expect_bindings": { "role": "user", "prompt": "Hello world" }
+}

@@ -19,7 +19,7 @@ import urllib.request
 from collections.abc import Iterable
 from pathlib import Path
 
-from lexi_cli import api_compose
+from lexi_cli import api_compose, message_ir
 
 try:
     from rich.console import Console
@@ -836,13 +836,19 @@ def respond_with_provider(
         print_error("Prompt text is empty.")
         return 1, None, False
 
+    # Route the message through the canonical IR. For text chat this is an
+    # identity transform (single text part -> the same prompt/role bindings the
+    # templates already consume); it exists so multimodal content is additive.
+    message = message_ir.normalize_prompt_payload(prompt_payload)
+    effective_payload = {**prompt_payload, **message_ir.to_prompt_bindings(message)}
+
     merged_overrides: dict[str, object] = dict(overrides or {})
     merged_overrides.setdefault("model", model)
 
     try:
         body = api_compose.compose_request_body(
             provider_cfg,
-            prompt_payload=prompt_payload,
+            prompt_payload=effective_payload,
             overrides=merged_overrides,
             tool_presets_selected=tool_presets_selected,
             set_paths=set_paths,

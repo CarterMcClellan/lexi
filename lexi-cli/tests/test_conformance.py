@@ -17,11 +17,12 @@ import pytest
 import yaml
 
 import lexi_cli
-from lexi_cli import api_compose
+from lexi_cli import api_compose, message_ir
 
 CONFORMANCE_DIR = Path(__file__).resolve().parents[2] / "conformance"
 REQUEST_CASES = sorted((CONFORMANCE_DIR / "cases" / "request").glob("*.json"))
 RESPONSE_CASES = sorted((CONFORMANCE_DIR / "cases" / "response").glob("*.json"))
+MESSAGE_CASES = sorted((CONFORMANCE_DIR / "cases" / "message").glob("*.json"))
 APIS_DIR = Path(lexi_cli.__file__).resolve().parent / "apis"
 
 
@@ -91,9 +92,7 @@ def test_response_extraction(case_path: Path) -> None:
         text_items = api_compose.find_text_items(response, text_extract)
         anns = api_compose.extract_annotations(response, annotations_cfg, text_items)
         rendered = api_compose.render_annotations(anns, annotations_cfg)
-        assert rendered == expect["annotations_rendered"], (
-            f"{case['name']}: annotations mismatch"
-        )
+        assert rendered == expect["annotations_rendered"], f"{case['name']}: annotations mismatch"
 
     if "metadata" in expect:
         meta_map = resp_cfg.get("metadata") or {}
@@ -101,7 +100,29 @@ def test_response_extraction(case_path: Path) -> None:
         assert meta == expect["metadata"], f"{case['name']}: metadata mismatch"
 
 
+# ---------------------------------------------------------------------------
+# Message IR (canonical message -> lowered bindings)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("case_path", MESSAGE_CASES, ids=[_case_id(p) for p in MESSAGE_CASES])
+def test_message_ir(case_path: Path) -> None:
+    case = _load_json(case_path)
+
+    if "legacy_payload" in case:
+        msg = message_ir.normalize_prompt_payload(case["legacy_payload"])
+    else:
+        msg = message_ir.message_from_dict(case["message"])
+
+    if "expect_message" in case:
+        assert msg.to_dict() == case["expect_message"], f"{case['name']}: message mismatch"
+
+    if "expect_bindings" in case:
+        assert message_ir.to_prompt_bindings(msg) == case["expect_bindings"], f"{case['name']}: bindings mismatch"
+
+
 def test_suite_is_non_empty() -> None:
     """Guard against a silently-empty suite (e.g. wrong path)."""
     assert REQUEST_CASES, "no request conformance cases discovered"
     assert RESPONSE_CASES, "no response conformance cases discovered"
+    assert MESSAGE_CASES, "no message conformance cases discovered"

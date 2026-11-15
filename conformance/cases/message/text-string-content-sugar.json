@@ -1,0 +1,7 @@
+{
+  "name": "text-string-content-sugar",
+  "description": "A bare-string content is sugar for a single text part.",
+  "message": { "role": "system", "content": "You are helpful." },
+  "expect_message": { "role": "system", "content": [ { "type": "text", "text": "You are helpful." } ] },
+  "expect_bindings": { "role": "system", "prompt": "You are helpful." }
+}
