@@ -38,6 +38,19 @@ pub fn lexi_home() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".lexi-cli")
 }
 
+/// The names of the API definitions shipped (embedded) in the binary.
+pub fn embedded_api_names() -> Vec<&'static str> {
+    EMBEDDED_APIS.iter().map(|(n, _)| *n).collect()
+}
+
+/// The raw YAML text of a shipped API definition, if `name` is one.
+fn embedded_api_text(name: &str) -> Option<&'static str> {
+    EMBEDDED_APIS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, t)| *t)
+}
+
 /// Load an API definition by name.
 ///
 /// Shipped definitions always use the current **embedded** copy (so a stale
@@ -199,6 +212,101 @@ fn load_models_in(home: &Path, provider: &str) -> Result<Vec<ModelInfo>, HostErr
         .collect())
 }
 
+/// Load `config.json` (the CLI's app settings), or an empty object if absent.
+/// Caller-supplied defaults are layered on top by the frontend.
+pub fn load_config() -> Result<Value, HostError> {
+    load_config_in(&lexi_home())
+}
+
+fn load_config_in(home: &Path) -> Result<Value, HostError> {
+    let path = home.join("config.json");
+    if !path.exists() {
+        return Ok(Value::Object(Default::default()));
+    }
+    Ok(serde_json::from_str(&std::fs::read_to_string(&path)?)?)
+}
+
+/// Load the saved prompts as `(name, body)` pairs, where `body` is the prompt's
+/// JSON object (`prompt`, `max_tokens`, …). Reads `prompts/*.json`; the active
+/// prompt is the one stored under the `$$` name. Sorted by name for stable order.
+pub fn load_prompts() -> Result<Vec<(String, Value)>, HostError> {
+    load_prompts_in(&lexi_home())
+}
+
+fn load_prompts_in(home: &Path) -> Result<Vec<(String, Value)>, HostError> {
+    let dir = home.join("prompts");
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut entries = Vec::new();
+    for ent in std::fs::read_dir(&dir)? {
+        let path = ent?.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        let Some(name) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let body: Value = serde_json::from_str(&std::fs::read_to_string(&path)?)?;
+        entries.push((name.to_string(), body));
+    }
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(entries)
+}
+
+/// List available API definitions as `(name, description)` pairs — the union of
+/// shipped (embedded) definitions and any custom ones under `~/.lexi-cli/apis/`.
+pub fn list_api_defs() -> Result<Vec<(String, Option<String>)>, HostError> {
+    list_api_defs_in(&lexi_home())
+}
+
+fn list_api_defs_in(home: &Path) -> Result<Vec<(String, Option<String>)>, HostError> {
+    use std::collections::BTreeSet;
+    let mut names: BTreeSet<String> = embedded_api_names().iter().map(|s| s.to_string()).collect();
+    let dir = home.join("apis");
+    if dir.exists() {
+        for ent in std::fs::read_dir(&dir)? {
+            let path = ent?.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("yaml") {
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    names.insert(stem.to_string());
+                }
+            }
+        }
+    }
+    Ok(names
+        .into_iter()
+        .map(|name| {
+            let desc = load_api_raw_in(home, &name)
+                .ok()
+                .and_then(|t| serde_yaml::from_str::<Value>(&t).ok())
+                .and_then(|v| {
+                    v.get("description")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                });
+            (name, desc)
+        })
+        .collect())
+}
+
+/// Return the raw YAML text of an API definition. Shipped definitions resolve to
+/// their embedded copy (matching [`load_api_def`]); otherwise the user file.
+pub fn load_api_raw(name: &str) -> Result<String, HostError> {
+    load_api_raw_in(&lexi_home(), name)
+}
+
+fn load_api_raw_in(home: &Path, name: &str) -> Result<String, HostError> {
+    if let Some(text) = embedded_api_text(name) {
+        return Ok(text.to_string());
+    }
+    let user = home.join("apis").join(format!("{name}.yaml"));
+    if user.exists() {
+        return Ok(std::fs::read_to_string(&user)?);
+    }
+    Err(HostError::UnknownApi(name.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,6 +351,66 @@ mod tests {
     fn load_models_empty_for_unknown_provider() {
         let dir = tempfile::tempdir().unwrap();
         assert!(load_models_in(dir.path(), "nope").unwrap().is_empty());
+    }
+
+    #[test]
+    fn load_config_reads_json_or_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(load_config_in(dir.path()).unwrap(), json!({}));
+        std::fs::write(dir.path().join("config.json"), r#"{"edit_mode":"vi"}"#).unwrap();
+        assert_eq!(
+            load_config_in(dir.path()).unwrap(),
+            json!({ "edit_mode": "vi" })
+        );
+    }
+
+    #[test]
+    fn load_prompts_reads_and_sorts() {
+        let dir = tempfile::tempdir().unwrap();
+        let pdir = dir.path().join("prompts");
+        std::fs::create_dir_all(&pdir).unwrap();
+        std::fs::write(pdir.join("$$.json"), r#"{"prompt":"active","role":"user"}"#).unwrap();
+        std::fs::write(pdir.join("joke.json"), r#"{"prompt":"a joke"}"#).unwrap();
+        std::fs::write(pdir.join("notes.txt"), "ignored").unwrap();
+
+        let prompts = load_prompts_in(dir.path()).unwrap();
+        assert_eq!(prompts.len(), 2);
+        assert_eq!(prompts[0].0, "$$");
+        assert_eq!(prompts[0].1["prompt"], "active");
+        assert_eq!(prompts[1].0, "joke");
+    }
+
+    #[test]
+    fn list_api_defs_unions_embedded_and_user() {
+        let dir = tempfile::tempdir().unwrap();
+        let adir = dir.path().join("apis");
+        std::fs::create_dir_all(&adir).unwrap();
+        std::fs::write(adir.join("custom.yaml"), "description: my api\n").unwrap();
+
+        let defs = list_api_defs_in(dir.path()).unwrap();
+        let names: Vec<&str> = defs.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(names.contains(&"messages")); // embedded
+        assert!(names.contains(&"custom")); // user
+        let custom = defs.iter().find(|(n, _)| n == "custom").unwrap();
+        assert_eq!(custom.1.as_deref(), Some("my api"));
+    }
+
+    #[test]
+    fn load_api_raw_prefers_embedded_then_user() {
+        let dir = tempfile::tempdir().unwrap();
+        // Shipped definition resolves to embedded text even without a user file.
+        assert!(load_api_raw_in(dir.path(), "messages")
+            .unwrap()
+            .contains("description"));
+        // Custom definition reads the user file.
+        let adir = dir.path().join("apis");
+        std::fs::create_dir_all(&adir).unwrap();
+        std::fs::write(adir.join("custom.yaml"), "description: my api\n").unwrap();
+        assert_eq!(
+            load_api_raw_in(dir.path(), "custom").unwrap(),
+            "description: my api\n"
+        );
+        assert!(load_api_raw_in(dir.path(), "nope").is_err());
     }
 
     #[test]
