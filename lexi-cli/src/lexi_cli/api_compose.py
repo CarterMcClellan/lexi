@@ -7,10 +7,10 @@ that are *not* part of that engine surface:
 
 * ``parse_path`` / ``set_path`` / ``unset_path`` — dotted/bracketed path edits
   used by the CLI's ``--set`` / ``--unset`` prompt-payload manipulation.
-* ``cli_flags_for`` / ``tool_preset_names`` — introspect an API definition to
-  drive CLI flags and preset listings.
-* ``_VALID_INCLUDES`` — the set of valid ``x-include`` modes, used by
-  ``validate_api_definition``.
+
+(Definition validation and CLI-flag/preset introspection moved to the engine:
+``lexi.validate_definition`` / ``lexi.cli_flags`` / ``lexi.tool_preset_names`` /
+``lexi.preview_definition``.)
 
 The engine's behavior is pinned by the shared conformance suite, run against the
 Rust core (``lexi-core/tests``) and its wheel (``lexi-python/tests``).
@@ -19,7 +19,6 @@ Rust core (``lexi-core/tests``) and its wheel (``lexi-python/tests``).
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -101,64 +100,3 @@ def unset_path(obj: Any, path: str) -> None:
             cur.pop(last)
     elif isinstance(cur, dict) and last in cur:
         del cur[last]
-
-
-# ---------------------------------------------------------------------------
-# Valid x-include modes (used by validate_api_definition)
-# ---------------------------------------------------------------------------
-
-_VALID_INCLUDES = {
-    "always",
-    "if_set",
-    "if_truthy",
-    "if_non_empty",
-    "if_any_child_set",
-}
-
-
-# ---------------------------------------------------------------------------
-# CLI flag / preset introspection
-# ---------------------------------------------------------------------------
-
-
-def cli_flags_for(api_def: Mapping[str, Any]) -> list[dict]:
-    """Walk the body_schema and return a flat list of CLI flag specs.
-
-    Each spec contains: flag, alias, path, type, enum, default, description,
-    repeat, invert, enum_map.
-    """
-    flags: list[dict] = []
-    body_schema = (api_def.get("request") or {}).get("body_schema") or {}
-    _collect_flags(body_schema.get("properties") or {}, flags, prefix="")
-    return flags
-
-
-def _collect_flags(properties: Mapping[str, Any], out: list[dict], prefix: str) -> None:
-    for name, schema in properties.items():
-        if not isinstance(schema, Mapping):
-            continue
-        path = f"{prefix}.{name}" if prefix else name
-        cli = schema.get("x-cli")
-        if isinstance(cli, Mapping):
-            out.append(
-                {
-                    "flag": cli.get("flag"),
-                    "alias": cli.get("alias"),
-                    "path": path,
-                    "type": schema.get("type"),
-                    "enum": list(schema["enum"]) if "enum" in schema else None,
-                    "default": schema.get("default"),
-                    "description": schema.get("description") or cli.get("description"),
-                    "repeat": bool(cli.get("repeat", False)),
-                    "invert": bool(cli.get("invert", False)),
-                    "enum_map": cli.get("enum_map"),
-                }
-            )
-        if schema.get("type") == "object" and "properties" in schema:
-            _collect_flags(schema["properties"], out, prefix=path)
-
-
-def tool_preset_names(api_def: Mapping[str, Any]) -> list[str]:
-    """Return the list of tool preset names defined for this API."""
-    presets = api_def.get("tool_presets") or {}
-    return sorted(presets.keys())
