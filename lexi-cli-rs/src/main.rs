@@ -31,8 +31,11 @@ enum Cmd {
         #[arg(long)]
         model: Option<String>,
         /// Stream the response token-by-token (SSE).
-        #[arg(long)]
+        #[arg(long, conflicts_with = "background")]
         stream: bool,
+        /// Submit as a background operation and poll until it completes.
+        #[arg(long)]
+        background: bool,
     },
 }
 
@@ -46,6 +49,7 @@ async fn main() -> ExitCode {
             role,
             model,
             stream,
+            background,
         } => {
             let result = if stream {
                 use std::io::Write;
@@ -64,6 +68,10 @@ async fn main() -> ExitCode {
                     println!();
                 }
                 r
+            } else if background {
+                lexi_host::respond_background_text(&provider, &prompt, &role, model.as_deref())
+                    .await
+                    .inspect(|res| println!("{}", res.text))
             } else {
                 lexi_host::respond_text(&provider, &prompt, &role, model.as_deref())
                     .await
