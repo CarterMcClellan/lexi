@@ -1,4 +1,4 @@
-//! `/api/*` request handling for the reused `lexi-gui` frontend.
+//! `/api/*` request handling for the reused web frontend.
 //!
 //! The frontend still speaks the Node server's HTTP contract; a `fetch`-shim in
 //! the webview routes every `/api/*` call to the `api` Tauri command, which

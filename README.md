@@ -2,11 +2,11 @@
 
 [![CI](https://github.com/badscooter23/lexi/actions/workflows/ci.yml/badge.svg)](https://github.com/badscooter23/lexi/actions/workflows/ci.yml)
 
-Lexi is a CLI-first tool for working with multiple LLM providers side by side, with an optional GUI wrapper. It ships with preconfigured support for OpenAI, Anthropic, and NVIDIA, and seeds provider configs into `~/.lexi-cli/` on first run.
+Lexi is a CLI-first tool for working with multiple LLM providers side by side, with a native desktop app. It ships with preconfigured support for OpenAI, Anthropic, and NVIDIA, and seeds provider configs into `~/.lexi-cli/` on first run.
 
 ## Quick Start
 
-**Requirements:** Python 3.9+, Node 18+ (for the GUI)
+**Requirements:** Python 3.9+ (CLI). The desktop app ships as a prebuilt native installer — no runtime needed.
 
 ```bash
 # Install everything
@@ -128,17 +128,24 @@ Adding a new provider that uses an existing API style requires only a new entry 
 
 Providers can also include inline `auth`, `request`, or `response` overrides that are deep-merged on top of the referenced API definition.
 
-## GUI
+## Desktop app
+
+`lexi-desktop` is a native [Tauri](https://tauri.app) app — a thin webview shell
+over the Rust `lexi-host` runtime and `lexi-core` engine. No Node, no Python, no
+localhost server; a native build is ~4 MB. It reuses the same `~/.lexi-cli/`
+config as the CLI, and every feature (multi-provider chat, buffered + streaming,
+and the full admin surface: providers, models, prompts, config, API definitions)
+is served in-process by `lexi-host`.
 
 ```bash
-cd lexi-gui && npm install
-npm run start          # http://localhost:3000
-npm run dev            # Development mode with --watch
-./launch-gui.sh        # Convenience script (kills existing instance, then starts)
-./launch-gui.sh --kill # Stop the running GUI
+cargo install tauri-cli --version '^2'   # once
+cd lexi-desktop
+cargo tauri dev        # run with devtools
+cargo tauri build      # produce a native installer (target/release/bundle/)
 ```
 
-The GUI server proxies to the CLI backend (expects `lexi` on PATH or falls back to `lexi-cli/cli` in the repo). An Electron wrapper (`src/electron/`) is available for running as a desktop application.
+Prebuilt installers (macOS `.dmg`, Linux `.deb`/`.AppImage`, Windows `.msi`) are
+attached to GitHub Releases. See `lexi-desktop/README.md`.
 
 ## Development
 
@@ -151,10 +158,10 @@ ruff format src/       # Format
 pytest                 # Test
 pytest --cov=lexi_cli  # Test with coverage
 
-# GUI
-cd lexi-gui
-npm install
-npm run dev
+# Rust workspace (engine / runtime / CLI / desktop)
+cargo test             # all crates
+cargo clippy --all-targets
+cargo fmt --all
 ```
 
 ## Documentation

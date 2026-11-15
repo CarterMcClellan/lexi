@@ -4,10 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture Overview
 
-Lexi is a CLI-first tool for working with multiple LLM providers side by side, with a GUI wrapper. The project has two main components:
+Lexi is a CLI-first tool for working with multiple LLM providers side by side, with a native desktop app. The core is a Rust workspace; the Python CLI is an application on top of it.
 
-- **lexi-cli**: Python CLI application (src/lexi_cli/) that provides the core functionality
-- **lexi-gui**: Node.js GUI server (src/server/) that wraps and proxies to the CLI
+- **lexi-core**: Rust engine — the provider-agnostic, pure (no-I/O) schema-driven request composition, response extraction, message IR, and definition validation. Behavioral parity pinned by the `conformance/` oracle.
+- **lexi-host**: Rust runtime (I/O layer over the engine) — HTTP/SSE transport, config/key loading, auth, streaming, polling, uploads, and the admin read/write helpers over `~/.lexi-cli/`.
+- **lexi-python**: PyO3 wheel wrapping `lexi-core` (`import lexi`); the one engine the Python CLI uses.
+- **lexi-cli-rs**: thin Rust CLI binary (`lexi`) over `lexi-host`.
+- **lexi-desktop**: native [Tauri](https://tauri.app) app — a thin webview shell whose `/api/*` calls are served in-process by `lexi-host` (see `lexi-desktop/src/backend.rs`). No Node, no Python, no localhost server. Replaced the old Node/Electron `lexi-gui`.
+- **lexi-cli**: Python CLI application (src/lexi_cli/), an application on the `lexi` wheel.
 
 ### CLI Architecture
 - Single-file CLI implementation in `cli.py` (~95KB) with embedded commands, history, and configuration management
@@ -48,14 +52,19 @@ pytest --cov=lexi_cli  # Run tests with coverage
 pip install -e ".[crypto]"
 ```
 
-### GUI Development
+### Rust workspace (engine / runtime / CLI / desktop)
 ```bash
-# Setup and run GUI
-cd lexi-gui && npm install
-npm run start          # Production server (http://localhost:3000)
-npm run dev           # Development server with --watch
+cargo test             # all crates
+cargo clippy --all-targets   # lint (CI gates -D warnings)
+cargo fmt --all        # format
 
-# The GUI expects 'lexi' on PATH or will fall back to 'lexi-cli/cli' in repo
+# Desktop app (Tauri)
+cargo install tauri-cli --version '^2'   # once
+cd lexi-desktop && cargo tauri dev       # run with devtools
+cd lexi-desktop && cargo tauri build     # native installer
+
+# The Python wheel builds via maturin, not `cargo build` (PyO3 extension module):
+#   pip install ./lexi-python
 ```
 
 ## Key Implementation Details
@@ -75,11 +84,14 @@ All main commands use plural forms (`prompts`, `providers`, `models`, `alias`) a
 On first run, the CLI seeds `~/.lexi-cli/` from the packaged `providers/` directory and creates default aliases from `default-aliases.json`.
 
 ### Dependencies
-- CLI: Python 3.9+, pyyaml, rich (optional: cryptography for API key encryption)
-- GUI: Node 18+, yaml package
+- Python CLI: Python 3.9+, pyyaml, rich, the `lexi` wheel (optional: cryptography for API key encryption)
+- Rust workspace: stable Rust; desktop app needs tauri-cli v2 + the platform webview (macOS WKWebView, Linux webkit2gtk, Windows WebView2)
 
 ## File Locations
-- CLI source: `lexi-cli/src/lexi_cli/`
-- GUI source: `lexi-gui/src/server/`
+- Rust engine / runtime / CLI / desktop: `lexi-core/`, `lexi-host/`, `lexi-cli-rs/`, `lexi-desktop/`
+- Python wheel: `lexi-python/` (PyO3 over lexi-core)
+- Python CLI source: `lexi-cli/src/lexi_cli/`
+- Desktop `/api/*` backend: `lexi-desktop/src/backend.rs`; reused frontend snapshot: `lexi-desktop/frontend/index.html`
+- Cross-language conformance oracle: `conformance/` (run by `lexi-core/tests/conformance.rs` + `lexi-python/tests/`)
 - Provider configs: `providers/` (copied to `~/.lexi-cli/providers/` on first run)
-- Package configuration: `lexi-cli/pyproject.toml`, `lexi-gui/package.json`
+- Package configuration: `lexi-cli/pyproject.toml`, per-crate `Cargo.toml`

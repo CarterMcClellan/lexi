@@ -2,8 +2,9 @@
 
 The Lexi desktop app — a Tauri **thin webview shell over `lexi-host`** (which is
 itself a thin shell over the pure `lexi-core` engine). No Node, no Python, no
-localhost server. It reuses the `lexi-gui` frontend, with a `fetch`-shim that
-routes the frontend's `/api/*` calls to in-process Tauri commands
+localhost server. It reuses the original web frontend (a snapshot of the former
+Node GUI's single-page UI), with a `fetch`-shim that routes its `/api/*` calls to
+in-process Tauri commands
 (`src/backend.rs`). It reads the same `~/.lexi-cli/` config as the CLI.
 
 ## Run / build
