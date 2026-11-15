@@ -19,9 +19,7 @@ pub async fn handle(method: &str, path: &str, body: Option<Value>) -> Result<Val
         ("GET", "/api/prompts") => prompts_list(),
         ("GET", p) if p.starts_with("/api/models/default") => models_default_get(path),
         ("GET", p) if p.starts_with("/api/models/aliases") => models_aliases_get(path),
-        ("GET", p) if p.starts_with("/api/models/hosted") => Err(format!(
-            "endpoint not available in the desktop app: {method} {base}"
-        )),
+        ("GET", p) if p.starts_with("/api/models/hosted") => models_hosted(path).await,
         ("GET", p) if p.starts_with("/api/models") => models(path),
         ("GET", p) if p.starts_with("/api/definitions/raw/") => api_raw(base),
         ("GET", "/api/definitions") | ("GET", "/api/definitions/") => api_list(),
@@ -126,6 +124,16 @@ fn models_aliases_get(path: &str) -> Result<Value, String> {
     let provider = require_provider(path)?;
     let aliases = config::model_aliases(&provider).map_err(|e| e.to_string())?;
     Ok(json!({ "provider": provider, "aliases": aliases }))
+}
+
+/// `GET /api/models/hosted?provider=X` — models the provider reports via its API
+/// (a live call to the provider's models endpoint).
+async fn models_hosted(path: &str) -> Result<Value, String> {
+    let provider = require_provider(path)?;
+    let models = lexi_host::fetch_hosted_models(&provider)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(json!({ "provider": provider, "models": models }))
 }
 
 /// `POST /api/models/default` — set the provider's default model.
