@@ -1372,7 +1372,21 @@
         init = init || {};
         const method = (init.method || "GET").toUpperCase();
         if (url.startsWith("/api/respond/stream")) {
-          return new Response("streaming isn't wired in the desktop app yet \u2014 uncheck \u201cStream\u201d.", { status: 501 });
+          let sbody = null;
+          if (init.body) { try { sbody = JSON.parse(init.body); } catch (e) { sbody = null; } }
+          const channel = new window.__TAURI__.core.Channel();
+          const enc = new TextEncoder();
+          const stream = new ReadableStream({
+            start(controller) {
+              channel.onmessage = (chunk) => {
+                if (chunk === "__LEXI_STREAM_END__") { try { controller.close(); } catch (e) {} return; }
+                try { controller.enqueue(enc.encode(chunk)); } catch (e) {}
+              };
+              window.__TAURI__.core.invoke("api_stream", { body: sbody, onEvent: channel })
+                .catch((e) => { try { controller.error(new Error((e && e.message) || String(e))); } catch (x) {} });
+            },
+          });
+          return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
         }
         let body = null;
         if (init.body) { try { body = JSON.parse(init.body); } catch (e) { body = null; } }

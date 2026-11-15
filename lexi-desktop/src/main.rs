@@ -20,9 +20,18 @@ async fn api(
     backend::handle(&method, &path, body).await
 }
 
+/// Streaming chat: the shim passes a channel the SSE blocks are pushed through.
+#[tauri::command]
+async fn api_stream(
+    body: serde_json::Value,
+    on_event: tauri::ipc::Channel<String>,
+) -> Result<(), String> {
+    backend::stream(body, on_event).await
+}
+
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![api])
+        .invoke_handler(tauri::generate_handler![api, api_stream])
         .run(tauri::generate_context!())
         .expect("error while running the Lexi desktop app");
 }

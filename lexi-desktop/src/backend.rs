@@ -3,8 +3,8 @@
 //! The frontend still speaks the Node server's HTTP contract; a `fetch`-shim in
 //! the webview routes every `/api/*` call to the `api` Tauri command, which
 //! dispatches here. Shapes match the original Node handlers. Chat (`providers`,
-//! buffered `respond`) is real over `lexi-host`; management endpoints are benign
-//! stubs for now (the admin tabs degrade gracefully). Streaming is a follow-up.
+//! buffered + streaming `respond`) is real over `lexi-host`; management endpoints
+//! are benign stubs for now (the admin tabs degrade gracefully).
 
 use serde_json::{json, Map, Value};
 
@@ -65,6 +65,60 @@ fn providers() -> Result<Value, String> {
         }));
     }
     Ok(json!({ "providers": out, "source": "providers-config.yaml" }))
+}
+
+/// Sentinel the webview shim watches for to close the ReadableStream.
+pub const STREAM_END: &str = "__LEXI_STREAM_END__";
+
+fn sse(event: &str, data: Value) -> String {
+    format!("event: {event}\ndata: {data}\n\n")
+}
+
+/// `POST /api/respond/stream` — streaming chat. Emits the frontend's SSE protocol
+/// (`provider_start` / `delta` / `provider_done`, keyed by provider) through the
+/// Tauri channel, provider by provider, then a close sentinel.
+pub async fn stream(body: Value, on_event: tauri::ipc::Channel<String>) -> Result<(), String> {
+    let prompt = body.get("prompt").and_then(Value::as_str).unwrap_or("");
+    let providers = body
+        .get("providers")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let empty = Map::new();
+    let models = body
+        .get("models")
+        .and_then(Value::as_object)
+        .unwrap_or(&empty);
+
+    for pv in &providers {
+        let Some(provider) = pv.as_str() else {
+            continue;
+        };
+        let provider = provider.to_string();
+        let model = models
+            .get(&provider)
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty());
+
+        let _ = on_event.send(sse("provider_start", json!({ "provider": provider })));
+
+        let ch = on_event.clone();
+        let p = provider.clone();
+        let result =
+            lexi_host::respond_stream_text(&provider, prompt, "user", model, &[], move |frag| {
+                let _ = ch.send(sse("delta", json!({ "provider": p, "text": frag })));
+            })
+            .await;
+
+        let done = match result {
+            Ok(_) => json!({ "provider": provider }),
+            Err(e) => json!({ "provider": provider, "error": e.to_string() }),
+        };
+        let _ = on_event.send(sse("provider_done", done));
+    }
+
+    let _ = on_event.send(STREAM_END.to_string());
+    Ok(())
 }
 
 /// `POST /api/respond` — buffered chat, fanned out over the selected providers.
