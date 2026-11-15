@@ -17,12 +17,13 @@ import pytest
 import yaml
 
 import lexi_cli
-from lexi_cli import api_compose, message_ir
+from lexi_cli import api_compose, capabilities, message_ir
 
 CONFORMANCE_DIR = Path(__file__).resolve().parents[2] / "conformance"
 REQUEST_CASES = sorted((CONFORMANCE_DIR / "cases" / "request").glob("*.json"))
 RESPONSE_CASES = sorted((CONFORMANCE_DIR / "cases" / "response").glob("*.json"))
 MESSAGE_CASES = sorted((CONFORMANCE_DIR / "cases" / "message").glob("*.json"))
+CAPABILITY_CASES = sorted((CONFORMANCE_DIR / "cases" / "capability").glob("*.json"))
 APIS_DIR = Path(lexi_cli.__file__).resolve().parent / "apis"
 
 
@@ -136,8 +137,31 @@ def test_message_ir(case_path: Path) -> None:
         assert message_ir.to_prompt_bindings(msg) == case["expect_bindings"], f"{case['name']}: bindings mismatch"
 
 
+# ---------------------------------------------------------------------------
+# Capability registry (resolution + message validation)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case_path", CAPABILITY_CASES, ids=[_case_id(p) for p in CAPABILITY_CASES]
+)
+def test_capabilities(case_path: Path) -> None:
+    case = _load_json(case_path)
+    api_def = _load_api(case["api"])
+    cap = capabilities.resolve_capabilities(api_def, case.get("model_capabilities"))
+
+    if "expect_capabilities" in case:
+        assert cap == case["expect_capabilities"], f"{case['name']}: capabilities mismatch"
+
+    if "expect_errors" in case:
+        msg = message_ir.message_from_dict(case["message"])
+        errors = capabilities.validate_message(cap, msg)
+        assert errors == case["expect_errors"], f"{case['name']}: validation mismatch"
+
+
 def test_suite_is_non_empty() -> None:
     """Guard against a silently-empty suite (e.g. wrong path)."""
     assert REQUEST_CASES, "no request conformance cases discovered"
     assert RESPONSE_CASES, "no response conformance cases discovered"
     assert MESSAGE_CASES, "no message conformance cases discovered"
+    assert CAPABILITY_CASES, "no capability conformance cases discovered"

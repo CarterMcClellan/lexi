@@ -168,6 +168,11 @@ content_mapping:
     image:
       template: { type: input_image, image_url: "{{url}}" }
 
+# Input/output modalities this API family can carry (per-model overrides refine).
+capabilities:
+  input: [text, image]
+  output: [text]
+
 response:
   # Generic text extractor: walks output[], picks message items, concatenates
   # each output_text fragment. Works correctly when web_search_call / reasoning

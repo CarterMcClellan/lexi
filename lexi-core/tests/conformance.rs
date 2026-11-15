@@ -220,3 +220,34 @@ fn message_ir() {
     }
     finish("message", failures);
 }
+
+#[test]
+fn capabilities() {
+    let mut failures = Vec::new();
+    let files = case_files("capability");
+    assert!(!files.is_empty(), "no capability cases found");
+
+    for path in files {
+        let case = load_json(&path);
+        let api = load_api(case["api"].as_str().unwrap());
+        let nm = name_of(&path);
+        let cap = core::resolve_capabilities(&api, case.get("model_capabilities"));
+
+        if let Some(exp) = case.get("expect_capabilities") {
+            if &cap != exp {
+                failures.push(format!("{nm}: capabilities mismatch (got {cap})"));
+            }
+        }
+        if let Some(Value::Array(exp_errs)) = case.get("expect_errors") {
+            let msg = core::message_from_dict(&case["message"]);
+            let got: Vec<Value> = core::validate_message(&cap, &msg)
+                .into_iter()
+                .map(Value::from)
+                .collect();
+            if &got != exp_errs {
+                failures.push(format!("{nm}: validation mismatch (got {got:?})"));
+            }
+        }
+    }
+    finish("capability", failures);
+}

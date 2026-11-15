@@ -143,6 +143,11 @@ content_mapping:
         type: image_url
         image_url: { url: "{{url}}" }
 
+# Input/output modalities this API family can carry (per-model overrides refine).
+capabilities:
+  input: [text, image]
+  output: [text]
+
 response:
   text_extract:
     text_path: "choices[0].message.content"
