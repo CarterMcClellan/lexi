@@ -38,19 +38,20 @@ pub fn lexi_home() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".lexi-cli")
 }
 
-/// Load an API definition by name (user override, else embedded).
+/// Load an API definition by name.
+///
+/// Shipped definitions always use the current **embedded** copy (so a stale
+/// `~/.lexi-cli/apis/` seeded by an older CLI can't mask new fields); the user
+/// dir supplies only *additional* custom definitions.
 pub fn load_api_def(name: &str) -> Result<Value, HostError> {
+    if let Some((_, text)) = EMBEDDED_APIS.iter().find(|(n, _)| *n == name) {
+        return Ok(serde_yaml::from_str(text)?);
+    }
     let user = lexi_home().join("apis").join(format!("{name}.yaml"));
-    let text = if user.exists() {
-        std::fs::read_to_string(&user)?
-    } else {
-        EMBEDDED_APIS
-            .iter()
-            .find(|(n, _)| *n == name)
-            .map(|(_, s)| (*s).to_string())
-            .ok_or_else(|| HostError::UnknownApi(name.to_string()))?
-    };
-    Ok(serde_yaml::from_str(&text)?)
+    if user.exists() {
+        return Ok(serde_yaml::from_str(&std::fs::read_to_string(&user)?)?);
+    }
+    Err(HostError::UnknownApi(name.to_string()))
 }
 
 /// Load `providers-config.yaml`.

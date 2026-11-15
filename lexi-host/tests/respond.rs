@@ -1,8 +1,12 @@
 //! End-to-end text chat against a mock HTTP server (no live provider).
 
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use lexi_host::{config, respond::respond_stream_with_effective, respond::respond_with_effective};
+use lexi_host::config;
+use lexi_host::respond::{
+    respond_background_with_effective, respond_stream_with_effective, respond_with_effective,
+};
 use serde_json::{json, Value};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -110,4 +114,58 @@ async fn text_chat_streaming() {
     let received = &server.received_requests().await.unwrap()[0];
     let sent: Value = serde_json::from_slice(&received.body).unwrap();
     assert_eq!(sent["stream"], true);
+}
+
+#[tokio::test]
+async fn background_submit_poll_fetch() {
+    let server = MockServer::start().await;
+
+    // Submit: a background response comes back queued (pending, not done).
+    Mock::given(method("POST"))
+        .and(path("/responses"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"id": "resp_1", "status": "queued"})),
+        )
+        .mount(&server)
+        .await;
+
+    // Poll: completed, with the final output.
+    Mock::given(method("GET"))
+        .and(path("/responses/resp_1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "resp_1",
+            "status": "completed",
+            "output": [
+                {"type": "message", "content": [{"type": "output_text", "text": "Background done."}]}
+            ],
+            "usage": {"input_tokens": 1, "output_tokens": 2, "total_tokens": 3}
+        })))
+        .mount(&server)
+        .await;
+
+    let mut eff = config::load_api_def("responses").unwrap();
+    eff["url"] = Value::from(server.uri());
+
+    let client = reqwest::Client::new();
+    let res = respond_background_with_effective(
+        &client,
+        &eff,
+        "k",
+        "Hi",
+        "user",
+        "gpt-4o",
+        Duration::from_millis(5),
+        10,
+    )
+    .await
+    .expect("background ok");
+
+    assert_eq!(res.text, "Background done.");
+
+    // Exactly two requests: submit (with background: true) + one poll.
+    let reqs = server.received_requests().await.unwrap();
+    assert_eq!(reqs.len(), 2);
+    let submit: Value = serde_json::from_slice(&reqs[0].body).unwrap();
+    assert_eq!(submit["background"], true);
+    assert_eq!(reqs[1].url.path(), "/responses/resp_1");
 }

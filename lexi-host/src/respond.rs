@@ -27,34 +27,27 @@ fn endpoint_url(effective_cfg: &Value) -> String {
     format!("{base}{path}")
 }
 
-/// Build the request body for a text prompt via the engine.
+/// Build the request body for a text prompt via the engine, with caller-supplied
+/// overrides (e.g. `model`, `stream`, `background`).
 fn compose_body(
     effective_cfg: &Value,
     prompt: &str,
     role: &str,
-    model: &str,
-    stream: bool,
+    overrides: &Value,
 ) -> Result<Value, HostError> {
     let mut payload = Map::new();
     payload.insert("prompt".into(), Value::from(prompt));
     payload.insert("role".into(), Value::from(role));
-    payload.insert("model".into(), Value::from(model));
     let payload = Value::Object(payload);
 
     let msg = lexi_core::normalize_prompt_payload(&payload);
     let bindings = lexi_core::lower_message(&msg, effective_cfg.get("content_mapping"));
     let effective_payload = config::deep_merge(&payload, &bindings);
 
-    let overrides = if stream {
-        json!({ "model": model, "stream": true })
-    } else {
-        json!({ "model": model })
-    };
-
     lexi_core::compose_request_body(
         effective_cfg,
         &effective_payload,
-        &overrides,
+        overrides,
         &[],
         &[],
         &[],
@@ -73,7 +66,7 @@ pub async fn respond_with_effective(
     role: &str,
     model: &str,
 ) -> Result<RespondResult, HostError> {
-    let body = compose_body(effective_cfg, prompt, role, model, false)?;
+    let body = compose_body(effective_cfg, prompt, role, &json!({ "model": model }))?;
     let headers = auth::build_headers(effective_cfg, api_key);
     let resp = client
         .post(endpoint_url(effective_cfg))
@@ -109,7 +102,12 @@ pub async fn respond_stream_with_effective<F: FnMut(&str)>(
     model: &str,
     mut on_delta: F,
 ) -> Result<RespondResult, HostError> {
-    let body = compose_body(effective_cfg, prompt, role, model, true)?;
+    let body = compose_body(
+        effective_cfg,
+        prompt,
+        role,
+        &json!({ "model": model, "stream": true }),
+    )?;
     let headers = auth::build_headers(effective_cfg, api_key);
     let resp = client
         .post(endpoint_url(effective_cfg))
@@ -163,6 +161,93 @@ pub async fn respond_stream_with_effective<F: FnMut(&str)>(
     })
 }
 
+/// Background (async-operation) pipeline: submit with `background: true`, poll
+/// `operation.poll` until a terminal state, then extract the result. The engine
+/// (`read_operation` / `poll_path`) classifies each poll; the host does the HTTP
+/// and the sleeps.
+#[allow(clippy::too_many_arguments)]
+pub async fn respond_background_with_effective(
+    client: &reqwest::Client,
+    effective_cfg: &Value,
+    api_key: &str,
+    prompt: &str,
+    role: &str,
+    model: &str,
+    poll_interval: std::time::Duration,
+    max_polls: usize,
+) -> Result<RespondResult, HostError> {
+    let operation_cfg = effective_cfg.get("operation").cloned().ok_or_else(|| {
+        HostError::Config("this API defines no `operation` (background) lifecycle".into())
+    })?;
+    let headers = auth::build_headers(effective_cfg, api_key);
+    let base_url = effective_cfg
+        .get("url")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+
+    // Submit.
+    let body = compose_body(
+        effective_cfg,
+        prompt,
+        role,
+        &json!({ "model": model, "background": true }),
+    )?;
+    let resp = client
+        .post(endpoint_url(effective_cfg))
+        .headers(headers.clone())
+        .json(&body)
+        .send()
+        .await?;
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        return Err(HostError::HttpStatus {
+            status,
+            body: resp.text().await.unwrap_or_default(),
+        });
+    }
+    let mut current: Value = resp.json().await?;
+    let mut op = lexi_core::read_operation(&current, Some(&operation_cfg));
+
+    // Poll until terminal.
+    let mut polls = 0;
+    while !op["done"].as_bool().unwrap_or(false) {
+        if polls >= max_polls {
+            return Err(HostError::OperationTimeout);
+        }
+        tokio::time::sleep(poll_interval).await;
+        let id = op.get("id").cloned().unwrap_or(Value::Null);
+        let poll_url = format!("{base_url}{}", lexi_core::poll_path(&operation_cfg, &id));
+        let presp = client
+            .get(&poll_url)
+            .headers(headers.clone())
+            .send()
+            .await?;
+        if !presp.status().is_success() {
+            let status = presp.status().as_u16();
+            return Err(HostError::HttpStatus {
+                status,
+                body: presp.text().await.unwrap_or_default(),
+            });
+        }
+        current = presp.json().await?;
+        op = lexi_core::read_operation(&current, Some(&operation_cfg));
+        polls += 1;
+    }
+
+    if op["state"].as_str() == Some("failed") {
+        return Err(HostError::OperationFailed(
+            op["status"].as_str().unwrap_or("unknown").to_string(),
+        ));
+    }
+
+    let text_extract = effective_cfg
+        .get("response")
+        .and_then(|r| r.get("text_extract"));
+    let text = lexi_core::extract_text(&current, text_extract);
+    Ok(RespondResult { text, raw: current })
+}
+
 async fn resolve(
     provider: &str,
     model_override: Option<&str>,
@@ -209,4 +294,27 @@ pub async fn respond_stream_text<F: FnMut(&str)>(
     let (eff, api_key, model) = resolve(provider, model_override).await?;
     let client = reqwest::Client::new();
     respond_stream_with_effective(&client, &eff, &api_key, prompt, role, &model, on_delta).await
+}
+
+/// Load config, resolve the provider, and run a background (submit/poll/fetch)
+/// text chat. Polls every second for up to ~10 minutes.
+pub async fn respond_background_text(
+    provider: &str,
+    prompt: &str,
+    role: &str,
+    model_override: Option<&str>,
+) -> Result<RespondResult, HostError> {
+    let (eff, api_key, model) = resolve(provider, model_override).await?;
+    let client = reqwest::Client::new();
+    respond_background_with_effective(
+        &client,
+        &eff,
+        &api_key,
+        prompt,
+        role,
+        &model,
+        std::time::Duration::from_secs(1),
+        600,
+    )
+    .await
 }

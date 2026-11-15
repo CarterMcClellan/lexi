@@ -29,6 +29,10 @@ pub enum HostError {
     Http(#[from] reqwest::Error),
     #[error("provider returned HTTP {status}: {body}")]
     HttpStatus { status: u16, body: String },
+    #[error("background operation failed: {0}")]
+    OperationFailed(String),
+    #[error("background operation did not finish within the poll budget")]
+    OperationTimeout,
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("yaml error: {0}")]
@@ -36,6 +40,6 @@ pub enum HostError {
 }
 
 pub use respond::{
-    respond_stream_text, respond_stream_with_effective, respond_text, respond_with_effective,
-    RespondResult,
+    respond_background_text, respond_background_with_effective, respond_stream_text,
+    respond_stream_with_effective, respond_text, respond_with_effective, RespondResult,
 };
