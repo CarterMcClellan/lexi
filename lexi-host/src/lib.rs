@@ -8,6 +8,7 @@
 pub mod auth;
 pub mod config;
 pub mod generate;
+pub mod hosted;
 pub mod image;
 pub mod respond;
 pub mod upload;
@@ -45,6 +46,7 @@ pub enum HostError {
 }
 
 pub use generate::{generate_images_text, generate_images_with_effective, SavedArtifact};
+pub use hosted::{fetch_hosted_models, fetch_hosted_models_with};
 pub use image::{resolve_image, resolve_images, ResolvedImage};
 pub use respond::{
     respond_background_text, respond_background_with_effective, respond_stream_text,

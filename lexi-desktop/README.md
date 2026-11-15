@@ -27,12 +27,12 @@ Rust-core architecture vs. bundling Chromium + Node + Python.
 - The admin **read** endpoints are real, so the management tabs display live data:
   models (`/api/models`), API definitions (`/api/definitions` + `/raw`/`{name}`),
   prompts (`/api/prompts`), and config (`/api/config`) — all read from `~/.lexi-cli/`.
-- All admin **tabs are functional**: config, prompts, models, and API-definition
-  management (create / edit-save / delete / validate / **live preview**) all read
-  and write `~/.lexi-cli/` over `lexi-host`. Definition validation, CLI-flag/preset
-  introspection, and the preview's sample-body compose all reuse `lexi-core`.
-- Only remaining follow-up: hosted-model discovery (`GET /api/models/hosted`,
-  needs a live call to the provider's models endpoint).
+- **Every endpoint the frontend speaks is wired** — chat (buffered + streaming)
+  plus all admin tabs: config, prompts, models (incl. hosted-model discovery via
+  a live provider call), and API-definition management (create / edit-save /
+  delete / validate / live preview). All read and write `~/.lexi-cli/` over
+  `lexi-host`; definition validation, flag/preset introspection, and preview
+  compose reuse `lexi-core`.
 
 ## Releases
 
