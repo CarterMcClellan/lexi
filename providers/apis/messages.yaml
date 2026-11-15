@@ -20,13 +20,11 @@ request:
         x-bind: { from: model }
       messages:
         type: array
-        description: "Conversation turns. Rendered from the active prompt payload."
+        description: "Conversation turns. Content is lowered from the active message via content_mapping."
         x-render:
           template:
             - role: "{{role}}"
-              content:
-                - type: text
-                  text: "{{prompt}}"
+              content: "{{content}}"
       system:
         type: [string, array]
         description: "System prompt (string or array of content blocks)."
@@ -100,6 +98,17 @@ tool_presets:
     thinking:
       type: enabled
       budget_tokens: 32000
+
+# How canonical message content parts lower into Anthropic's wire shape.
+content_mapping:
+  text_only_as_string: false
+  parts:
+    text:
+      template: { type: text, text: "{{text}}" }
+    image:
+      template:
+        type: image
+        source: { type: url, url: "{{url}}" }
 
 response:
   # Walk content[] and concatenate text blocks, skipping tool_use,

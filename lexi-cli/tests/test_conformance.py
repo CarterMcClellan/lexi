@@ -57,11 +57,21 @@ def test_request_composition(case_path: Path) -> None:
     api_def = _load_api(case["api"])
     compose = case.get("compose", {})
 
+    # Mirror respond_with_provider: normalize the message (or a canonical
+    # `message` with image parts) and lower its content via content_mapping.
+    payload = dict(compose.get("prompt_payload") or {})
+    content_mapping = api_def.get("content_mapping")
+    if "message" in compose:
+        msg = message_ir.message_from_dict(compose["message"])
+    else:
+        msg = message_ir.normalize_prompt_payload(payload)
+    effective = {**payload, **message_ir.lower_message(msg, content_mapping)}
+
     set_paths = [tuple(pair) for pair in compose.get("set_paths", [])]
 
     body = api_compose.compose_request_body(
         api_def,
-        prompt_payload=compose.get("prompt_payload"),
+        prompt_payload=effective,
         overrides=compose.get("overrides"),
         tool_presets_selected=compose.get("tool_presets"),
         set_paths=set_paths,

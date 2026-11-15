@@ -18,13 +18,11 @@ request:
         x-bind: { from: model }
       input:
         type: array
-        description: "Conversation items. Rendered from the active prompt payload."
+        description: "Conversation items. Content is lowered from the active message via content_mapping."
         x-render:
           template:
             - role: "{{role}}"
-              content:
-                - type: input_text
-                  text: "{{prompt}}"
+              content: "{{content}}"
       instructions:
         type: string
         description: "Top-level system-style instructions (replaced each request)."
@@ -160,6 +158,15 @@ tool_presets:
     reasoning: { effort: high }
   reasoning_minimal:
     reasoning: { effort: minimal }
+
+# How canonical message content parts lower into the Responses wire shape.
+content_mapping:
+  text_only_as_string: false
+  parts:
+    text:
+      template: { type: input_text, text: "{{text}}" }
+    image:
+      template: { type: input_image, image_url: "{{url}}" }
 
 response:
   # Generic text extractor: walks output[], picks message items, concatenates

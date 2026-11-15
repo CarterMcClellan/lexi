@@ -1,0 +1,28 @@
+{
+  "name": "messages-image-url",
+  "description": "A canonical message with a text part and a URL image part lowers to Anthropic text + image(url source) content blocks.",
+  "api": "messages",
+  "compose": {
+    "prompt_payload": { "model": "claude-sonnet-4-6" },
+    "message": {
+      "role": "user",
+      "content": [
+        { "type": "text", "text": "Describe this image." },
+        { "type": "image", "url": "https://example.com/cat.jpg" }
+      ]
+    }
+  },
+  "expect_body": {
+    "model": "claude-sonnet-4-6",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          { "type": "text", "text": "Describe this image." },
+          { "type": "image", "source": { "type": "url", "url": "https://example.com/cat.jpg" } }
+        ]
+      }
+    ],
+    "max_tokens": 4096
+  }
+}

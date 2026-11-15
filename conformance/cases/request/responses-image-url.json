@@ -1,0 +1,28 @@
+{
+  "name": "responses-image-url",
+  "description": "A text + URL image message lowers to Responses input_text + input_image items.",
+  "api": "responses",
+  "compose": {
+    "prompt_payload": { "model": "gpt-4o" },
+    "message": {
+      "role": "user",
+      "content": [
+        { "type": "text", "text": "Describe this image." },
+        { "type": "image", "url": "https://example.com/cat.jpg" }
+      ]
+    }
+  },
+  "expect_body": {
+    "model": "gpt-4o",
+    "input": [
+      {
+        "role": "user",
+        "content": [
+          { "type": "input_text", "text": "Describe this image." },
+          { "type": "input_image", "image_url": "https://example.com/cat.jpg" }
+        ]
+      }
+    ],
+    "store": true
+  }
+}

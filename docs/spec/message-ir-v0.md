@@ -98,3 +98,36 @@ the real path without changing behavior.
   new/updated conformance fixtures.
 - See [target-architecture.md](../target-architecture.md) for the staged plan
   (vision input → image/video generation → tools) that extends this IR.
+
+---
+
+## v0.1 — Image input (Phase I)
+
+### `ImagePart`
+
+```
+ImagePart = { type: "image", url: <string>, media_type?: <string> }
+```
+
+v0.1 supports **URL image sources** (base64 / Files-API uploads are a later
+slice). `message_from_dict` parses `type: "image"` parts; `type` values other
+than `text`/`image` still raise.
+
+### Provider-aware lowering (`lower_message`)
+
+`to_prompt_bindings` (text-only, provider-agnostic) stays as-is. Multimodal
+content is lowered by **`lower_message(message, content_mapping)`**, which
+returns `{role, content, prompt}`:
+
+- `content` is the provider's per-message content — a **bare string** when the
+  provider's `content_mapping.text_only_as_string` is set *and* the message is a
+  single text part; otherwise a **list** of parts, each rendered through its
+  type's template in `content_mapping.parts` (see the API-definition spec §9).
+- `prompt` (the concatenated text) is retained so legacy `{{prompt}}` templates
+  still work.
+- When `content_mapping` is absent, lowering falls back to `{role, prompt}`.
+
+Text chat is **byte-identical** to v0 (the shipped API-def templates now bind
+`{{content}}`, and lowering reproduces the former inline content). Pinned by the
+`conformance/cases/request/*-image-url.json` fixtures plus the unchanged text
+fixtures.
