@@ -727,6 +727,40 @@ fn save_api_raw_in(home: &Path, name: &str, yaml: &str) -> Result<Vec<String>, H
     Ok(lexi_core::validate_definition(&parsed))
 }
 
+/// Build the editor live-preview for a definition given either its raw `yaml`
+/// (which takes priority) or its `name`. Unparseable/non-object YAML yields a
+/// `{valid:false, errors:[...]}` result rather than an error, matching the CLI.
+pub fn preview_api_def(
+    name: Option<&str>,
+    yaml: Option<&str>,
+    prompt: &str,
+    model: &str,
+    role: &str,
+) -> Result<Value, HostError> {
+    let def = if let Some(y) = yaml {
+        match serde_yaml::from_str::<Value>(y) {
+            Ok(v) if v.is_object() => v,
+            Ok(_) => {
+                return Ok(serde_json::json!({
+                    "valid": false,
+                    "errors": ["YAML top level must be an object"],
+                }))
+            }
+            Err(e) => {
+                return Ok(serde_json::json!({
+                    "valid": false,
+                    "errors": [format!("YAML parse error: {e}")],
+                }))
+            }
+        }
+    } else if let Some(n) = name {
+        load_api_def(n)?
+    } else {
+        return Err(HostError::Config("Provide either yaml or name".into()));
+    };
+    Ok(lexi_core::preview_definition(&def, prompt, model, role))
+}
+
 /// Validate a stored API definition, returning `(valid, errors)`.
 pub fn validate_api_def(name: &str) -> Result<(bool, Vec<String>), HostError> {
     let def = load_api_def(name)?;
@@ -1027,6 +1061,26 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         assert!(create_api_def_in(dir.path(), "../evil", None, None, None).is_err());
         assert!(save_api_raw_in(dir.path(), "a/b", "name: x\n").is_err());
+    }
+
+    #[test]
+    fn preview_api_def_handles_yaml_name_and_bad_input() {
+        // Raw YAML of a valid scaffold composes a body.
+        let good = "name: ok\nrequest:\n  path: /x\n  body_schema:\n    type: object\nresponse:\n  text_extract:\n    text_path: a.b\n";
+        let out = preview_api_def(None, Some(good), "hi", "m", "user").unwrap();
+        assert_eq!(out["valid"], true);
+        assert!(out.get("body").is_some());
+
+        // By name: a shipped definition resolves via the embedded copy.
+        let out = preview_api_def(Some("messages"), None, "hi", "m", "user").unwrap();
+        assert_eq!(out["name"], "messages");
+
+        // Unparseable YAML -> valid:false result, not an error.
+        let out = preview_api_def(None, Some("a: [bad"), "hi", "m", "user").unwrap();
+        assert_eq!(out["valid"], false);
+
+        // Neither name nor yaml -> error.
+        assert!(preview_api_def(None, None, "hi", "m", "user").is_err());
     }
 
     #[test]

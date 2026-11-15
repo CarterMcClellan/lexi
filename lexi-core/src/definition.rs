@@ -304,6 +304,109 @@ fn validate_files(files: Option<&Value>, errors: &mut Vec<String>) {
     }
 }
 
+/// Walk a definition's `body_schema` and return a flat list of CLI flag specs
+/// (one per property carrying an `x-cli` block), recursing into nested objects.
+/// Each spec mirrors the CLI's `cli_flags_for`: flag, alias, path, type, enum,
+/// default, description, repeat, invert, enum_map.
+pub fn cli_flags(api_def: &Value) -> Vec<Value> {
+    let mut flags = Vec::new();
+    let props = api_def
+        .get("request")
+        .and_then(|r| r.get("body_schema"))
+        .and_then(|b| b.get("properties"))
+        .and_then(Value::as_object);
+    if let Some(props) = props {
+        collect_flags(props, &mut flags, "");
+    }
+    flags
+}
+
+fn collect_flags(properties: &serde_json::Map<String, Value>, out: &mut Vec<Value>, prefix: &str) {
+    for (name, schema) in properties {
+        let Some(schema) = schema.as_object() else {
+            continue;
+        };
+        let path = if prefix.is_empty() {
+            name.clone()
+        } else {
+            format!("{prefix}.{name}")
+        };
+        if let Some(cli) = schema.get("x-cli").and_then(Value::as_object) {
+            let description = schema
+                .get("description")
+                .filter(|v| !v.is_null())
+                .or_else(|| cli.get("description"))
+                .cloned()
+                .unwrap_or(Value::Null);
+            out.push(serde_json::json!({
+                "flag": cli.get("flag").cloned().unwrap_or(Value::Null),
+                "alias": cli.get("alias").cloned().unwrap_or(Value::Null),
+                "path": path,
+                "type": schema.get("type").cloned().unwrap_or(Value::Null),
+                "enum": schema.get("enum").cloned().unwrap_or(Value::Null),
+                "default": schema.get("default").cloned().unwrap_or(Value::Null),
+                "description": description,
+                "repeat": cli.get("repeat").and_then(Value::as_bool).unwrap_or(false),
+                "invert": cli.get("invert").and_then(Value::as_bool).unwrap_or(false),
+                "enum_map": cli.get("enum_map").cloned().unwrap_or(Value::Null),
+            }));
+        }
+        if schema.get("type").and_then(Value::as_str) == Some("object") {
+            if let Some(nested) = schema.get("properties").and_then(Value::as_object) {
+                collect_flags(nested, out, &path);
+            }
+        }
+    }
+}
+
+/// The sorted names of a definition's tool presets.
+pub fn tool_preset_names(api_def: &Value) -> Vec<String> {
+    let mut names: Vec<String> = api_def
+        .get("tool_presets")
+        .and_then(Value::as_object)
+        .map(|m| m.keys().cloned().collect())
+        .unwrap_or_default();
+    names.sort();
+    names
+}
+
+/// Build a live-preview of a definition for the editor: validation result, the
+/// exposed CLI flags and tool presets, and — when the definition is valid — a
+/// sample composed request body (or a `body_error`). A pure port of the CLI's
+/// `api preview` JSON output.
+pub fn preview_definition(def: &Value, prompt: &str, model: &str, role: &str) -> Value {
+    let errors = validate_definition(def);
+    let mut result = serde_json::json!({
+        "name": def.get("name").cloned().unwrap_or(Value::String(String::new())),
+        "description": def.get("description").cloned().unwrap_or(Value::String(String::new())),
+        "valid": errors.is_empty(),
+        "errors": errors.clone(),
+        "flags": cli_flags(def),
+        "presets": tool_preset_names(def),
+    });
+    if errors.is_empty() {
+        let prompt_payload = serde_json::json!({ "prompt": prompt, "role": role });
+        let overrides = serde_json::json!({ "model": model });
+        match crate::compose::compose_request_body(
+            def,
+            &prompt_payload,
+            &overrides,
+            &[],
+            &[],
+            &[],
+            false,
+        ) {
+            Ok(body) => {
+                result["body"] = body;
+            }
+            Err(e) => {
+                result["body_error"] = Value::String(e);
+            }
+        }
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -358,5 +461,50 @@ mod tests {
         assert!(errors
             .iter()
             .any(|e| e.contains("text_extract") && e.contains("artifacts")));
+    }
+
+    #[test]
+    fn cli_flags_collects_x_cli_properties_recursively() {
+        let def = json!({
+            "request": { "path": "/x", "body_schema": { "type": "object", "properties": {
+                "temperature": { "type": "number", "x-cli": { "flag": "--temperature", "alias": "-t" } },
+                "nested": { "type": "object", "properties": {
+                    "depth": { "type": "integer", "x-cli": { "flag": "--depth", "repeat": true } }
+                }},
+                "plain": { "type": "string" }
+            }}}
+        });
+        let flags = cli_flags(&def);
+        assert_eq!(flags.len(), 2);
+        assert_eq!(flags[0]["flag"], "--temperature");
+        assert_eq!(flags[0]["alias"], "-t");
+        assert_eq!(flags[0]["path"], "temperature");
+        assert_eq!(flags[1]["flag"], "--depth");
+        assert_eq!(flags[1]["path"], "nested.depth");
+        assert_eq!(flags[1]["repeat"], true);
+    }
+
+    #[test]
+    fn tool_preset_names_sorted() {
+        let def = json!({ "tool_presets": { "web": {}, "arith": {} } });
+        assert_eq!(tool_preset_names(&def), ["arith", "web"]);
+        assert!(tool_preset_names(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn preview_valid_definition_composes_body() {
+        let out = preview_definition(&minimal(), "hello", "m1", "user");
+        assert_eq!(out["valid"], true);
+        assert_eq!(out["errors"].as_array().unwrap().len(), 0);
+        assert!(out.get("body").is_some());
+        assert!(out.get("body_error").is_none());
+    }
+
+    #[test]
+    fn preview_invalid_definition_skips_body() {
+        let out = preview_definition(&json!({ "name": "x" }), "hi", "m", "user");
+        assert_eq!(out["valid"], false);
+        assert!(!out["errors"].as_array().unwrap().is_empty());
+        assert!(out.get("body").is_none());
     }
 }
