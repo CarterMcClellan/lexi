@@ -43,6 +43,7 @@ REQUEST = _cases("request")
 RESPONSE = _cases("response")
 MESSAGE = _cases("message")
 CAPABILITY = _cases("capability")
+DEFINITION = _cases("definition")
 OPERATION = _cases("operation")
 UPLOAD = _cases("upload")
 STREAM = _cases("stream")
@@ -150,5 +151,36 @@ def test_stream(path: Path) -> None:
         assert got == case["expect"][i], f"{case['name']}[{i}]"
 
 
+@pytest.mark.parametrize("path", DEFINITION, ids=[_id(p) for p in DEFINITION])
+def test_definition(path: Path) -> None:
+    case = _load_json(path)
+    definition = case["definition"]
+    if "expect_errors" in case:
+        assert lexi.validate_definition(definition) == case["expect_errors"], case["name"]
+    if "expect_flags" in case:
+        assert lexi.cli_flags(definition) == case["expect_flags"], case["name"]
+    if "expect_presets" in case:
+        assert lexi.tool_preset_names(definition) == case["expect_presets"], case["name"]
+
+
+def test_preview_binding() -> None:
+    # preview_definition stitches validate + flags + presets + a sample compose;
+    # each piece is pinned by its own conformance category, so here we just prove
+    # the wheel binding assembles them correctly.
+    case = _load_json(CONFORMANCE / "definition" / "valid-with-flags-and-presets.json")
+    out = lexi.preview_definition(case["definition"], "hi", "m1", "user")
+    assert out["valid"] is True
+    assert out["errors"] == []
+    assert out["flags"] == case["expect_flags"]
+    assert out["presets"] == case["expect_presets"]
+    assert "body" in out and "body_error" not in out
+
+    bad = lexi.preview_definition({"name": "x"}, "hi", "m1", "user")
+    assert bad["valid"] is False
+    assert bad["errors"]
+    assert "body" not in bad
+
+
 def test_suite_non_empty() -> None:
     assert REQUEST and RESPONSE and MESSAGE and CAPABILITY and OPERATION and UPLOAD and STREAM
+    assert DEFINITION
