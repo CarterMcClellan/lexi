@@ -630,8 +630,8 @@ def build_auth_headers(provider_cfg: dict, api_key: str) -> dict[str, str]:
     return headers
 
 
-# Body composition is delegated to lexi_cli.api_compose.compose_request_body.
-# Template rendering and validation also live there.
+# Body composition and response extraction are delegated to the `lexi` wheel
+# (Rust lexi-core via PyO3); see the engine calls in respond_with_provider.
 
 
 def deep_merge(base: dict, override: dict) -> dict:
