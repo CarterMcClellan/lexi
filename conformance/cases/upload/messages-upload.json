@@ -1,0 +1,8 @@
+{
+  "name": "messages-upload",
+  "description": "Read the file handle from an Anthropic Files upload response.",
+  "api": "messages",
+  "response": { "id": "file_xyz789", "type": "file" },
+  "expect_upload": { "id": "file_xyz789" },
+  "expect_upload_path": "/files"
+}

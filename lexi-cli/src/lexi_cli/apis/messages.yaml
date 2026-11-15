@@ -115,11 +115,23 @@ content_mapping:
           template:
             type: image
             source: { type: base64, media_type: "{{media_type}}", data: "{{data}}" }
+        file:
+          template:
+            type: image
+            source: { type: file, file_id: "{{file_id}}" }
 
 # Input/output modalities this API family can carry (per-model overrides refine).
 capabilities:
   input: [text, image]
   output: [text]
+
+# Files API: POST the file (multipart, host-side), then use the returned id as
+# an image part's file_id source.
+files:
+  upload:
+    method: POST
+    path: /files
+  id_path: id
 
 response:
   # Walk content[] and concatenate text blocks, skipping tool_use,

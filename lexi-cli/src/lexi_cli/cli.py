@@ -454,6 +454,17 @@ def validate_api_definition(data: dict) -> list[str]:
             sm = op.get("status_map")
             if sm is not None and not isinstance(sm, dict):
                 errors.append("'operation.status_map' must be a dict.")
+
+    files = data.get("files")
+    if files is not None:
+        if not isinstance(files, dict):
+            errors.append("'files' must be a dict.")
+        else:
+            up = files.get("upload")
+            if up is not None and not isinstance(up, dict):
+                errors.append("'files.upload' must be a dict.")
+            elif isinstance(up, dict) and not isinstance(up.get("path", ""), str):
+                errors.append("'files.upload.path' must be a string.")
     return errors
 
 

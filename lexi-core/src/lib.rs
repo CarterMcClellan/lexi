@@ -15,6 +15,7 @@ pub mod message_ir;
 pub mod operations;
 pub mod path;
 pub mod template;
+pub mod uploads;
 pub mod validate;
 
 pub use capabilities::{resolve_capabilities, supports_input, supports_output, validate_message};
@@ -30,4 +31,5 @@ pub use message_ir::{
 pub use operations::{classify_status, is_terminal, poll_path, read_operation};
 pub use path::{get_path, set_path, unset_path};
 pub use template::render_template;
+pub use uploads::{read_upload, upload_path, upload_purpose_field};
 pub use validate::validate;

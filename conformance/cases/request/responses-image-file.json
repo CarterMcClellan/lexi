@@ -1,0 +1,28 @@
+{
+  "name": "responses-image-file",
+  "description": "A file-id image part lowers to Responses' input_image file_id.",
+  "api": "responses",
+  "compose": {
+    "prompt_payload": { "model": "gpt-4o" },
+    "message": {
+      "role": "user",
+      "content": [
+        { "type": "text", "text": "Describe this image." },
+        { "type": "image", "file_id": "file_abc123" }
+      ]
+    }
+  },
+  "expect_body": {
+    "model": "gpt-4o",
+    "input": [
+      {
+        "role": "user",
+        "content": [
+          { "type": "input_text", "text": "Describe this image." },
+          { "type": "input_image", "file_id": "file_abc123" }
+        ]
+      }
+    ],
+    "store": true
+  }
+}

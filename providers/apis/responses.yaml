@@ -171,11 +171,22 @@ content_mapping:
           template: { type: input_image, image_url: "{{url}}" }
         base64:
           template: { type: input_image, image_url: "{{data_uri}}" }
+        file:
+          template: { type: input_image, file_id: "{{file_id}}" }
 
 # Input/output modalities this API family can carry (per-model overrides refine).
 capabilities:
   input: [text, image]
   output: [text]
+
+# Files API: POST the file (multipart, host-side), then use the returned id as
+# an image part's file_id source.
+files:
+  upload:
+    method: POST
+    path: /files
+    purpose_field: purpose
+  id_path: id
 
 # Async lifecycle for background responses (request with background: true):
 # submit returns {id, status: queued}; poll GET /responses/{id} until terminal.

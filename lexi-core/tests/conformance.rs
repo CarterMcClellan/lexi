@@ -229,6 +229,34 @@ fn message_ir() {
 }
 
 #[test]
+fn uploads() {
+    let mut failures = Vec::new();
+    let files = case_files("upload");
+    assert!(!files.is_empty(), "no upload cases found");
+
+    for path in files {
+        let case = load_json(&path);
+        let api = load_api(case["api"].as_str().unwrap());
+        let nm = name_of(&path);
+        let files_cfg = api.get("files");
+
+        if let Some(exp) = case.get("expect_upload") {
+            let got = core::read_upload(&case["response"], files_cfg);
+            if &got != exp {
+                failures.push(format!("{nm}: upload handle mismatch (got {got})"));
+            }
+        }
+        if let Some(Value::String(exp_path)) = case.get("expect_upload_path") {
+            let got = core::upload_path(files_cfg);
+            if &got != exp_path {
+                failures.push(format!("{nm}: upload path mismatch (got {got})"));
+            }
+        }
+    }
+    finish("upload", failures);
+}
+
+#[test]
 fn operations() {
     let mut failures = Vec::new();
     let files = case_files("operation");
