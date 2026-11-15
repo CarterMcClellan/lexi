@@ -4,7 +4,7 @@
 //! CLI. The API definitions are embedded in the binary, with a per-user
 //! override under `~/.lexi-cli/apis/`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
@@ -133,6 +133,72 @@ pub fn list_providers() -> Result<Vec<String>, HostError> {
     Ok(provider_names(&load_providers()?))
 }
 
+/// Read a per-provider YAML file (e.g. `configured-models.yaml`) under `home`,
+/// returning the parsed value or `Value::Null` if the file is absent.
+fn read_provider_file(home: &Path, provider: &str, file: &str) -> Result<Value, HostError> {
+    let path = home.join("providers").join(provider).join(file);
+    if !path.exists() {
+        return Ok(Value::Null);
+    }
+    Ok(serde_yaml::from_str(&std::fs::read_to_string(&path)?)?)
+}
+
+/// A configured model for a provider, as surfaced to the GUI/CLI.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ModelInfo {
+    pub id: String,
+    pub description: Option<String>,
+    pub default: bool,
+    /// Aliases that resolve to this model id.
+    pub aliases: Vec<String>,
+}
+
+/// Load a provider's configured models, enriched with its default model and
+/// aliases. Reads `configured-models.yaml`, `default-model.yaml`, and
+/// `model-aliases.yaml` under `providers/<provider>/`. Preserves declaration
+/// order; returns an empty list if the provider has no configured models.
+pub fn load_models(provider: &str) -> Result<Vec<ModelInfo>, HostError> {
+    load_models_in(&lexi_home(), provider)
+}
+
+fn load_models_in(home: &Path, provider: &str) -> Result<Vec<ModelInfo>, HostError> {
+    let models = read_provider_file(home, provider, "configured-models.yaml")?;
+    let default = read_provider_file(home, provider, "default-model.yaml")?
+        .get("default_model")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let aliases = read_provider_file(home, provider, "model-aliases.yaml")?;
+    let aliases = aliases.get("aliases").and_then(Value::as_object);
+
+    let entries = models.get("models").and_then(Value::as_object);
+    let Some(entries) = entries else {
+        return Ok(Vec::new());
+    };
+
+    Ok(entries
+        .iter()
+        .map(|(id, meta)| {
+            let alias_list = aliases
+                .map(|a| {
+                    a.iter()
+                        .filter(|(_, target)| target.as_str() == Some(id.as_str()))
+                        .map(|(alias, _)| alias.clone())
+                        .collect()
+                })
+                .unwrap_or_default();
+            ModelInfo {
+                id: id.clone(),
+                description: meta
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                default: default.as_deref() == Some(id.as_str()),
+                aliases: alias_list,
+            }
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,6 +208,41 @@ mod tests {
     fn provider_names_in_order() {
         let cfg = json!({ "providers": { "anthropic": {}, "openai": {}, "nvidia": {} } });
         assert_eq!(provider_names(&cfg), ["anthropic", "openai", "nvidia"]);
+    }
+
+    #[test]
+    fn load_models_enriches_with_default_and_aliases() {
+        let dir = tempfile::tempdir().unwrap();
+        let pdir = dir.path().join("providers").join("openai");
+        std::fs::create_dir_all(&pdir).unwrap();
+        std::fs::write(
+            pdir.join("configured-models.yaml"),
+            "models:\n  gpt-4o:\n    description: cap\n  gpt-4o-mini:\n    description: mini\n",
+        )
+        .unwrap();
+        std::fs::write(pdir.join("default-model.yaml"), "default_model: gpt-4o\n").unwrap();
+        std::fs::write(
+            pdir.join("model-aliases.yaml"),
+            "aliases:\n  gpt4: gpt-4o\n  mini: gpt-4o-mini\n",
+        )
+        .unwrap();
+
+        let models = load_models_in(dir.path(), "openai").unwrap();
+        assert_eq!(models.len(), 2);
+        // Declaration order is preserved.
+        assert_eq!(models[0].id, "gpt-4o");
+        assert_eq!(models[0].description.as_deref(), Some("cap"));
+        assert!(models[0].default);
+        assert_eq!(models[0].aliases, ["gpt4"]);
+        assert_eq!(models[1].id, "gpt-4o-mini");
+        assert!(!models[1].default);
+        assert_eq!(models[1].aliases, ["mini"]);
+    }
+
+    #[test]
+    fn load_models_empty_for_unknown_provider() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(load_models_in(dir.path(), "nope").unwrap().is_empty());
     }
 
     #[test]

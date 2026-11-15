@@ -24,9 +24,10 @@ Rust-core architecture vs. bundling Chromium + Node + Python.
 ## What works
 
 - Chat (buffered **and** streaming), multi-provider, over `lexi-host`.
-- The admin tabs (models / API definitions / config) render but their backends
-  are stubs for now — they show an inline error only when opened. Wiring those
-  endpoints into `lexi-host` is the remaining feature work (see the host plan).
+- Model listing (`GET /api/models?provider=`) is real — the chat tab's per-provider
+  model dropdowns populate from `configured-models.yaml`, with default/alias info.
+- The remaining admin backends (model add/delete, API definitions, prompts, config
+  writes) are still stubs — wiring those into `lexi-host` is in progress.
 
 ## Releases
 

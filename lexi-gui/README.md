@@ -1,6 +1,6 @@
 # lexi-gui
 
-GUI wrapper for Lexi. Serves a web UI and proxies to the `lexi` CLI backend for prompt management and provider interaction.
+GUI wrapper for Lexi. Serves a web UI and proxies to the `lexi` CLI backend for prompt management, provider interaction, and model management.
 
 ## Setup
 
@@ -31,6 +31,10 @@ PORT=8080 ./launch-gui.sh  # Use a custom port
 - List and inspect saved prompts with detail views
 - Set named prompts as active
 - Configurable max_tokens, temperature, and role per prompt
+- Provider management (list, configure)
+- Model browsing (configured models, hosted models, defaults, aliases)
+- Send prompts to providers and view responses
+- Config management (CLI and GUI settings)
 
 ## Development
 

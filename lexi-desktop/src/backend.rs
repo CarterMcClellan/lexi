@@ -17,7 +17,7 @@ pub async fn handle(method: &str, path: &str, body: Option<Value>) -> Result<Val
         ("GET", "/api/providers") | ("GET", "/api/providers/") => providers(),
         ("GET", "/api/config") | ("GET", "/api/config/") => Ok(json!({})),
         ("GET", "/api/prompts") => Ok(json!({ "prompts": [] })),
-        ("GET", p) if p.starts_with("/api/models") => Ok(json!({ "models": [] })),
+        ("GET", p) if p.starts_with("/api/models") => models(path),
         ("GET", p) if p.starts_with("/api/respond/options") => Ok(json!({ "presets": [] })),
         ("POST", "/api/respond") => respond(body.unwrap_or(Value::Null)).await,
         _ => Err(format!(
@@ -65,6 +65,70 @@ fn providers() -> Result<Value, String> {
         }));
     }
     Ok(json!({ "providers": out, "source": "providers-config.yaml" }))
+}
+
+/// `GET /api/models?provider=X` — a provider's configured models, enriched with
+/// its default flag and aliases. Mirrors the Node `{ provider, models: [...] }`
+/// shape; the chat tab reads `id`/`name`, the Models tab the rest.
+fn models(path: &str) -> Result<Value, String> {
+    let provider = query_param(path, "provider")
+        .ok_or_else(|| "provider query param is required".to_string())?;
+
+    let models = config::load_models(&provider).map_err(|e| e.to_string())?;
+    let models: Vec<Value> = models
+        .into_iter()
+        .map(|m| {
+            json!({
+                "id": m.id,
+                "description": m.description,
+                "default": m.default,
+                "aliases": m.aliases,
+            })
+        })
+        .collect();
+    Ok(json!({ "provider": provider, "models": models }))
+}
+
+/// Extract a single query-string parameter from a shimmed request path.
+fn query_param(path: &str, key: &str) -> Option<String> {
+    let query = path.split('?').nth(1)?;
+    query.split('&').find_map(|pair| {
+        let (k, v) = pair.split_once('=')?;
+        (k == key).then(|| percent_decode(v))
+    })
+}
+
+/// Minimal percent-decoding for query values (`%XX` and `+` → space).
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'%' if i + 2 < bytes.len() => {
+                let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).ok();
+                match hex.and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                    Some(b) => {
+                        out.push(b);
+                        i += 3;
+                    }
+                    None => {
+                        out.push(bytes[i]);
+                        i += 1;
+                    }
+                }
+            }
+            b'+' => {
+                out.push(b' ');
+                i += 1;
+            }
+            b => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// Sentinel the webview shim watches for to close the ReadableStream.
@@ -158,4 +222,29 @@ async fn respond(body: Value) -> Result<Value, String> {
         }
     }
     Ok(json!({ "responses": responses }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{percent_decode, query_param};
+
+    #[test]
+    fn query_param_extracts_and_decodes() {
+        assert_eq!(
+            query_param("/api/models?provider=openai", "provider").as_deref(),
+            Some("openai")
+        );
+        assert_eq!(
+            query_param("/api/models?x=1&provider=a%2Fb", "provider").as_deref(),
+            Some("a/b")
+        );
+        assert_eq!(query_param("/api/models", "provider"), None);
+        assert_eq!(query_param("/api/models?other=1", "provider"), None);
+    }
+
+    #[test]
+    fn percent_decode_handles_escapes_and_plus() {
+        assert_eq!(percent_decode("meta%2Fllama+3"), "meta/llama 3");
+        assert_eq!(percent_decode("plain"), "plain");
+    }
 }

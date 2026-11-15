@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 lexi-core = { path = "../lexi-core" }
+serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml = "0.9"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }
