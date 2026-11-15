@@ -26,11 +26,12 @@ All main commands use **plural forms** and support subcommands. Use `help <comma
   - `prompts rm <name>`
 
 - **`providers`** — Manage LLM providers
-  - `providers list [--raw|-r]`
+  - `providers list [--raw|-r] [--table|-t]`
   - `providers add <name> --url URL --api_key KEY --default_model MODEL`
   - `providers api-key set|show|remove <name>`
   - `providers rename <old> <new>`
   - `providers rm <name>`
+  - `providers status <name> [--raw|-r]`
 
 - **`models`** — Manage models for a provider
   - `models list <provider> [--raw|-r] [--table|-t] [--details|-d]`
@@ -38,6 +39,14 @@ All main commands use **plural forms** and support subcommands. Use `help <comma
   - `models default <provider> [model_name]`
   - `models alias list|set|rm <provider> [...]`
   - `models add|set|rm <provider> <model> [options]`
+
+- **`api`** — Manage API definitions
+  - `api list [--raw|-r]`
+  - `api show <name> [--raw|-r]`
+  - `api create <name> [--from <existing>] [--path PATH] [--text-path PATH]`
+  - `api edit <name> [--path PATH] [--text-path PATH] [--set-param NAME:FIELD:TYPE:DEFAULT] [--set-meta KEY:PATH]`
+  - `api rm <name>`
+  - `api validate <name>`
 
 - **`respond`** — Send a prompt to a provider
   - `respond <provider> [prompt_name] [--model M] [--temperature T] [--max_tokens N] [--web-search] [--raw|-r]`
@@ -71,8 +80,12 @@ Stored in `~/.lexi-cli/` (seeded from repo's `providers/` on first run):
 ├── history                            # Command history
 ├── aliases.json                       # Command aliases
 ├── prompts/                           # Saved prompts (active = $$.json)
+├── apis/
+│   ├── chat-completions.yaml          # OpenAI-compatible Chat Completions API
+│   ├── messages.yaml                  # Anthropic Messages API
+│   └── responses.yaml                 # OpenAI Responses API
 └── providers/
-    ├── providers-config.yaml          # Provider URLs, auth, request/response config
+    ├── providers-config.yaml          # Provider URLs, API key refs, API bindings
     └── <provider>/
         ├── configured-models.yaml     # Model metadata
         ├── default-model.yaml         # Default model
@@ -83,6 +96,22 @@ Stored in `~/.lexi-cli/` (seeded from repo's `providers/` on first run):
 Default config values: `cli_name: lexi`, `prompt: cmd`, `prompt_delimiter: >`, `edit_mode: vi`.
 
 Legacy files (`.config.json`, `.cli_history`, `~/.exp-cli/`) are migrated on first run.
+
+### API Definitions
+
+Each LLM API style is defined in a standalone YAML file under `~/.lexi-cli/apis/`. Three are bundled by default:
+
+| Definition | Description | Used by |
+|---|---|---|
+| `chat-completions` | OpenAI-compatible Chat Completions | NVIDIA |
+| `messages` | Anthropic Messages API | Anthropic |
+| `responses` | OpenAI Responses API | OpenAI |
+
+Each definition specifies auth headers, request body template (with `{{model}}`/`{{role}}`/`{{prompt}}` variables), typed parameters with ranges, and response text/metadata extraction paths.
+
+Providers reference an API definition by name via the `api:` field in `providers-config.yaml`. Inline `auth`, `request`, or `response` overrides in the provider config are deep-merged on top of the referenced definition.
+
+Use `api create`, `api edit`, and `api validate` to manage custom API definitions without editing YAML by hand.
 
 ## Development
 
