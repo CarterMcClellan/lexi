@@ -2,9 +2,11 @@
 //!
 //! The frontend still speaks the Node server's HTTP contract; a `fetch`-shim in
 //! the webview routes every `/api/*` call to the `api` Tauri command, which
-//! dispatches here. Shapes match the original Node handlers. Chat (`providers`,
-//! buffered + streaming `respond`) is real over `lexi-host`; management endpoints
-//! are benign stubs for now (the admin tabs degrade gracefully).
+//! dispatches here. Shapes match the original Node handlers. Every endpoint is
+//! served in-process by `lexi-host`: chat (buffered + streaming, fanned out over
+//! providers concurrently) plus the full admin surface (providers, models,
+//! prompts, config, API definitions). Only hosted-model discovery makes a live
+//! provider call; the rest read/write `~/.lexi-cli/`.
 
 use serde_json::{json, Map, Value};
 
@@ -507,7 +509,9 @@ fn sse(event: &str, data: Value) -> String {
 
 /// `POST /api/respond/stream` — streaming chat. Emits the frontend's SSE protocol
 /// (`provider_start` / `delta` / `provider_done`, keyed by provider) through the
-/// Tauri channel, provider by provider, then a close sentinel.
+/// Tauri channel. Providers stream **concurrently** — their events are tagged by
+/// provider, so interleaving is fine and the slowest provider no longer blocks
+/// the others. A close sentinel is sent once all providers finish.
 pub async fn stream(body: Value, on_event: tauri::ipc::Channel<String>) -> Result<(), String> {
     let prompt = body.get("prompt").and_then(Value::as_str).unwrap_or("");
     let providers = body
@@ -521,32 +525,40 @@ pub async fn stream(body: Value, on_event: tauri::ipc::Channel<String>) -> Resul
         .and_then(Value::as_object)
         .unwrap_or(&empty);
 
-    for pv in &providers {
-        let Some(provider) = pv.as_str() else {
-            continue;
-        };
+    let jobs = providers.iter().filter_map(Value::as_str).map(|provider| {
         let provider = provider.to_string();
         let model = models
             .get(&provider)
             .and_then(Value::as_str)
-            .filter(|s| !s.is_empty());
-
-        let _ = on_event.send(sse("provider_start", json!({ "provider": provider })));
-
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
         let ch = on_event.clone();
-        let p = provider.clone();
-        let result =
-            lexi_host::respond_stream_text(&provider, prompt, "user", model, &[], move |frag| {
-                let _ = ch.send(sse("delta", json!({ "provider": p, "text": frag })));
-            })
+        async move {
+            let _ = ch.send(sse("provider_start", json!({ "provider": provider })));
+
+            let cb_ch = ch.clone();
+            let p = provider.clone();
+            let result = lexi_host::respond_stream_text(
+                &provider,
+                prompt,
+                "user",
+                model.as_deref(),
+                &[],
+                move |frag| {
+                    let _ = cb_ch.send(sse("delta", json!({ "provider": p, "text": frag })));
+                },
+            )
             .await;
 
-        let done = match result {
-            Ok(_) => json!({ "provider": provider }),
-            Err(e) => json!({ "provider": provider, "error": e.to_string() }),
-        };
-        let _ = on_event.send(sse("provider_done", done));
-    }
+            let done = match result {
+                Ok(_) => json!({ "provider": provider }),
+                Err(e) => json!({ "provider": provider, "error": e.to_string() }),
+            };
+            let _ = ch.send(sse("provider_done", done));
+        }
+    });
+
+    futures_util::future::join_all(jobs).await;
 
     let _ = on_event.send(STREAM_END.to_string());
     Ok(())
@@ -572,22 +584,21 @@ async fn respond(body: Value) -> Result<Value, String> {
         .and_then(Value::as_object)
         .unwrap_or(&empty);
 
-    let mut responses = Vec::new();
-    for pv in &providers {
-        let Some(provider) = pv.as_str() else {
-            continue;
-        };
+    // Fan out over the selected providers concurrently; `join_all` preserves the
+    // input order, so the rendered responses stay stable.
+    let jobs = providers.iter().filter_map(Value::as_str).map(|provider| {
         let model = models
             .get(provider)
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty());
-        match lexi_host::respond_text(provider, prompt, "user", model, &[]).await {
-            Ok(r) => {
-                responses.push(json!({ "provider": provider, "output": r.text, "stderr": "" }))
+        async move {
+            match lexi_host::respond_text(provider, prompt, "user", model, &[]).await {
+                Ok(r) => json!({ "provider": provider, "output": r.text, "stderr": "" }),
+                Err(e) => json!({ "provider": provider, "error": e.to_string() }),
             }
-            Err(e) => responses.push(json!({ "provider": provider, "error": e.to_string() })),
         }
-    }
+    });
+    let responses = futures_util::future::join_all(jobs).await;
     Ok(json!({ "responses": responses }))
 }
 
