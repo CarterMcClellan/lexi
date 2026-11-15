@@ -1,0 +1,147 @@
+name: messages
+description: "Anthropic Messages API (/v1/messages)"
+
+auth:
+  header: x-api-key
+  value_prefix: ""
+  extra_headers:
+    anthropic-version: "2023-06-01"
+
+request:
+  method: POST
+  path: /messages
+  body_schema:
+    type: object
+    required: [model, messages, max_tokens]
+    properties:
+      model:
+        type: string
+        description: "Model ID (e.g. claude-opus-4-7, claude-sonnet-4-6)."
+        x-bind: { from: model }
+      messages:
+        type: array
+        description: "Conversation turns. Rendered from the active prompt payload."
+        x-render:
+          template:
+            - role: "{{role}}"
+              content:
+                - type: text
+                  text: "{{prompt}}"
+      system:
+        type: [string, array]
+        description: "System prompt (string or array of content blocks)."
+        x-cli: { flag: --system }
+      max_tokens:
+        type: integer
+        minimum: 1
+        default: 4096
+        description: "Maximum tokens to generate (required by Anthropic)."
+        x-cli: { flag: --max-tokens, alias: -m }
+      temperature:
+        type: number
+        minimum: 0
+        maximum: 1
+        description: "Sampling temperature (Anthropic clamps at 1.0)."
+        x-cli: { flag: --temperature, alias: -t }
+      top_p:
+        type: number
+        minimum: 0
+        maximum: 1
+        x-cli: { flag: --top-p }
+      top_k:
+        type: integer
+        minimum: 0
+        description: "Sample from the top K tokens."
+        x-cli: { flag: --top-k }
+      stop_sequences:
+        type: array
+        items: { type: string }
+        description: "Custom stop sequences (max 4)."
+        x-cli: { flag: --stop, repeat: true }
+        x-include: if_non_empty
+      stream:
+        type: boolean
+        default: false
+        description: "Stream the response as SSE events."
+        x-cli: { flag: --stream }
+        x-include: if_truthy
+      metadata:
+        type: object
+        description: "Free-form metadata; user_id is the documented sub-key."
+        properties:
+          user_id: { type: string }
+        x-include: if_any_child_set
+      tools:
+        type: array
+        items: { type: object }
+        x-include: if_non_empty
+      tool_choice:
+        type: object
+        description: "{ type: auto | any | tool | none, ... }"
+      service_tier:
+        type: string
+        enum: [auto, standard_only, priority]
+        x-cli: { flag: --tier }
+      thinking:
+        type: object
+        description: "Extended thinking config: { type: enabled, budget_tokens: <int> }."
+      mcp_servers:
+        type: array
+        items: { type: object }
+        description: "MCP server configurations."
+        x-include: if_non_empty
+
+tool_presets:
+  thinking_low:
+    thinking:
+      type: enabled
+      budget_tokens: 4096
+  thinking_high:
+    thinking:
+      type: enabled
+      budget_tokens: 32000
+
+response:
+  # Walk content[] and concatenate text blocks, skipping tool_use,
+  # server_tool_use, web_search_tool_result, thinking, etc.
+  text_extract:
+    items_path: content
+    item_filter: { type: text }
+    text_field: text
+  # Tool-use / activity summary surfaced under --verbose.
+  activity:
+    items_path: content
+    summarize_by_type:
+      thinking:                "thinking"
+      tool_use:                "{count} tool use"
+      server_tool_use:         "{count} server tool"
+      web_search_tool_result:  "{count} web search result"
+      code_execution_tool_result: "{count} code exec result"
+  # Anthropic citations sit on each text block as "citations".
+  annotations:
+    scope: text_items
+    path: citations
+    types:
+      web_search_result_location:
+        format: "[{i}] {url} — {title}"
+      page_location:
+        format: "[{i}] {document_title} (p.{start_page_number}-{end_page_number})"
+      char_location:
+        format: "[{i}] {document_title} (chars {start_char_index}-{end_char_index})"
+      content_block_location:
+        format: "[{i}] {document_title} (blocks {start_block_index}-{end_block_index})"
+  metadata:
+    model: model
+    input_tokens: usage.input_tokens
+    output_tokens: usage.output_tokens
+    stop_reason: stop_reason
+  # Streaming (SSE) — Anthropic emits content_block_delta with delta.text fragments
+  stream:
+    delta_event: content_block_delta
+    delta_path: delta.text
+    done_event: message_stop
+    # No activity_events: Anthropic surfaces tool use through generic
+    # content_block_start events whose meaning depends on the data payload.
+    # Template substitution from event data would unlock per-tool indicators
+    # (e.g., reading content_block.type to decide the message). Out of scope
+    # for the static-string first cut.

@@ -1,92 +1,29 @@
-#
-# Top level configuration file for each provider
-#
-#     url: base url for API access to models hosted by the provider
-#     hosted_models: appended to base url to get list of hosted models
-#     api_key: how to access the API Key for a given provider (typically a shell variable <PROVIDER>_API_KEY)
-#     auth: authentication header config (header name, value prefix, extra headers)
-#     request: API request config (path, body template, param mapping)
-#     response: API response config (text_path for extracting response text)
-
 providers:
   openai:
     url: https://api.openai.com/v1
     hosted_models: /models
     hosted_model_fields: [id, object, created, owned_by]
     api_key: ${OPENAI_API_KEY}
-    auth:
-      header: Authorization
-      value_prefix: "Bearer "
-    request:
-      path: /responses
-      body:
-        model: "{{model}}"
-        input:
-          - role: "{{role}}"
-            content:
-              - type: input_text
-                text: "{{prompt}}"
-      param_mapping:
-        temperature: temperature
-        max_tokens: max_output_tokens
-      tools_key: tools
-    response:
-      text_path: "output[0].content[0].text"
+    api: responses
+    default_model: gpt-4o
 
   anthropic:
     url: https://api.anthropic.com/v1
     hosted_models: /models
-    hosted_model_fields: [id, type, display_name, created_at]
+    hosted_model_fields: [id, type]
     api_key: ${ANTHROPIC_API_KEY}
-    auth:
-      header: x-api-key
-      value_prefix: ""
-      extra_headers:
-        anthropic-version: "2023-06-01"
-    request:
-      path: /messages
-      body:
-        model: "{{model}}"
-        messages:
-          - role: "{{role}}"
-            content:
-              - type: text
-                text: "{{prompt}}"
-      param_mapping:
-        temperature: temperature
-        max_tokens: max_tokens
-    response:
-      text_path: "content[0].text"
+    api: messages
+    default_model: claude-3-5-sonnet-20241022
 
   nvidia:
     url: https://integrate.api.nvidia.com/v1
     hosted_models: /models
     hosted_model_fields: [id, object, owned_by]
     api_key: ${NVIDIA_API_KEY}
-    auth:
-      header: Authorization
-      value_prefix: "Bearer "
-    request:
-      path: /chat/completions
-      body:
-        model: "{{model}}"
-        messages:
-          - role: "{{role}}"
-            content: "{{prompt}}"
-      param_mapping:
-        temperature: temperature
-        max_tokens: max_tokens
-      tools_key: tools
-    response:
-      text_path: "choices[0].message.content"
+    api: chat-completions
+    default_model: meta/llama-3.1-70b-instruct
 
-#  google_ai_studio:
-#    url: https://generativelanguage.googleapis.com
-#    api_key: ${GOOGLE_AI_STUDIO_API_KEY}
-#  vertex_ai:
-#
-
-provider_defaults:
+defaults:
   max_tokens: 4096
   temperature: 0.5
   role: system

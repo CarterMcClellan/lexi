@@ -19,6 +19,8 @@ import urllib.request
 from collections.abc import Iterable
 from pathlib import Path
 
+from lexi_cli import api_compose
+
 try:
     from rich.console import Console
     from rich.table import Table
@@ -61,6 +63,13 @@ if not DEFAULT_PROVIDERS_ROOT.exists():
     except Exception:
         DEFAULT_PROVIDERS_ROOT = REPO_ROOT / "providers"
 DEFAULT_PROVIDERS_CONFIG = DEFAULT_PROVIDERS_ROOT / "providers-config.yaml"
+APIS_DIR = APP_DIR / "apis"
+DEFAULT_APIS_ROOT = REPO_ROOT / "providers" / "apis"
+if not DEFAULT_APIS_ROOT.exists():
+    try:
+        DEFAULT_APIS_ROOT = Path(importlib_resources.files("lexi_cli") / "apis")
+    except Exception:
+        DEFAULT_APIS_ROOT = REPO_ROOT / "providers" / "apis"
 try:
     DEFAULT_ALIASES_FILE = Path(importlib_resources.files("lexi_cli") / "default-aliases.json")
 except Exception:
@@ -83,6 +92,7 @@ LEXI_COMMANDS = {
     "prompts": "Manage saved prompts or emit prompt JSON.",
     "providers": "Manage providers (list/add/rename/rm).",
     "models": "Manage models for a provider (list/add/set/rm).",
+    "api": "Manage API definitions (list/show/create/edit/rm/validate).",
     "respond": "Send a prompt to a provider via the Responses API.",
 }
 
@@ -114,7 +124,7 @@ COMMAND_SUBCOMMANDS = {
         },
         "set": {
             "summary": "Save or update a prompt definition.",
-            "usage": "prompt set [name] [--prompt TEXT] [[-m|--max_tokens] N] [[-t|--temperature] T] [[-r|--role] ROLE]",
+            "usage": "prompt set [name] [--prompt TEXT] [[-m|--max_tokens] N] [[-t|--temperature] T] [[-r|--role] ROLE] [--set path=value] [--unset path]",
         },
         "rm": {
             "summary": "Remove a saved prompt.",
@@ -122,10 +132,10 @@ COMMAND_SUBCOMMANDS = {
         },
     },
     "providers": {
-        "list": {"summary": "List configured providers.", "usage": "providers list [--raw|-r]"},
+        "list": {"summary": "List configured providers.", "usage": "providers list [--raw|-r] [--table|-t]"},
         "add": {
             "summary": "Add a provider.",
-            "usage": "provider add <name> --url URL --api_key KEY --default_model MODEL",
+            "usage": "providers add <name> --url URL --api_key KEY --default_model MODEL",
         },
         "api-key": {
             "summary": "Manage API keys stored in per-provider files.",
@@ -133,9 +143,13 @@ COMMAND_SUBCOMMANDS = {
         },
         "rename": {
             "summary": "Rename a provider.",
-            "usage": "provider rename <old> <new>",
+            "usage": "providers rename <old> <new>",
         },
-        "rm": {"summary": "Remove a provider.", "usage": "provider rm <name>"},
+        "rm": {"summary": "Remove a provider.", "usage": "providers rm <name>"},
+        "status": {
+            "summary": "Check provider status and API key validity.",
+            "usage": "providers status <name> [--raw|-r]",
+        },
     },
     "models": {
         "list": {
@@ -163,6 +177,20 @@ COMMAND_SUBCOMMANDS = {
             "usage": "model set <provider> <model> [--name NAME] [--description TEXT] [--max_tokens N] [--context_window N] [--default]",
         },
         "rm": {"summary": "Remove a model.", "usage": "model rm <provider> <model>"},
+    },
+    "api": {
+        "list": {"summary": "List API definitions.", "usage": "api list [--raw|-r]"},
+        "show": {"summary": "Show an API definition.", "usage": "api show <name> [--raw|-r]"},
+        "create": {
+            "summary": "Create a new API definition.",
+            "usage": "api create <name> [--from <existing>] [--path PATH] [--text-path PATH]",
+        },
+        "edit": {
+            "summary": "Edit an API definition.",
+            "usage": "api edit <name> [--path PATH] [--text-path PATH] [--set-meta KEY:PATH]",
+        },
+        "rm": {"summary": "Remove an API definition.", "usage": "api rm <name>"},
+        "validate": {"summary": "Validate an API definition.", "usage": "api validate <name>"},
     },
 }
 
@@ -230,6 +258,199 @@ def save_yaml_file(path: Path, data: dict) -> bool:
     except Exception as exc:
         print_error(f"Warning: could not write {path.name} ({exc}).")
         return False
+
+
+def load_api_definition(name: str) -> dict | None:
+    """Load an API definition by name from the runtime apis directory."""
+    path = APIS_DIR / f"{name}.yaml"
+    if not path.exists():
+        return None
+    data = load_yaml_file(path)
+    return data if data else None
+
+
+def save_api_definition(name: str, data: dict) -> bool:
+    """Save an API definition to the runtime apis directory."""
+    path = APIS_DIR / f"{name}.yaml"
+    return save_yaml_file(path, data)
+
+
+def load_all_api_definitions() -> dict[str, dict]:
+    """Load all API definitions from the runtime apis directory."""
+    apis: dict[str, dict] = {}
+    if not APIS_DIR.exists():
+        return apis
+    for path in sorted(APIS_DIR.glob("*.yaml")):
+        data = load_yaml_file(path)
+        if data:
+            apis[path.stem] = data
+    return apis
+
+
+def delete_api_definition(name: str) -> bool:
+    """Delete an API definition from the runtime apis directory."""
+    path = APIS_DIR / f"{name}.yaml"
+    if not path.exists():
+        return False
+    try:
+        path.unlink()
+        return True
+    except OSError as exc:
+        print_error(f"Could not delete API definition {name!r}: {exc}")
+        return False
+
+
+def validate_api_definition(data: dict) -> list[str]:
+    """Validate a schema-driven API definition. Returns error messages (empty = valid)."""
+    errors: list[str] = []
+    if not isinstance(data.get("name"), str) or not data["name"]:
+        errors.append("Missing or empty 'name' field.")
+    req = data.get("request")
+    if not isinstance(req, dict):
+        errors.append("Missing 'request' block.")
+    else:
+        if not isinstance(req.get("path"), str) or not req["path"]:
+            errors.append("Missing or empty 'request.path'.")
+        body_schema = req.get("body_schema")
+        if not isinstance(body_schema, dict):
+            errors.append("Missing or invalid 'request.body_schema' (must be a dict).")
+        else:
+            if body_schema.get("type") not in (None, "object"):
+                errors.append("'request.body_schema.type' must be 'object'.")
+            props = body_schema.get("properties")
+            if props is not None and not isinstance(props, dict):
+                errors.append("'request.body_schema.properties' must be a dict.")
+            elif isinstance(props, dict):
+                for pname, pdef in props.items():
+                    if not isinstance(pdef, dict):
+                        errors.append(f"Property {pname!r} must be a dict.")
+                        continue
+                    inc = pdef.get("x-include")
+                    if inc is not None and inc not in api_compose._VALID_INCLUDES:
+                        errors.append(
+                            f"Property {pname!r}: invalid x-include {inc!r} "
+                            f"(expected one of {sorted(api_compose._VALID_INCLUDES)})"
+                        )
+        # Reject legacy keys outright (no backward compat).
+        for legacy in ("body", "parameters", "param_mapping", "tools", "tools_key"):
+            if legacy in req:
+                errors.append(
+                    f"'request.{legacy}' is from the legacy schema; "
+                    f"use 'request.body_schema' instead."
+                )
+    presets = data.get("tool_presets")
+    if presets is not None and not isinstance(presets, dict):
+        errors.append("'tool_presets' must be a dict mapping name -> body fragment.")
+    resp = data.get("response")
+    if not isinstance(resp, dict):
+        errors.append("Missing 'response' block.")
+    else:
+        # Reject legacy top-level text_path/text_fallbacks (they live inside
+        # response.text_extract now).
+        for legacy in ("text_path", "text_fallbacks"):
+            if legacy in resp:
+                errors.append(
+                    f"'response.{legacy}' is from the legacy schema; "
+                    f"use 'response.text_extract' instead."
+                )
+        te = resp.get("text_extract")
+        if not isinstance(te, dict):
+            errors.append("Missing or invalid 'response.text_extract' (must be a dict).")
+        else:
+            has_path = isinstance(te.get("text_path"), str) and te["text_path"]
+            has_items = isinstance(te.get("items_path"), str) and te["items_path"]
+            if has_path and has_items:
+                errors.append(
+                    "'response.text_extract' must specify either text_path "
+                    "(simple) OR items_path (walked), not both."
+                )
+            elif not has_path and not has_items:
+                errors.append(
+                    "'response.text_extract' must specify either text_path "
+                    "or items_path."
+                )
+            for opt_dict in ("item_filter", "content_filter"):
+                v = te.get(opt_dict)
+                if v is not None and not isinstance(v, dict):
+                    errors.append(
+                        f"'response.text_extract.{opt_dict}' must be a dict of field=value pairs."
+                    )
+        meta = resp.get("metadata")
+        if meta is not None and not isinstance(meta, dict):
+            errors.append("'response.metadata' must be a dict.")
+        stream = resp.get("stream")
+        if stream is not None:
+            if not isinstance(stream, dict):
+                errors.append("'response.stream' must be a dict.")
+            else:
+                ae = stream.get("activity_events")
+                if ae is not None and not isinstance(ae, dict):
+                    errors.append("'response.stream.activity_events' must be a dict.")
+                elif isinstance(ae, dict):
+                    for evname, msg in ae.items():
+                        if not isinstance(msg, str):
+                            errors.append(
+                                f"'response.stream.activity_events.{evname}' must be a string."
+                            )
+        act = resp.get("activity")
+        if act is not None:
+            if not isinstance(act, dict):
+                errors.append("'response.activity' must be a dict.")
+            else:
+                if "items_path" in act and not isinstance(act["items_path"], str):
+                    errors.append("'response.activity.items_path' must be a string.")
+                sbt = act.get("summarize_by_type")
+                if sbt is not None and not isinstance(sbt, dict):
+                    errors.append("'response.activity.summarize_by_type' must be a dict.")
+                elif isinstance(sbt, dict):
+                    for tname, label in sbt.items():
+                        if not isinstance(label, str):
+                            errors.append(
+                                f"'response.activity.summarize_by_type.{tname}' must be a string."
+                            )
+        ann = resp.get("annotations")
+        if ann is not None:
+            if not isinstance(ann, dict):
+                errors.append("'response.annotations' must be a dict.")
+            else:
+                scope = ann.get("scope", "text_items")
+                if scope not in ("text_items", "response_root"):
+                    errors.append(
+                        f"'response.annotations.scope' must be 'text_items' or 'response_root' (got {scope!r})."
+                    )
+                types = ann.get("types")
+                if types is not None and not isinstance(types, dict):
+                    errors.append("'response.annotations.types' must be a dict mapping type → format spec.")
+                elif isinstance(types, dict):
+                    for tname, tcfg in types.items():
+                        if not isinstance(tcfg, dict):
+                            errors.append(
+                                f"'response.annotations.types.{tname}' must be a dict (e.g. {{format: ...}})."
+                            )
+                            continue
+                        if "format" in tcfg and not isinstance(tcfg["format"], str):
+                            errors.append(
+                                f"'response.annotations.types.{tname}.format' must be a string."
+                            )
+    return errors
+
+
+def seed_default_apis() -> None:
+    """Copy bundled API definitions to ~/.lexi-cli/apis/ if missing."""
+    if not DEFAULT_APIS_ROOT.exists():
+        return
+    try:
+        APIS_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        print_error(f"Warning: could not prepare apis dir ({exc}).")
+        return
+    for src in DEFAULT_APIS_ROOT.glob("*.yaml"):
+        dest = APIS_DIR / src.name
+        if not dest.exists():
+            try:
+                shutil.copyfile(src, dest)
+            except OSError as exc:
+                print_error(f"Warning: could not seed API definition {src.stem} ({exc}).")
 
 
 def expand_env_vars(value: object) -> object:
@@ -372,136 +593,202 @@ def build_auth_headers(provider_cfg: dict, api_key: str) -> dict[str, str]:
     return headers
 
 
-def render_body_template(template: object, variables: dict[str, object]) -> object:
-    """Recursively substitute ``{{var}}`` placeholders in a nested structure.
+# Body composition is delegated to lexi_cli.api_compose.compose_request_body.
+# Template rendering and validation also live there.
 
-    When a string value is exactly ``"{{var}}"``, the raw variable value replaces
-    it (preserving type).  Partial placeholders are string-substituted.
+
+def deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge *override* into *base*. Lists are replaced, not concatenated."""
+    merged = dict(base)
+    for key, val in override.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(val, dict):
+            merged[key] = deep_merge(merged[key], val)
+        else:
+            merged[key] = val
+    return merged
+
+
+def resolve_effective_config(provider: str, provider_cfg: dict) -> dict:
+    """Build effective provider config from an API definition + inline overrides.
+
+    Resolution:
+      1. Provider must reference an API via ``api: <name>`` (or define
+         ``request.body_schema`` inline).
+      2. Inline ``auth``/``request``/``response``/``tool_presets`` from the
+         provider config deep-merge over the API definition.
     """
-    if isinstance(template, str):
-        # Exact placeholder — return raw value to preserve type
-        stripped = template.strip()
-        if stripped.startswith("{{") and stripped.endswith("}}"):
-            key = stripped[2:-2].strip()
-            if key in variables:
-                return variables[key]
-        # Partial substitution
-        import re
-
-        def _sub(m: re.Match) -> str:  # type: ignore[type-arg]
-            key = m.group(1).strip()
-            return str(variables.get(key, m.group(0)))
-
-        return re.sub(r"\{\{(.+?)\}\}", _sub, template)
-    if isinstance(template, dict):
-        return {k: render_body_template(v, variables) for k, v in template.items()}
-    if isinstance(template, list):
-        return [render_body_template(item, variables) for item in template]
-    return template
+    api_name = provider_cfg.get("api")
+    if api_name:
+        api_def = load_api_definition(api_name)
+        if api_def:
+            cfg = dict(provider_cfg)
+            for key in ("auth", "request", "response", "tool_presets"):
+                api_block = api_def.get(key)
+                if api_block is None:
+                    continue
+                inline_block = cfg.get(key)
+                if isinstance(inline_block, dict) and isinstance(api_block, dict):
+                    cfg[key] = deep_merge(api_block, inline_block)
+                elif key not in cfg:
+                    cfg[key] = api_block
+            return cfg
+    # No api: reference — accept inline definition if present.
+    return provider_cfg
 
 
-def build_request_body(
-    provider_cfg: dict,
-    *,
-    model: str,
-    role: str,
-    prompt: str,
-    temperature: float | None,
-    max_tokens: int | None,
-    tools_payload: list | None,
-) -> dict:
-    """Build the JSON request body from the provider's request config."""
-    req_cfg = provider_cfg.get("request", {})
-    body_template = req_cfg.get("body")
-    if not body_template:
-        # Fallback: OpenAI responses format
-        body_template = {
-            "model": "{{model}}",
-            "input": [{"role": "{{role}}", "content": [{"type": "input_text", "text": "{{prompt}}"}]}],
-        }
-    variables: dict[str, object] = {"model": model, "role": role, "prompt": prompt}
-    body: dict = render_body_template(body_template, variables)  # type: ignore[assignment]
-    param_mapping = req_cfg.get("param_mapping", {})
-    if temperature is not None:
-        body[param_mapping.get("temperature", "temperature")] = temperature
-    if max_tokens is not None:
-        body[param_mapping.get("max_tokens", "max_tokens")] = max_tokens
-    if tools_payload:
-        tools_key = req_cfg.get("tools_key", "tools")
-        if tools_key:
-            body[tools_key] = tools_payload
-    return body
+def extract_response_metadata(data: dict, api_cfg: dict) -> dict[str, object]:
+    """Extract metadata fields (model, tokens, stop reason) from response JSON."""
+    resp = api_cfg.get("response", {})
+    meta_paths = resp.get("metadata", {})
+    if not isinstance(meta_paths, dict):
+        return {}
+    result: dict[str, object] = {}
+    for key, path_expr in meta_paths.items():
+        if isinstance(path_expr, str):
+            val = resolve_path(data, path_expr)
+            if val is not None:
+                result[key] = val
+    return result
 
 
-_RESPOND_KIND_TEMPLATES: dict[str, dict] = {
-    "chat_completions": {
-        "request": {
-            "path": "/chat/completions",
-            "body": {
-                "model": "{{model}}",
-                "messages": [{"role": "{{role}}", "content": "{{prompt}}"}],
-            },
-            "param_mapping": {"temperature": "temperature", "max_tokens": "max_tokens"},
-            "tools_key": "tools",
-        },
-        "response": {"text_path": "choices[0].message.content"},
-    },
-    "messages": {
-        "auth": {
-            "header": "x-api-key",
-            "value_prefix": "",
-            "extra_headers": {"anthropic-version": "2023-06-01"},
-        },
-        "request": {
-            "path": "/messages",
-            "body": {
-                "model": "{{model}}",
-                "messages": [{"role": "{{role}}", "content": [{"type": "text", "text": "{{prompt}}"}]}],
-            },
-            "param_mapping": {"temperature": "temperature", "max_tokens": "max_tokens"},
-        },
-        "response": {"text_path": "content[0].text"},
-    },
-    "responses": {
-        "request": {
-            "path": "/responses",
-            "body": {
-                "model": "{{model}}",
-                "input": [{"role": "{{role}}", "content": [{"type": "input_text", "text": "{{prompt}}"}]}],
-            },
-            "param_mapping": {"temperature": "temperature", "max_tokens": "max_output_tokens"},
-            "tools_key": "tools",
-        },
-        "response": {"text_path": "output[0].content[0].text"},
-    },
-}
+def print_response_metadata(
+    metadata: dict[str, object], activity_summary: str = ""
+) -> None:
+    """Print response metadata to stderr in dim styling.
 
-
-def migrate_respond_config(provider: str, provider_cfg: dict) -> dict:
-    """Runtime migration for old configs lacking ``request``/``response``/``auth`` blocks.
-
-    Returns a new dict with the legacy ``respond_kind`` / ``respond_path`` expanded into
-    the new config format.  If ``request`` is already present, returns the config as-is.
+    ``activity_summary`` (e.g., ``"1 web search · reasoning"``) is appended as
+    a separate dim line when non-empty.
     """
-    if "request" in provider_cfg:
-        return provider_cfg
-    respond_kind = provider_cfg.get("respond_kind", "responses")
-    # Legacy nvidia hack: default to chat_completions
-    if respond_kind == "responses" and provider.lower() == "nvidia":
-        respond_kind = "chat_completions"
-    template = _RESPOND_KIND_TEMPLATES.get(respond_kind)
-    if not template:
-        return provider_cfg
-    cfg = dict(provider_cfg)
-    for key in ("auth", "request", "response"):
-        if key in template and key not in cfg:
-            cfg[key] = template[key]
-    # Honour legacy respond_path override
-    respond_path = provider_cfg.get("respond_path")
-    if respond_path and "request" in cfg:
-        cfg["request"] = dict(cfg["request"])
-        cfg["request"]["path"] = respond_path
-    return cfg
+    parts: list[str] = []
+    model = metadata.get("model") if metadata else None
+    if model:
+        parts.append(str(model))
+    in_tok = metadata.get("input_tokens") if metadata else None
+    out_tok = metadata.get("output_tokens") if metadata else None
+    total_tok = metadata.get("total_tokens") if metadata else None
+    if in_tok is not None and out_tok is not None:
+        tok_str = f"{in_tok} in + {out_tok} out"
+        if total_tok is not None:
+            tok_str += f" = {total_tok} tokens"
+        parts.append(tok_str)
+    elif total_tok is not None:
+        parts.append(f"{total_tok} tokens")
+    stop = metadata.get("stop_reason") if metadata else None
+    if stop:
+        parts.append(str(stop))
+    lines: list[str] = []
+    if parts:
+        lines.append("[" + " | ".join(parts) + "]")
+    if activity_summary:
+        lines.append("[" + activity_summary + "]")
+    if not lines:
+        return
+    if Console:
+        stderr_console = Console(stderr=True)
+        for line in lines:
+            stderr_console.print(line, style="dim")
+    else:
+        for line in lines:
+            print(f"\033[2m{line}\033[0m", file=sys.stderr)
+
+
+def _read_sse_events(resp) -> Iterable[tuple[str | None, str]]:
+    """Yield ``(event_name, data_str)`` pairs from a Server-Sent Events response.
+
+    ``event_name`` is ``None`` for unnamed events (which is what the legacy
+    Chat Completions stream uses). ``data_str`` is the concatenated payload of
+    all ``data:`` lines for that event.
+    """
+    event_name: str | None = None
+    data_lines: list[str] = []
+    for raw_line in resp:
+        try:
+            line = raw_line.decode("utf-8", errors="replace")
+        except Exception:
+            continue
+        # Strip the line terminator (\r\n or \n) but preserve internal spaces.
+        line = line.rstrip("\r\n")
+        if line == "":
+            if data_lines:
+                yield event_name, "\n".join(data_lines)
+            event_name = None
+            data_lines = []
+            continue
+        if line.startswith(":"):  # SSE comment / keep-alive
+            continue
+        if line.startswith("event:"):
+            event_name = line[len("event:"):].strip()
+        elif line.startswith("data:"):
+            data_lines.append(line[len("data:"):].lstrip(" "))
+        # id:, retry:, and unknown fields are ignored
+    # Flush any trailing event without a terminating blank line.
+    if data_lines:
+        yield event_name, "\n".join(data_lines)
+
+
+def _stream_sse_response(
+    resp, stream_cfg: dict, *, suppress_text: bool = False
+) -> dict | None:
+    """Consume an SSE response, printing incremental text deltas as they arrive.
+
+    ``stream_cfg`` declares how to extract deltas and the final response object.
+    Optional ``stream_cfg.activity_events`` is a map of SSE event name → status
+    message; matched events are printed to stderr (so they don't pollute stdout
+    text) as live indicators while the request runs.
+
+    Returns the final response dict if one was captured (for metadata / --raw).
+    """
+    delta_event = stream_cfg.get("delta_event")  # None = match unnamed/any
+    delta_path = stream_cfg.get("delta_path") or ""
+    done_event = stream_cfg.get("done_event")
+    done_marker = stream_cfg.get("done_marker")
+    final_event = stream_cfg.get("final_event") or done_event
+    activity_events = stream_cfg.get("activity_events") or {}
+
+    final_response: dict | None = None
+    text_emitted = False
+
+    for event_name, data_str in _read_sse_events(resp):
+        if done_marker is not None and data_str == done_marker:
+            break
+        try:
+            data = json.loads(data_str)
+        except json.JSONDecodeError:
+            continue
+        # Activity indicator (stderr) — emitted before delta text so the user
+        # sees "🔍 searching" first, then the eventual answer text on stdout.
+        if event_name and event_name in activity_events:
+            msg = activity_events[event_name]
+            if isinstance(msg, str) and msg:
+                _emit_activity_indicator(msg)
+        matches_delta = (
+            (delta_event is None and event_name in (None, ""))
+            or (delta_event is not None and event_name == delta_event)
+        )
+        if matches_delta and delta_path:
+            chunk = resolve_path(data, delta_path)
+            if isinstance(chunk, str) and chunk and not suppress_text:
+                sys.stdout.write(chunk)
+                sys.stdout.flush()
+                text_emitted = True
+        if final_event and event_name == final_event and isinstance(data, dict):
+            final_response = data
+        if done_event and event_name == done_event:
+            break
+
+    if text_emitted:
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+    return final_response
+
+
+def _emit_activity_indicator(msg: str) -> None:
+    """Print a streaming activity indicator to stderr in dim styling."""
+    if Console:
+        stderr_console = Console(stderr=True)
+        stderr_console.print(msg, style="dim")
+    else:
+        print(f"\033[2m{msg}\033[0m", file=sys.stderr, flush=True)
 
 
 def respond_with_provider(
@@ -510,51 +797,86 @@ def respond_with_provider(
     prompt_payload: dict,
     *,
     model_override: str | None = None,
-    temperature_override: float | None = None,
-    max_tokens_override: int | None = None,
-    web_search: bool = False,
-) -> tuple[int, dict | None]:
-    provider_cfg = migrate_respond_config(provider, provider_cfg)
+    overrides: dict | None = None,
+    set_paths: list[tuple[str, object]] | None = None,
+    unset_paths: list[str] | None = None,
+    tool_presets_selected: list[str] | None = None,
+    raw_mode: bool = False,
+) -> tuple[int, dict | None, bool]:
+    """Send a prompt to ``provider``'s configured API.
+
+    Returns ``(exit_code, response_json, was_streamed)``. When ``was_streamed``
+    is True, incremental text has already been printed to stdout (unless
+    ``raw_mode`` is set, in which case streaming text is suppressed and the
+    caller is expected to render the final ``response_json``).
+
+    Precedence (low → high): schema default → prompt_payload → overrides →
+    tool presets → set_paths → unset_paths.
+    """
+    provider_cfg = resolve_effective_config(provider, provider_cfg)
     api_key = load_api_key(provider, provider_cfg)
     base_url = (provider_cfg.get("url") or "").rstrip("/")
     model = model_override or provider_cfg.get("default_model")
     if not api_key or not base_url or not model:
         print_error("Provider config missing url/api_key/default_model.")
-        return 1, None
+        return 1, None, False
 
     req_cfg = provider_cfg.get("request", {})
-    req_path = req_cfg.get("path", "/responses")
+    req_path = req_cfg.get("path")
+    if not req_path:
+        print_error(
+            f"Provider {provider!r}: API definition has no request.path. "
+            f"Check the 'api:' reference in providers-config.yaml."
+        )
+        return 1, None, False
     endpoint = f"{base_url}{req_path}"
 
     prompt_text = prompt_payload.get("prompt", "")
     if not prompt_text:
         print_error("Prompt text is empty.")
-        return 1, None
-    role = prompt_payload.get("role", "user")
-    temperature = float(temperature_override) if temperature_override is not None else prompt_payload.get("temperature")
-    max_tokens = int(max_tokens_override) if max_tokens_override is not None else prompt_payload.get("max_tokens")
+        return 1, None, False
 
-    tools_payload = [{"type": "web_search"}] if web_search else None
-    body = build_request_body(
-        provider_cfg,
-        model=model,
-        role=role,
-        prompt=prompt_text,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        tools_payload=tools_payload,
-    )
+    merged_overrides: dict[str, object] = dict(overrides or {})
+    merged_overrides.setdefault("model", model)
+
+    try:
+        body = api_compose.compose_request_body(
+            provider_cfg,
+            prompt_payload=prompt_payload,
+            overrides=merged_overrides,
+            tool_presets_selected=tool_presets_selected,
+            set_paths=set_paths,
+            unset_paths=unset_paths,
+        )
+    except (ValueError, KeyError) as exc:
+        print_error(str(exc))
+        return 1, None, False
+
+    is_stream = bool(body.get("stream"))
     headers = build_auth_headers(provider_cfg, api_key)
+    if is_stream:
+        headers.setdefault("Accept", "text/event-stream")
+        headers["Accept"] = "text/event-stream"
 
     try:
         req = urllib.request.Request(endpoint, data=json.dumps(body).encode(), headers=headers)  # type: ignore[arg-type]
-        with urllib.request.urlopen(req, timeout=30) as resp:  # type: ignore[call-arg]
+        with urllib.request.urlopen(req, timeout=60 if is_stream else 30) as resp:  # type: ignore[call-arg]
+            if is_stream:
+                stream_cfg = (provider_cfg.get("response") or {}).get("stream") or {}
+                if not stream_cfg:
+                    print_error(
+                        f"Provider {provider!r}: response.stream config missing; "
+                        f"cannot decode SSE for this API. Add a response.stream block to the API definition."
+                    )
+                    return 1, None, False
+                final = _stream_sse_response(resp, stream_cfg, suppress_text=raw_mode)
+                return 0, final, True
             raw = resp.read().decode("utf-8")
             try:
-                return 0, json.loads(raw)
+                return 0, json.loads(raw), False
             except Exception:
                 print(raw)
-                return 0, None
+                return 0, None, False
     except urllib.error.HTTPError as exc:
         detail = ""
         try:
@@ -564,68 +886,316 @@ def respond_with_provider(
         except Exception:
             pass
         print_error(f"HTTP error ({exc.code}) from provider: {exc.reason}{detail}")
-        return exc.code or 1, None
+        return exc.code or 1, None, False
     except urllib.error.URLError as exc:
         print_error(f"Network error: {exc}")
-        return 1, None
+        return 1, None, False
     except Exception as exc:
         print_error(f"Unexpected error: {exc}")
-        return 1, None
+        return 1, None, False
 
 
-def render_response_output(data: dict | None, *, raw: bool, provider_cfg: dict | None = None) -> None:
+# ---------------------------------------------------------------------------
+# Schema-driven CLI flag parsing for `respond` and `prompts set`
+# ---------------------------------------------------------------------------
+
+_BUILTIN_RESPOND_FLAGS = {
+    "--model", "--raw", "-r", "--verbose", "-v", "--no-validate",
+    "--set", "--unset", "--tool", "--params", "--cite",
+}
+
+
+def _normalize_flag(tok: str) -> str:
+    """Normalize a flag for lookup: ``--max_tokens`` and ``--max-tokens`` are equivalent."""
+    if tok.startswith("--"):
+        return "--" + tok[2:].replace("_", "-")
+    return tok
+
+
+def _coerce_set_value(raw: str) -> object:
+    """Coerce a ``--set`` value with type detection.
+
+    - ``:json:<expr>`` forces JSON parsing.
+    - ``true``/``false``/``null`` are coerced to bool/None.
+    - Strings parsable as int/float become numbers.
+    - Strings starting with ``{`` or ``[`` are parsed as JSON.
+    - Everything else stays a string.
+    """
+    if raw.startswith(":json:"):
+        return json.loads(raw[len(":json:"):])
+    if raw in ("true", "True"):
+        return True
+    if raw in ("false", "False"):
+        return False
+    if raw in ("null", "None"):
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        pass
+    try:
+        return float(raw)
+    except ValueError:
+        pass
+    stripped = raw.lstrip()
+    if stripped.startswith(("{", "[")):
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            pass
+    return raw
+
+
+def _parse_set_arg(raw: str) -> tuple[str, object]:
+    """Parse ``path=value`` into ``(path, coerced_value)``."""
+    if "=" not in raw:
+        raise ValueError(f"--set requires path=value (got {raw!r})")
+    path, _, value_str = raw.partition("=")
+    path = path.strip()
+    if not path:
+        raise ValueError(f"--set path is empty in {raw!r}")
+    return path, _coerce_set_value(value_str)
+
+
+def _coerce_typed_value(
+    raw: str, schema_type: object, enum: list | None, enum_map: dict | None
+) -> object:
+    """Coerce a CLI string value to the schema's expected type."""
+    if isinstance(enum_map, dict) and raw in enum_map:
+        return enum_map[raw]
+    if isinstance(schema_type, list):
+        for t in schema_type:
+            try:
+                return _coerce_typed_value(raw, t, None, None)
+            except ValueError:
+                continue
+        raise ValueError(f"could not coerce {raw!r} to any of {schema_type!r}")
+    if schema_type == "integer":
+        try:
+            return int(raw)
+        except ValueError:
+            raise ValueError(f"expected integer, got {raw!r}") from None
+    if schema_type == "number":
+        try:
+            return float(raw)
+        except ValueError:
+            raise ValueError(f"expected number, got {raw!r}") from None
+    if schema_type == "boolean":
+        if raw in ("true", "True", "1", "yes"):
+            return True
+        if raw in ("false", "False", "0", "no"):
+            return False
+        raise ValueError(f"expected boolean, got {raw!r}")
+    if schema_type in ("object", "array"):
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            raise ValueError(f"expected JSON {schema_type}, got {raw!r}") from None
+    if isinstance(enum, list) and raw not in enum:
+        # enum check only when there's no enum_map mapping
+        raise ValueError(f"value {raw!r} not in enum {enum!r}")
+    return raw
+
+
+def _parse_respond_flags(
+    flag_specs: list[dict], presets_available: list[str], tokens: list[str], *, start: int
+) -> tuple[dict | None, str | None]:
+    """Parse respond's CLI tokens into a structured plan, driven by the schema.
+
+    Returns ``(parsed, error)``. On success ``error`` is None and ``parsed`` has:
+      ``set_paths``, ``unset_paths``, ``tool_presets_selected``, ``model_override``,
+      ``raw``, ``verbose``, ``no_validate``, ``params_file``.
+    """
+    flag_map: dict[str, dict] = {}
+    for spec in flag_specs:
+        for key in (spec.get("flag"), spec.get("alias")):
+            if key:
+                flag_map[_normalize_flag(key)] = spec
+
+    set_paths: list[tuple[str, object]] = []
+    unset_paths: list[str] = []
+    tool_presets_selected: list[str] = []
+    model_override: str | None = None
+    raw = False
+    verbose = False
+    no_validate = False
+    cite = False
+    params_file: str | None = None
+
+    idx = start
+    while idx < len(tokens):
+        raw_tok = tokens[idx]
+        tok = _normalize_flag(raw_tok)
+        if tok == "--model":
+            if idx + 1 >= len(tokens):
+                return None, "--model requires a value"
+            model_override = tokens[idx + 1]
+            idx += 2
+            continue
+        if tok in {"--raw", "-r"}:
+            raw = True
+            idx += 1
+            continue
+        if tok in {"--verbose", "-v"}:
+            verbose = True
+            idx += 1
+            continue
+        if tok == "--no-validate":
+            no_validate = True
+            idx += 1
+            continue
+        if tok == "--cite":
+            cite = True
+            idx += 1
+            continue
+        if tok == "--set":
+            if idx + 1 >= len(tokens):
+                return None, "--set requires path=value"
+            try:
+                path, val = _parse_set_arg(tokens[idx + 1])
+            except ValueError as exc:
+                return None, str(exc)
+            set_paths.append((path, val))
+            idx += 2
+            continue
+        if tok == "--unset":
+            if idx + 1 >= len(tokens):
+                return None, "--unset requires a path"
+            unset_paths.append(tokens[idx + 1])
+            idx += 2
+            continue
+        if tok == "--tool":
+            if idx + 1 >= len(tokens):
+                return None, "--tool requires a preset name"
+            for name in tokens[idx + 1].split(","):
+                name = name.strip()
+                if not name:
+                    continue
+                if name not in presets_available:
+                    return None, (
+                        f"--tool: unknown preset {name!r} "
+                        f"(available: {sorted(presets_available)})"
+                    )
+                tool_presets_selected.append(name)
+            idx += 2
+            continue
+        if tok == "--params":
+            if idx + 1 >= len(tokens):
+                return None, "--params requires a file path"
+            params_file = tokens[idx + 1]
+            idx += 2
+            continue
+        if tok in flag_map:
+            spec = flag_map[tok]
+            schema_type = spec.get("type")
+            path = spec.get("path")
+            if schema_type == "boolean":
+                set_paths.append((path, True))
+                idx += 1
+                continue
+            if spec.get("repeat"):
+                if idx + 1 >= len(tokens):
+                    return None, f"{tok} requires a value"
+                existing: list | None = None
+                for p, v in set_paths:
+                    if p == path and isinstance(v, list):
+                        existing = v
+                        break
+                if existing is None:
+                    existing = []
+                    set_paths.append((path, existing))
+                existing.append(tokens[idx + 1])
+                idx += 2
+                continue
+            if idx + 1 >= len(tokens):
+                return None, f"{tok} requires a value"
+            try:
+                val = _coerce_typed_value(
+                    tokens[idx + 1], schema_type, spec.get("enum"), spec.get("enum_map")
+                )
+            except ValueError as exc:
+                return None, f"{tok}: {exc}"
+            set_paths.append((path, val))
+            idx += 2
+            continue
+        return None, f"Unknown option {raw_tok!r}"
+
+    return (
+        {
+            "set_paths": set_paths,
+            "unset_paths": unset_paths,
+            "tool_presets_selected": tool_presets_selected,
+            "model_override": model_override,
+            "raw": raw,
+            "verbose": verbose,
+            "no_validate": no_validate,
+            "cite": cite,
+            "params_file": params_file,
+        },
+        None,
+    )
+
+
+def _load_params_file(path: str) -> tuple[dict | None, str | None]:
+    """Load a YAML or JSON overrides file. Returns ``(data, error)``."""
+    try:
+        with open(path) as fh:
+            text = fh.read()
+    except OSError as exc:
+        return None, f"Cannot read --params file {path!r}: {exc}"
+    if path.endswith(".json"):
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            return None, f"--params: invalid JSON in {path!r}: {exc}"
+    else:
+        if not yaml:
+            return None, "--params with .yaml requires PyYAML; install with `pip install pyyaml`."
+        try:
+            data = yaml.safe_load(text)
+        except yaml.YAMLError as exc:
+            return None, f"--params: invalid YAML in {path!r}: {exc}"
+    if not isinstance(data, dict):
+        return None, f"--params file {path!r} must contain a top-level dict."
+    return data, None
+
+
+def render_response_output(
+    data: dict | None,
+    *,
+    raw: bool,
+    provider_cfg: dict | None = None,
+    cite: bool = False,
+    print_text: bool = True,
+) -> None:
     if data is None:
-        print_error("No response payload.")
+        if print_text:
+            print_error("No response payload.")
         return
     if raw:
         print(json.dumps(data, indent=2))
         return
-    # Config-driven extraction via text_path
-    if provider_cfg:
-        resp_cfg = provider_cfg.get("response", {})
-        text_path = resp_cfg.get("text_path")
-        if text_path:
-            text = resolve_path(data, text_path)
-            if isinstance(text, str) and text:
-                print(text)
-                return
-    # Fallback chain for backward compatibility
-    # 1. OpenAI responses format: output[0].content[0].text
-    output = data.get("output") if isinstance(data, dict) else None
-    if isinstance(output, list) and output:
-        first = output[0]
-        if isinstance(first, dict):
-            content = first.get("content")
-            if isinstance(content, list) and content:
-                item = content[0]
-                if isinstance(item, dict):
-                    text = item.get("text") or item.get("value") or item.get("message") or ""
-                    if text:
-                        print(text)
-                        return
-    # 2. OpenAI chat completions format: choices[0].message.content
-    choices = data.get("choices") if isinstance(data, dict) else None
-    if isinstance(choices, list) and choices:
-        first = choices[0]
-        if isinstance(first, dict):
-            message = first.get("message", {})
-            if isinstance(message, dict):
-                content = message.get("content")
-                if isinstance(content, str):
-                    print(content)
-                    return
-    # 3. Anthropic messages format: content[0].text
-    if isinstance(data, dict):
-        content = data.get("content")
-        if isinstance(content, list) and content:
-            first = content[0]
-            if isinstance(first, dict):
-                text = first.get("text")
-                if isinstance(text, str) and text:
-                    print(text)
-                    return
-    # Last resort: pretty print
-    print(json.dumps(data, indent=2))
+    resp_cfg = (provider_cfg or {}).get("response", {})
+    text_extract_cfg = resp_cfg.get("text_extract")
+    if print_text:
+        text = api_compose.extract_text(data, text_extract_cfg)
+        if text:
+            print(text)
+        else:
+            # Schema returned nothing matchable — surface the raw payload so
+            # the user can see what came back instead of silent failure.
+            print(json.dumps(data, indent=2))
+    if cite:
+        annotations_cfg = resp_cfg.get("annotations")
+        if annotations_cfg:
+            text_items = api_compose.find_text_items(data, text_extract_cfg)
+            anns = api_compose.extract_annotations(data, annotations_cfg, text_items=text_items)
+            rendered = api_compose.render_annotations(anns, annotations_cfg)
+            if rendered:
+                print()
+                print("Sources:")
+                for line in rendered.split("\n"):
+                    print(f"  {line}")
 
 
 def read_alias_file(path: Path) -> dict:
@@ -905,6 +1475,8 @@ def seed_default_providers() -> None:
             except OSError as exc:
                 print_error(f"Warning: could not seed api-key for {entry.name} ({exc}).")
 
+    seed_default_apis()
+
 
 def load_providers_config() -> dict:
     data = load_yaml_file(PROVIDERS_CONFIG)
@@ -942,6 +1514,81 @@ def load_api_key(name: str, provider_cfg: dict) -> str:
         except OSError:
             pass
     return provider_cfg.get("api_key") or ""
+
+
+def check_api_key_valid(name: str, provider_cfg: dict, api_key: str) -> bool | None:
+    """Validate an API key by hitting the hosted-models endpoint.
+
+    Returns True (2xx), False (401/403), or None (can't determine).
+    """
+    base_url = provider_cfg.get("url", "").rstrip("/")
+    hosted_path = provider_cfg.get("hosted_models", "")
+    if not base_url or not hosted_path:
+        return None
+    endpoint = f"{base_url}{hosted_path}" if hosted_path.startswith("/") else f"{base_url}/{hosted_path}"
+    effective_cfg = resolve_effective_config(name, provider_cfg)
+    headers = build_auth_headers(effective_cfg, api_key)
+    try:
+        req = urllib.request.Request(endpoint, headers=headers)  # type: ignore[arg-type]
+        with urllib.request.urlopen(req, timeout=5) as resp:  # type: ignore[call-arg]
+            return resp.status < 400
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            return False
+        return None
+    except Exception:
+        return None
+
+
+def get_api_key_status(name: str, provider_cfg: dict, *, validate: bool = False) -> dict:
+    """Return API key info: ``{"key": str, "source": str, "status": str}``.
+
+    *source* is ``"file"``, ``"env"``, or ``""`` (none).
+    *status* is ``"ready"``, ``"no api-key"``, or ``"invalid api-key"``.
+    When *validate* is True, makes an HTTP call to check key validity.
+    """
+    import re
+
+    key = ""
+    source = ""
+
+    # 1. Check api-key file
+    key_file = provider_api_key_path(name)
+    if key_file.exists():
+        try:
+            contents = key_file.read_text().strip()
+            if contents:
+                key = contents
+                source = "file"
+        except OSError:
+            pass
+
+    # 2. Check config value (raw, without env expansion)
+    if not key:
+        raw_data = load_yaml_file(PROVIDERS_CONFIG)
+        raw_providers = raw_data.get("providers", {}) if isinstance(raw_data, dict) else {}
+        raw_cfg = raw_providers.get(name, {}) if isinstance(raw_providers, dict) else {}
+        raw_val = raw_cfg.get("api_key", "") if isinstance(raw_cfg, dict) else ""
+        if isinstance(raw_val, str) and raw_val:
+            env_match = re.match(r"^\$\{(.+)\}$", raw_val)
+            if env_match:
+                env_val = os.environ.get(env_match.group(1), "")
+                if env_val:
+                    key = env_val
+                    source = "env"
+            else:
+                key = raw_val
+                source = "file"
+
+    if not key:
+        return {"key": "", "source": "", "status": "no api-key"}
+
+    status = "ready"
+    if validate:
+        valid = check_api_key_valid(name, provider_cfg, key)
+        if valid is False:
+            status = "invalid api-key"
+    return {"key": key, "source": source, "status": status}
 
 
 def save_api_key(name: str, key: str) -> bool:
@@ -1110,18 +1757,48 @@ def print_config_values(keys: list[str] | None = None) -> None:
         print(f'{key}="{value}"')
 
 
-def print_providers(data: dict) -> None:
+def print_providers(data: dict, *, table: bool = False) -> None:
     providers = data.get("providers") if isinstance(data, dict) else None
     if not providers:
         print("No providers configured.")
         return
+
+    if table and (Console is None or Table is None or console is None):
+        print_error("Rich is not available; falling back to plain output.")
+        table = False
+
+    if table and console:
+        table_obj = Table(title="Providers")
+        table_obj.add_column("Provider")
+        table_obj.add_column("URL")
+        table_obj.add_column("API")
+        table_obj.add_column("Key Source")
+        table_obj.add_column("Status")
+        for name, cfg in providers.items():
+            url = cfg.get("url", "")
+            api_name = cfg.get("api", "")
+            info = get_api_key_status(name, cfg, validate=True)
+            source = info["source"] or "\u2014"
+            status = info["status"]
+            if status == "ready":
+                status_text = f"[green]{status}[/green]"
+            elif status == "invalid api-key":
+                status_text = f"[yellow]{status}[/yellow]"
+            else:
+                status_text = f"[red]{status}[/red]"
+            table_obj.add_row(name, url, api_name, source, status_text)
+        console.print(table_obj)
+        return
+
     for name, cfg in providers.items():
         url = cfg.get("url", "")
         hosted_models = cfg.get("hosted_models", "")
         hosted_fields = cfg.get("hosted_model_fields", [])
-        api_key = "[set]" if load_api_key(name, cfg) else "[missing]"
+        info = get_api_key_status(name, cfg)
+        source = info["source"]
+        source_label = f"[{source}]" if source else "[missing]"
         fields = ", ".join(hosted_fields) if isinstance(hosted_fields, list) else hosted_fields
-        print(f"{name}: url={url} hosted={hosted_models} fields=[{fields}] api_key={api_key}")
+        print(f"{name}: url={url} hosted={hosted_models} fields=[{fields}] api_key={source_label}")
 
 
 def print_models(
@@ -1213,8 +1890,8 @@ def fetch_hosted_models(provider: str, provider_cfg: dict) -> dict | list | None
         return None
     endpoint = f"{base_url}{hosted_path}" if hosted_path.startswith("/") else f"{base_url}/{hosted_path}"
 
-    migrated_cfg = migrate_respond_config(provider, provider_cfg)
-    headers = build_auth_headers(migrated_cfg, api_key)
+    effective_cfg = resolve_effective_config(provider, provider_cfg)
+    headers = build_auth_headers(effective_cfg, api_key)
 
     try:
         req = urllib.request.Request(endpoint, headers=headers)  # type: ignore[arg-type]
@@ -1348,6 +2025,25 @@ def parse_prompt_options(tokens: list[str], base: dict, *, require_prompt: bool)
             if i + 1 >= len(tokens):
                 return None, "prompt requires a value"
             prompt_parts.append(tokens[i + 1])
+            i += 2
+            continue
+        if tok == "--set":
+            if i + 1 >= len(tokens):
+                return None, "--set requires path=value"
+            try:
+                path, value = _parse_set_arg(tokens[i + 1])
+            except ValueError as exc:
+                return None, str(exc)
+            try:
+                api_compose.set_path(updated, path, value)
+            except (TypeError, ValueError) as exc:
+                return None, f"--set: {exc}"
+            i += 2
+            continue
+        if tok == "--unset":
+            if i + 1 >= len(tokens):
+                return None, "--unset requires a path"
+            api_compose.unset_path(updated, tokens[i + 1])
             i += 2
             continue
         prompt_parts.append(tok)
@@ -1537,7 +2233,7 @@ def handle_prompt(rest: str | None, tokens_override: list[str] | None = None) ->
     usage = (
         "prompts <text> [[-m|--max_tokens] N] [[-t|--temperature] T] [[-r|--role] ROLE]\n"
         "prompts list [name] [[-r|--raw] [-d|--detailed] [-t|--table]]\n"
-        "prompts set [name] [--prompt TEXT] [[-m|--max_tokens] N] [[-t|--temperature] T] [[-r|--role] ROLE]\n"
+        "prompts set [name] [--prompt TEXT] [[-m|--max_tokens] N] [[-t|--temperature] T] [[-r|--role] ROLE] [--set path=value] [--unset path]\n"
         "prompts rm <name>"
     )
     if not rest:
@@ -1714,7 +2410,8 @@ def handle_prompt(rest: str | None, tokens_override: list[str] | None = None) ->
 
 def handle_provider(rest: str | None, tokens_override: list[str] | None = None) -> int:
     usage = (
-        "providers list [--raw|-r]\n"
+        "providers list [--raw|-r] [--table|-t]\n"
+        "providers status <name> [--raw|-r]\n"
         "providers add <name> --url URL --api_key KEY --default_model MODEL\n"
         "providers api-key set <name> [--value KEY]\n"
         "providers api-key show <name> [--reveal]\n"
@@ -1748,7 +2445,26 @@ def handle_provider(rest: str | None, tokens_override: list[str] | None = None) 
                 print_error(f"Could not read providers config: {exc}")
                 return 1
             return 0
-        print_providers(cfg)
+        use_table = any(a in {"-t", "--table"} for a in args)
+        print_providers(cfg, table=use_table)
+        return 0
+
+    if sub == "status":
+        args = tokens[1:]
+        if not args or args[0].startswith("-"):
+            print_error("Usage: providers status <name> [--raw|-r]")
+            return 1
+        name = args[0]
+        if name not in providers:
+            print_error(f"Provider {name!r} not found.")
+            return 1
+        use_raw = any(a in {"-r", "--raw"} for a in args[1:])
+        info = get_api_key_status(name, providers[name], validate=True)
+        if use_raw:
+            print(json.dumps({"provider": name, "status": info["status"], "source": info["source"]}))
+        else:
+            source_part = f" ({info['source']})" if info["source"] else ""
+            print(f"{name}: {info['status']}{source_part}")
         return 0
 
     if sub == "add":
@@ -2257,9 +2973,433 @@ def command_aliases_for(target_command: str) -> list[str]:
     return sorted([alias for alias, cmd in ALIASES.items() if cmd == target_command])
 
 
+def print_api_list(apis: dict[str, dict], *, raw: bool = False) -> None:
+    """Print a formatted list of API definitions."""
+    if raw:
+        print(json.dumps({name: data for name, data in apis.items()}, indent=2))
+        return
+    if not apis:
+        print("No API definitions found.")
+        return
+    if console and Table:
+        table = Table(title="API Definitions")
+        table.add_column("Name", style="cyan")
+        table.add_column("Description")
+        table.add_column("Path")
+        table.add_column("Text Path")
+        for name, data in apis.items():
+            desc = data.get("description", "")
+            path = data.get("request", {}).get("path", "") if isinstance(data.get("request"), dict) else ""
+            resp = data.get("response", {}) if isinstance(data.get("response"), dict) else {}
+            te = resp.get("text_extract", {}) if isinstance(resp.get("text_extract"), dict) else {}
+            text_path = te.get("text_path") or (f"items:{te.get('items_path')}" if te.get("items_path") else "")
+            table.add_row(name, desc, path, text_path)
+        console.print(table)
+    else:
+        for name, data in apis.items():
+            desc = data.get("description", "")
+            print(f"  {name}: {desc}")
+
+
+def print_api_definition(name: str, data: dict, *, raw: bool = False) -> None:
+    """Print a single API definition with formatted output."""
+    if raw:
+        print(json.dumps(data, indent=2))
+        return
+    if console:
+        console.print(f"[bold cyan]{name}[/bold cyan]")
+        desc = data.get("description", "")
+        if desc:
+            console.print(f"  [dim]{desc}[/dim]")
+        auth = data.get("auth", {})
+        if auth:
+            console.print(f"  [bold]Auth:[/bold] header={auth.get('header', 'Authorization')}, prefix={auth.get('value_prefix', 'Bearer ')!r}")
+            extra = auth.get("extra_headers", {})
+            if extra:
+                for k, v in extra.items():
+                    console.print(f"    {k}: {v}")
+        req = data.get("request", {})
+        if req:
+            console.print(f"  [bold]Request:[/bold] {req.get('method', 'POST')} {req.get('path', '')}")
+            schema = req.get("body_schema", {})
+            props = schema.get("properties") if isinstance(schema, dict) else None
+            if isinstance(props, dict) and props:
+                console.print("  [bold]Body schema properties:[/bold]")
+                required = set(schema.get("required", []))
+                for pname, pdef in props.items():
+                    if not isinstance(pdef, dict):
+                        continue
+                    ptype = pdef.get("type", "")
+                    if isinstance(ptype, list):
+                        ptype = "|".join(ptype)
+                    enum = pdef.get("enum")
+                    pdefault = pdef.get("default", "")
+                    pdesc = pdef.get("description", "")
+                    cli = pdef.get("x-cli", {})
+                    flag = cli.get("flag") if isinstance(cli, dict) else None
+                    line = f"    {pname} ({ptype})"
+                    if pname in required:
+                        line += " [required]"
+                    if enum:
+                        line += f" enum={enum}"
+                    elif "minimum" in pdef or "maximum" in pdef:
+                        lo = pdef.get("minimum", "-")
+                        hi = pdef.get("maximum", "-")
+                        line += f" range=[{lo}, {hi}]"
+                    if pdefault != "":
+                        line += f" default={pdefault}"
+                    if flag:
+                        line += f" cli={flag}"
+                    if pdesc:
+                        line += f" — {pdesc}"
+                    console.print(line)
+        presets = data.get("tool_presets")
+        if isinstance(presets, dict) and presets:
+            console.print("  [bold]Tool presets:[/bold] " + ", ".join(sorted(presets.keys())))
+        resp = data.get("response", {})
+        if resp:
+            te = resp.get("text_extract", {}) if isinstance(resp.get("text_extract"), dict) else {}
+            if te.get("text_path"):
+                console.print(f"  [bold]Response:[/bold] text_path={te.get('text_path')}")
+            elif te.get("items_path"):
+                console.print(
+                    f"  [bold]Response:[/bold] items_path={te.get('items_path')} "
+                    f"item_filter={te.get('item_filter') or {}} "
+                    f"content_path={te.get('content_path') or '(item)'}"
+                )
+            else:
+                console.print("  [bold]Response:[/bold] (no text_extract configured)")
+            meta = resp.get("metadata", {})
+            if isinstance(meta, dict) and meta:
+                console.print("  [bold]Metadata:[/bold]")
+                for mk, mv in meta.items():
+                    console.print(f"    {mk}: {mv}")
+    else:
+        print(f"{name}")
+        desc = data.get("description", "")
+        if desc:
+            print(f"  {desc}")
+        if yaml:
+            print(yaml.safe_dump(data, sort_keys=False))
+        else:
+            print(json.dumps(data, indent=2))
+
+
+def handle_api(rest: str | None, tokens_override: list[str] | None = None) -> int:
+    """Handle the 'api' command and its subcommands."""
+    usage = "api list [--raw|-r] | api show <name> [--raw|-r] | api create <name> [--from <existing>] [--path PATH] [--text-path PATH] | api edit <name> [--path PATH] [--text-path PATH] [--set-meta KEY:PATH] | api rm <name> | api validate <name> | api preview <name>|--file PATH [--prompt T] [--model M] [--role R]"
+    tokens = tokens_override if tokens_override is not None else shlex.split(rest or "")
+    if not tokens:
+        print_error(f"Usage:\n{usage}")
+        return 1
+
+    sub = tokens[0]
+
+    if sub == "list":
+        raw = any(t in {"-r", "--raw"} for t in tokens[1:])
+        apis = load_all_api_definitions()
+        print_api_list(apis, raw=raw)
+        return 0
+
+    if sub == "show":
+        if len(tokens) < 2:
+            print_error("Usage: api show <name> [--raw|-r]")
+            return 1
+        name = tokens[1]
+        raw = any(t in {"-r", "--raw"} for t in tokens[2:])
+        data = load_api_definition(name)
+        if data is None:
+            print_error(f"API definition {name!r} not found.")
+            return 1
+        print_api_definition(name, data, raw=raw)
+        return 0
+
+    if sub == "create":
+        if len(tokens) < 2:
+            print_error("Usage: api create <name> [--from <existing>] [--path PATH] [--text-path PATH]")
+            return 1
+        name = tokens[1]
+        if load_api_definition(name) is not None:
+            print_error(f"API definition {name!r} already exists. Use 'api edit' to modify it.")
+            return 1
+        from_name: str | None = None
+        path_val: str | None = None
+        text_path_val: str | None = None
+        idx = 2
+        while idx < len(tokens):
+            tok = tokens[idx]
+            if tok == "--from":
+                if idx + 1 >= len(tokens):
+                    print_error("--from requires a value")
+                    return 1
+                from_name = tokens[idx + 1]
+                idx += 2
+            elif tok == "--path":
+                if idx + 1 >= len(tokens):
+                    print_error("--path requires a value")
+                    return 1
+                path_val = tokens[idx + 1]
+                idx += 2
+            elif tok == "--text-path":
+                if idx + 1 >= len(tokens):
+                    print_error("--text-path requires a value")
+                    return 1
+                text_path_val = tokens[idx + 1]
+                idx += 2
+            else:
+                print_error(f"Unknown option {tok!r}")
+                return 1
+        if from_name:
+            source = load_api_definition(from_name)
+            if source is None:
+                print_error(f"Source API definition {from_name!r} not found.")
+                return 1
+            import copy
+            data = copy.deepcopy(source)
+        else:
+            data = {
+                "name": name,
+                "description": "",
+                "auth": {"header": "Authorization", "value_prefix": "Bearer "},
+                "request": {
+                    "method": "POST",
+                    "path": path_val or "/chat/completions",
+                    "body_schema": {
+                        "type": "object",
+                        "required": ["model", "messages"],
+                        "properties": {
+                            "model": {"type": "string", "x-bind": {"from": "model"}},
+                            "messages": {
+                                "type": "array",
+                                "x-render": {
+                                    "template": [
+                                        {"role": "{{role}}", "content": "{{prompt}}"}
+                                    ]
+                                },
+                            },
+                            "temperature": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 2,
+                                "x-cli": {"flag": "--temperature", "alias": "-t"},
+                            },
+                            "max_tokens": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "x-cli": {"flag": "--max-tokens", "alias": "-m"},
+                            },
+                        },
+                    },
+                },
+                "response": {
+                    "text_extract": {
+                        "text_path": text_path_val or "choices[0].message.content"
+                    }
+                },
+            }
+        data["name"] = name
+        if path_val:
+            data.setdefault("request", {})["path"] = path_val
+        if text_path_val:
+            resp = data.setdefault("response", {})
+            te = resp.setdefault("text_extract", {})
+            te["text_path"] = text_path_val
+            te.pop("items_path", None)
+            te.pop("item_filter", None)
+            te.pop("content_path", None)
+            te.pop("content_filter", None)
+        if save_api_definition(name, data):
+            print(f"API definition {name!r} created.")
+            return 0
+        return 1
+
+    if sub == "edit":
+        if len(tokens) < 2:
+            print_error("Usage: api edit <name> [--path PATH] [--text-path PATH] [--set-meta KEY:PATH]")
+            return 1
+        name = tokens[1]
+        data = load_api_definition(name)
+        if data is None:
+            print_error(f"API definition {name!r} not found.")
+            return 1
+        idx = 2
+        while idx < len(tokens):
+            tok = tokens[idx]
+            if tok == "--path":
+                if idx + 1 >= len(tokens):
+                    print_error("--path requires a value")
+                    return 1
+                data.setdefault("request", {})["path"] = tokens[idx + 1]
+                idx += 2
+            elif tok == "--text-path":
+                if idx + 1 >= len(tokens):
+                    print_error("--text-path requires a value")
+                    return 1
+                resp = data.setdefault("response", {})
+                te = resp.setdefault("text_extract", {})
+                te["text_path"] = tokens[idx + 1]
+                # Switching to simple mode: clear walked-mode keys.
+                te.pop("items_path", None)
+                te.pop("item_filter", None)
+                te.pop("content_path", None)
+                te.pop("content_filter", None)
+                idx += 2
+            elif tok == "--set-meta":
+                if idx + 1 >= len(tokens):
+                    print_error("--set-meta requires a value (KEY:PATH)")
+                    return 1
+                parts = tokens[idx + 1].split(":", 1)
+                if len(parts) != 2:
+                    print_error("--set-meta format: KEY:PATH")
+                    return 1
+                resp = data.setdefault("response", {})
+                meta = resp.setdefault("metadata", {})
+                meta[parts[0]] = parts[1]
+                idx += 2
+            else:
+                print_error(f"Unknown option {tok!r}")
+                return 1
+        if save_api_definition(name, data):
+            print(f"API definition {name!r} updated.")
+            return 0
+        return 1
+
+    if sub == "rm":
+        if len(tokens) < 2:
+            print_error("Usage: api rm <name>")
+            return 1
+        name = tokens[1]
+        if delete_api_definition(name):
+            print(f"API definition {name!r} removed.")
+            return 0
+        print_error(f"API definition {name!r} not found.")
+        return 1
+
+    if sub == "validate":
+        if len(tokens) < 2:
+            print_error("Usage: api validate <name>")
+            return 1
+        name = tokens[1]
+        data = load_api_definition(name)
+        if data is None:
+            print_error(f"API definition {name!r} not found.")
+            return 1
+        errors = validate_api_definition(data)
+        if errors:
+            print_error(f"Validation errors for {name!r}:")
+            for err in errors:
+                print_error(f"  - {err}")
+            return 1
+        print(f"API definition {name!r} is valid.")
+        return 0
+
+    if sub == "preview":
+        # Usage: api preview <name> [--prompt T] [--model M] [--role R]
+        #        api preview --file PATH [--prompt T] [--model M] [--role R]
+        from_file: str | None = None
+        target_name: str | None = None
+        sample_prompt = "Sample prompt"
+        sample_role = "user"
+        sample_model = "sample-model"
+        idx = 1
+        while idx < len(tokens):
+            tok = tokens[idx]
+            if tok == "--file":
+                if idx + 1 >= len(tokens):
+                    print_error("--file requires a path")
+                    return 1
+                from_file = tokens[idx + 1]
+                idx += 2
+                continue
+            if tok == "--prompt":
+                if idx + 1 >= len(tokens):
+                    print_error("--prompt requires a value")
+                    return 1
+                sample_prompt = tokens[idx + 1]
+                idx += 2
+                continue
+            if tok == "--model":
+                if idx + 1 >= len(tokens):
+                    print_error("--model requires a value")
+                    return 1
+                sample_model = tokens[idx + 1]
+                idx += 2
+                continue
+            if tok == "--role":
+                if idx + 1 >= len(tokens):
+                    print_error("--role requires a value")
+                    return 1
+                sample_role = tokens[idx + 1]
+                idx += 2
+                continue
+            if not tok.startswith("-") and target_name is None:
+                target_name = tok
+                idx += 1
+                continue
+            print_error(f"Unknown option {tok!r}")
+            return 1
+
+        if from_file:
+            try:
+                with open(from_file) as fh:
+                    text = fh.read()
+            except OSError as exc:
+                print_error(f"Could not read file: {exc}")
+                return 1
+            if not yaml:
+                print(json.dumps({
+                    "valid": False,
+                    "errors": ["PyYAML not available; install pyyaml to use --file"],
+                }))
+                return 1
+            try:
+                data = yaml.safe_load(text)
+            except yaml.YAMLError as exc:
+                print(json.dumps({"valid": False, "errors": [f"YAML parse error: {exc}"]}))
+                return 0
+            if not isinstance(data, dict):
+                print(json.dumps({"valid": False, "errors": ["YAML top level must be an object"]}))
+                return 0
+        else:
+            if not target_name:
+                print_error("api preview <name> | api preview --file PATH")
+                return 1
+            data = load_api_definition(target_name)
+            if data is None:
+                print_error(f"API definition {target_name!r} not found.")
+                return 1
+
+        errors = validate_api_definition(data)
+        result: dict[str, object] = {
+            "name": data.get("name", target_name or ""),
+            "description": data.get("description", ""),
+            "valid": not errors,
+            "errors": errors,
+            "flags": api_compose.cli_flags_for(data),
+            "presets": api_compose.tool_preset_names(data),
+        }
+        if not errors:
+            try:
+                body = api_compose.compose_request_body(
+                    data,
+                    prompt_payload={"prompt": sample_prompt, "role": sample_role},
+                    overrides={"model": sample_model},
+                )
+                result["body"] = body
+            except (ValueError, KeyError) as exc:
+                result["body_error"] = str(exc)
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    print_error(f"Unknown api subcommand {sub!r}.\nUsage:\n{usage}")
+    return 1
+
+
 def handle_respond(rest: str | None, tokens_override: list[str] | None = None) -> int:
     usage = (
-        "respond <provider> [prompt_name] [--model MODEL] [--temperature T] [--max_tokens N] [--web-search] [--raw|-r]"
+        "respond <provider> [prompt_name] [--model MODEL] [<schema flags>] "
+        "[--set path=value] [--unset path] [--tool preset[,preset]] "
+        "[--params file] [--cite] [--raw|-r] [--verbose|-v]"
     )
     tokens = tokens_override if tokens_override is not None else shlex.split(rest or "")
     if not tokens:
@@ -2267,58 +3407,10 @@ def handle_respond(rest: str | None, tokens_override: list[str] | None = None) -
         return 1
     provider = tokens[0]
     prompt_name = PROMPT_ACTIVE_NAME
-    idx = 1
+    flag_start = 1
     if len(tokens) > 1 and not tokens[1].startswith("-"):
         prompt_name = tokens[1]
-        idx = 2
-
-    model_override: str | None = None
-    temp_override: float | None = None
-    max_tokens_override: int | None = None
-    raw = False
-    web_search = False
-
-    while idx < len(tokens):
-        tok = tokens[idx]
-        if tok in {"--model"}:
-            if idx + 1 >= len(tokens):
-                print_error("--model requires a value")
-                return 1
-            model_override = tokens[idx + 1]
-            idx += 2
-            continue
-        if tok in {"--temperature"}:
-            if idx + 1 >= len(tokens):
-                print_error("--temperature requires a value")
-                return 1
-            try:
-                temp_override = float(tokens[idx + 1])
-            except ValueError:
-                print_error("--temperature must be a number")
-                return 1
-            idx += 2
-            continue
-        if tok in {"--max_tokens"}:
-            if idx + 1 >= len(tokens):
-                print_error("--max_tokens requires a value")
-                return 1
-            try:
-                max_tokens_override = int(tokens[idx + 1])
-            except ValueError:
-                print_error("--max_tokens must be an integer")
-                return 1
-            idx += 2
-            continue
-        if tok == "--web-search":
-            web_search = True
-            idx += 1
-            continue
-        if tok in {"-r", "--raw"}:
-            raw = True
-            idx += 1
-            continue
-        print_error(f"Unknown option {tok!r}")
-        return 1
+        flag_start = 2
 
     provider_cfg_all = load_providers_config()
     providers = provider_cfg_all.get("providers", {}) if isinstance(provider_cfg_all.get("providers", {}), dict) else {}
@@ -2327,7 +3419,17 @@ def handle_respond(rest: str | None, tokens_override: list[str] | None = None) -
         print_error(f"Provider {provider!r} not found in providers-config.yaml")
         return 1
 
-    # Resolve model alias and validate model name
+    # Resolve effective config so we know the schema before parsing flags.
+    effective_cfg_for_flags = resolve_effective_config(provider, provider_cfg)
+    flag_specs = api_compose.cli_flags_for(effective_cfg_for_flags)
+    presets_available = api_compose.tool_preset_names(effective_cfg_for_flags)
+
+    parsed, err = _parse_respond_flags(flag_specs, presets_available, tokens, start=flag_start)
+    if err:
+        print_error(err)
+        return 1
+
+    model_override = parsed["model_override"]
     if model_override:
         aliases = load_model_aliases(provider)
         if model_override in aliases:
@@ -2349,14 +3451,11 @@ def handle_respond(rest: str | None, tokens_override: list[str] | None = None) -
                 print_error(msg)
                 return 1
 
-    # If no explicit model was requested, look up the default from default-model.yaml
     if not model_override:
         file_default = load_default_model(provider)
         if file_default:
             provider_cfg = {**provider_cfg, "default_model": file_default}
 
-    # Model-level override merge: if the model entry in configured-models.yaml
-    # has auth/request/response keys, deep-merge them into the provider config.
     effective_model = model_override or provider_cfg.get("default_model")
     if effective_model:
         models_data = load_models(provider)
@@ -2368,7 +3467,7 @@ def handle_respond(rest: str | None, tokens_override: list[str] | None = None) -
                     provider_cfg = dict(provider_cfg)
                     existing = provider_cfg.get(key)
                     if isinstance(existing, dict) and isinstance(model_meta[key], dict):
-                        provider_cfg[key] = {**existing, **model_meta[key]}
+                        provider_cfg[key] = deep_merge(existing, model_meta[key])
                     else:
                         provider_cfg[key] = model_meta[key]
 
@@ -2377,21 +3476,54 @@ def handle_respond(rest: str | None, tokens_override: list[str] | None = None) -
         print_error(f"Prompt {prompt_name!r} not found.")
         return 1
 
-    # Migrate config before calling respond and render so both share the same effective config
-    effective_cfg = migrate_respond_config(provider, provider_cfg)
+    effective_cfg = resolve_effective_config(provider, provider_cfg)
 
-    code, resp_json = respond_with_provider(
+    overrides: dict[str, object] = {}
+    if parsed["params_file"]:
+        params_data, perr = _load_params_file(parsed["params_file"])
+        if perr:
+            print_error(perr)
+            return 1
+        overrides.update(params_data)
+
+    code, resp_json, was_streamed = respond_with_provider(
         provider,
         effective_cfg,
         prompt_payload,
         model_override=model_override,
-        temperature_override=temp_override,
-        max_tokens_override=max_tokens_override,
-        web_search=web_search,
+        overrides=overrides,
+        set_paths=parsed["set_paths"],
+        unset_paths=parsed["unset_paths"],
+        tool_presets_selected=parsed["tool_presets_selected"] or None,
+        raw_mode=parsed["raw"],
     )
     if code != 0:
         return code
-    render_response_output(resp_json, raw=raw, provider_cfg=effective_cfg)
+    if was_streamed:
+        # Incremental text was already streamed to stdout (or suppressed for raw).
+        if parsed["raw"] and resp_json is not None:
+            render_response_output(resp_json, raw=True, provider_cfg=effective_cfg)
+        elif parsed["cite"] and resp_json is not None:
+            # Streaming printed the answer; we still want sources at the end.
+            render_response_output(
+                resp_json,
+                raw=False,
+                provider_cfg=effective_cfg,
+                cite=True,
+                print_text=False,
+            )
+    else:
+        render_response_output(
+            resp_json,
+            raw=parsed["raw"],
+            provider_cfg=effective_cfg,
+            cite=parsed["cite"],
+        )
+    if parsed["verbose"] and not parsed["raw"] and resp_json:
+        metadata = extract_response_metadata(resp_json, effective_cfg)
+        activity_cfg = (effective_cfg.get("response") or {}).get("activity")
+        activity_summary = api_compose.summarize_activity(resp_json, activity_cfg)
+        print_response_metadata(metadata, activity_summary)
     return 0
 
 
@@ -2568,6 +3700,8 @@ def dispatch(command: str, rest: str | None, args: list[str] | None = None) -> i
         return handle_models(rest, tokens_override=args)
     if cmd == "alias":
         return handle_alias(rest, tokens_override=args)
+    if cmd == "api":
+        return handle_api(rest, tokens_override=args)
     if cmd == "respond":
         return handle_respond(rest, tokens_override=args)
     if cmd == "version":
