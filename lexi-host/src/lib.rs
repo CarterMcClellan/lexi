@@ -10,6 +10,7 @@ pub mod config;
 pub mod generate;
 pub mod image;
 pub mod respond;
+pub mod upload;
 
 use thiserror::Error;
 
@@ -47,3 +48,4 @@ pub use respond::{
     respond_background_text, respond_background_with_effective, respond_stream_text,
     respond_stream_with_effective, respond_text, respond_with_effective, RespondResult,
 };
+pub use upload::{upload_file, upload_file_with_effective};
