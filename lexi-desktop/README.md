@@ -24,10 +24,8 @@ Rust-core architecture vs. bundling Chromium + Node + Python.
 
 ## What works
 
-- Chat (buffered **and** streaming), multi-provider, over `lexi-host`.
-- The admin **read** endpoints are real, so the management tabs display live data:
-  models (`/api/models`), API definitions (`/api/definitions` + `/raw`/`{name}`),
-  prompts (`/api/prompts`), and config (`/api/config`) — all read from `~/.lexi-cli/`.
+- Chat (buffered **and** streaming), multi-provider, over `lexi-host`. Providers
+  are fanned out **concurrently** — the slowest provider doesn't block the others.
 - **Every endpoint the frontend speaks is wired** — chat (buffered + streaming)
   plus all admin tabs: config, prompts, models (incl. hosted-model discovery via
   a live provider call), and API-definition management (create / edit-save /
