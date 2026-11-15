@@ -7,6 +7,7 @@
 
 pub mod auth;
 pub mod config;
+pub mod generate;
 pub mod respond;
 
 use thiserror::Error;
@@ -39,6 +40,7 @@ pub enum HostError {
     Yaml(#[from] serde_yaml::Error),
 }
 
+pub use generate::{generate_images_text, generate_images_with_effective, SavedArtifact};
 pub use respond::{
     respond_background_text, respond_background_with_effective, respond_stream_text,
     respond_stream_with_effective, respond_text, respond_with_effective, RespondResult,

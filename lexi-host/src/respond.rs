@@ -14,7 +14,7 @@ pub struct RespondResult {
     pub raw: Value,
 }
 
-fn endpoint_url(effective_cfg: &Value) -> String {
+pub(crate) fn endpoint_url(effective_cfg: &Value) -> String {
     let base = effective_cfg
         .get("url")
         .and_then(Value::as_str)
@@ -29,7 +29,7 @@ fn endpoint_url(effective_cfg: &Value) -> String {
 
 /// Build the request body for a text prompt via the engine, with caller-supplied
 /// overrides (e.g. `model`, `stream`, `background`).
-fn compose_body(
+pub(crate) fn compose_body(
     effective_cfg: &Value,
     prompt: &str,
     role: &str,

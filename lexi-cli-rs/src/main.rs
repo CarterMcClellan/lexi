@@ -37,6 +37,19 @@ enum Cmd {
         #[arg(long)]
         background: bool,
     },
+    /// Generate image(s) from a prompt and save them to disk.
+    Generate {
+        /// Provider name (must reference an image-generations API).
+        provider: String,
+        /// The image prompt.
+        prompt: String,
+        /// Override the provider's default model.
+        #[arg(long)]
+        model: Option<String>,
+        /// Directory to write images into.
+        #[arg(long, default_value = ".")]
+        out: std::path::PathBuf,
+    },
 }
 
 #[tokio::main]
@@ -79,6 +92,26 @@ async fn main() -> ExitCode {
             };
             match result {
                 Ok(_) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        Cmd::Generate {
+            provider,
+            prompt,
+            model,
+            out,
+        } => {
+            match lexi_host::generate_images_text(&provider, &prompt, model.as_deref(), &out).await
+            {
+                Ok(saved) => {
+                    for art in &saved {
+                        println!("{}", art.path.display());
+                    }
+                    ExitCode::SUCCESS
+                }
                 Err(e) => {
                     eprintln!("error: {e}");
                     ExitCode::FAILURE
