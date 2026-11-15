@@ -440,6 +440,20 @@ def validate_api_definition(data: dict) -> list[str]:
                             errors.append(
                                 f"'response.annotations.types.{tname}.format' must be a string."
                             )
+
+    op = data.get("operation")
+    if op is not None:
+        if not isinstance(op, dict):
+            errors.append("'operation' must be a dict.")
+        else:
+            poll = op.get("poll")
+            if poll is not None and not isinstance(poll, dict):
+                errors.append("'operation.poll' must be a dict.")
+            elif isinstance(poll, dict) and not isinstance(poll.get("path_template", ""), str):
+                errors.append("'operation.poll.path_template' must be a string.")
+            sm = op.get("status_map")
+            if sm is not None and not isinstance(sm, dict):
+                errors.append("'operation.status_map' must be a dict.")
     return errors
 
 

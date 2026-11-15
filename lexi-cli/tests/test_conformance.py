@@ -17,13 +17,14 @@ import pytest
 import yaml
 
 import lexi_cli
-from lexi_cli import api_compose, capabilities, message_ir
+from lexi_cli import api_compose, capabilities, message_ir, operations
 
 CONFORMANCE_DIR = Path(__file__).resolve().parents[2] / "conformance"
 REQUEST_CASES = sorted((CONFORMANCE_DIR / "cases" / "request").glob("*.json"))
 RESPONSE_CASES = sorted((CONFORMANCE_DIR / "cases" / "response").glob("*.json"))
 MESSAGE_CASES = sorted((CONFORMANCE_DIR / "cases" / "message").glob("*.json"))
 CAPABILITY_CASES = sorted((CONFORMANCE_DIR / "cases" / "capability").glob("*.json"))
+OPERATION_CASES = sorted((CONFORMANCE_DIR / "cases" / "operation").glob("*.json"))
 APIS_DIR = Path(lexi_cli.__file__).resolve().parent / "apis"
 
 
@@ -161,9 +162,32 @@ def test_capabilities(case_path: Path) -> None:
         assert errors == case["expect_errors"], f"{case['name']}: validation mismatch"
 
 
+# ---------------------------------------------------------------------------
+# Async operation lifecycle (read handle/status, classify, poll path)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case_path", OPERATION_CASES, ids=[_case_id(p) for p in OPERATION_CASES]
+)
+def test_operations(case_path: Path) -> None:
+    case = _load_json(case_path)
+    api_def = _load_api(case["api"])
+    op_cfg = api_def.get("operation")
+
+    op = operations.read_operation(case["response"], op_cfg)
+    if "expect_operation" in case:
+        assert op == case["expect_operation"], f"{case['name']}: operation mismatch"
+
+    if "expect_poll_path" in case:
+        path = operations.poll_path(op_cfg, op["id"])
+        assert path == case["expect_poll_path"], f"{case['name']}: poll path mismatch"
+
+
 def test_suite_is_non_empty() -> None:
     """Guard against a silently-empty suite (e.g. wrong path)."""
     assert REQUEST_CASES, "no request conformance cases discovered"
     assert RESPONSE_CASES, "no response conformance cases discovered"
     assert MESSAGE_CASES, "no message conformance cases discovered"
     assert CAPABILITY_CASES, "no capability conformance cases discovered"
+    assert OPERATION_CASES, "no operation conformance cases discovered"

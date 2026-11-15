@@ -1,0 +1,8 @@
+{
+  "name": "responses-submit-queued",
+  "description": "A background submit returns an id and status 'queued' -> pending, not done; poll path built from the id.",
+  "api": "responses",
+  "response": { "id": "resp_abc123", "status": "queued" },
+  "expect_operation": { "id": "resp_abc123", "status": "queued", "state": "pending", "done": false },
+  "expect_poll_path": "/responses/resp_abc123"
+}

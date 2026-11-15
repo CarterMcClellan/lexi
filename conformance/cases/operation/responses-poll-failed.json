@@ -1,0 +1,7 @@
+{
+  "name": "responses-poll-failed",
+  "description": "A poll with status 'cancelled' maps to the failed terminal state.",
+  "api": "responses",
+  "response": { "id": "resp_abc123", "status": "cancelled" },
+  "expect_operation": { "id": "resp_abc123", "status": "cancelled", "state": "failed", "done": true }
+}
