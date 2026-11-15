@@ -35,6 +35,7 @@
     <textarea id="prompt" placeholder="Ask something…"></textarea>
     <div class="row">
       <button id="send">Send</button>
+      <label><input type="checkbox" id="stream" checked /> Stream</label>
     </div>
     <div id="out"></div>
 
@@ -69,7 +70,16 @@
         out.textContent = "…";
         $("send").disabled = true;
         try {
-          out.textContent = await invoke("respond", { provider, prompt, model });
+          if ($("stream").checked) {
+            out.textContent = "";
+            const onDelta = new window.__TAURI__.core.Channel();
+            onDelta.onmessage = (frag) => {
+              out.textContent += frag;
+            };
+            await invoke("respond_stream", { provider, prompt, model, onDelta });
+          } else {
+            out.textContent = await invoke("respond", { provider, prompt, model });
+          }
         } catch (e) {
           showError(e);
         } finally {
