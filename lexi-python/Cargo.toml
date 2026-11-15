@@ -1,0 +1,17 @@
+[package]
+name = "lexi-python"
+version = "0.0.0"
+edition = "2021"
+description = "Python bindings (PyO3) for the Lexi provider-agnostic engine (lexi-core)."
+license = "MIT"
+publish = false
+
+[lib]
+name = "lexi"
+crate-type = ["cdylib"]
+
+[dependencies]
+lexi-core = { path = "../lexi-core" }
+serde_json = { version = "1", features = ["preserve_order"] }
+pyo3 = { version = "0.22", features = ["extension-module", "abi3-py39"] }
+pythonize = "0.22"
