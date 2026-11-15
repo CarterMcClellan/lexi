@@ -1,0 +1,7 @@
+{
+  "name": "text-single-part",
+  "description": "Canonical single-text-part message lowers to the prompt/role bindings the API templates consume.",
+  "message": { "role": "user", "content": [ { "type": "text", "text": "Hello" } ] },
+  "expect_message": { "role": "user", "content": [ { "type": "text", "text": "Hello" } ] },
+  "expect_bindings": { "role": "user", "prompt": "Hello" }
+}

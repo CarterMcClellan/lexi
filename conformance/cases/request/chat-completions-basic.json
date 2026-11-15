@@ -1,0 +1,12 @@
+{
+  "name": "chat-completions-basic",
+  "description": "Minimal OpenAI-compatible Chat Completions request: content is a bare string, stream omitted.",
+  "api": "chat-completions",
+  "compose": {
+    "prompt_payload": { "prompt": "Hi there", "role": "user", "model": "gpt-4o-mini" }
+  },
+  "expect_body": {
+    "model": "gpt-4o-mini",
+    "messages": [ { "role": "user", "content": "Hi there" } ]
+  }
+}

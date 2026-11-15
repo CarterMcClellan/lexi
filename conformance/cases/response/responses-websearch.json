@@ -1,0 +1,38 @@
+{
+  "name": "responses-websearch",
+  "description": "Responses output[] with reasoning + web_search_call before the message; text from output_text, activity summary ordered, url_citation annotation rendered.",
+  "api": "responses",
+  "response": {
+    "model": "gpt-4o",
+    "status": "completed",
+    "output": [
+      { "type": "reasoning", "summary": [] },
+      { "type": "web_search_call", "status": "completed" },
+      {
+        "type": "message",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "Answer.",
+            "annotations": [
+              { "type": "url_citation", "url": "https://a.com", "title": "A" }
+            ]
+          }
+        ]
+      }
+    ],
+    "usage": { "input_tokens": 10, "output_tokens": 3, "total_tokens": 13 }
+  },
+  "expect": {
+    "text": "Answer.",
+    "activity": "1 web search · reasoning",
+    "annotations_rendered": "[1] https://a.com — A",
+    "metadata": {
+      "model": "gpt-4o",
+      "input_tokens": 10,
+      "output_tokens": 3,
+      "total_tokens": 13,
+      "stop_reason": "completed"
+    }
+  }
+}

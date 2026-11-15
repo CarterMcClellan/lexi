@@ -1,0 +1,21 @@
+{
+  "name": "messages-overrides-preset-setpath",
+  "description": "Override temperature, apply the thinking_low preset (deep-merged), and inject metadata.user_id via set_paths.",
+  "api": "messages",
+  "compose": {
+    "prompt_payload": { "prompt": "Hello", "role": "user", "model": "claude-sonnet-4-6" },
+    "overrides": { "temperature": 0.7 },
+    "tool_presets": ["thinking_low"],
+    "set_paths": [["metadata.user_id", "u-123"]]
+  },
+  "expect_body": {
+    "model": "claude-sonnet-4-6",
+    "messages": [
+      { "role": "user", "content": [ { "type": "text", "text": "Hello" } ] }
+    ],
+    "max_tokens": 4096,
+    "temperature": 0.7,
+    "thinking": { "type": "enabled", "budget_tokens": 4096 },
+    "metadata": { "user_id": "u-123" }
+  }
+}

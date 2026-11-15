@@ -1,0 +1,15 @@
+[package]
+name = "lexi-core"
+version = "0.0.0"
+edition = "2021"
+description = "Provider-agnostic engine for the Lexi API-definition format (schema-driven request composition and response extraction)."
+license = "MIT"
+publish = false
+
+[dependencies]
+# preserve_order: object key order follows declaration order (property order is
+# significant in the API-definition spec). IndexMap equality stays order-independent.
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[dev-dependencies]
+serde_yaml = "0.9"

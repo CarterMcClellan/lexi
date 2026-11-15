@@ -1,0 +1,24 @@
+{
+  "name": "chat-completions-text",
+  "description": "Mode A simple path extraction; no activity or annotations configured for this API.",
+  "api": "chat-completions",
+  "response": {
+    "model": "gpt-4o-mini",
+    "choices": [
+      { "message": { "role": "assistant", "content": "The answer is 42." }, "finish_reason": "stop" }
+    ],
+    "usage": { "prompt_tokens": 4, "completion_tokens": 5, "total_tokens": 9 }
+  },
+  "expect": {
+    "text": "The answer is 42.",
+    "activity": "",
+    "annotations_rendered": "",
+    "metadata": {
+      "model": "gpt-4o-mini",
+      "input_tokens": 4,
+      "output_tokens": 5,
+      "total_tokens": 9,
+      "stop_reason": "stop"
+    }
+  }
+}
