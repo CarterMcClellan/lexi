@@ -1,0 +1,15 @@
+{
+  "name": "chat-completions-text-only-model-rejects-image",
+  "description": "A per-model override restricting input to text rejects an image part with a clear error.",
+  "api": "chat-completions",
+  "model_capabilities": { "input": ["text"] },
+  "message": {
+    "role": "user",
+    "content": [
+      { "type": "text", "text": "Describe this." },
+      { "type": "image", "url": "https://example.com/cat.jpg" }
+    ]
+  },
+  "expect_capabilities": { "input": ["text"], "output": ["text"], "limits": {} },
+  "expect_errors": ["model does not accept image input"]
+}

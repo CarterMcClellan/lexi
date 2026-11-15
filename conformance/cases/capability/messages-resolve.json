@@ -1,0 +1,6 @@
+{
+  "name": "messages-resolve",
+  "description": "Resolve the Anthropic Messages API family capabilities from its capabilities block.",
+  "api": "messages",
+  "expect_capabilities": { "input": ["text", "image"], "output": ["text"], "limits": {} }
+}

@@ -8,6 +8,7 @@
 //!
 //! Values are `serde_json::Value`; API definitions are plain data.
 
+pub mod capabilities;
 pub mod compose;
 pub mod extract;
 pub mod message_ir;
@@ -15,6 +16,7 @@ pub mod path;
 pub mod template;
 pub mod validate;
 
+pub use capabilities::{resolve_capabilities, supports_input, supports_output, validate_message};
 pub use compose::compose_request_body;
 pub use extract::{
     extract_annotations, extract_text, find_text_items, render_annotations, summarize_activity,

@@ -110,6 +110,11 @@ content_mapping:
         type: image
         source: { type: url, url: "{{url}}" }
 
+# Input/output modalities this API family can carry (per-model overrides refine).
+capabilities:
+  input: [text, image]
+  output: [text]
+
 response:
   # Walk content[] and concatenate text blocks, skipping tool_use,
   # server_tool_use, web_search_tool_result, thinking, etc.
