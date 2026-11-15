@@ -1,0 +1,26 @@
+{
+  "name": "messages-text",
+  "description": "Mode B walk of content[]: concatenate text blocks, skip thinking; activity counts the thinking block.",
+  "api": "messages",
+  "response": {
+    "model": "claude-sonnet-4-6",
+    "content": [
+      { "type": "text", "text": "Hello " },
+      { "type": "thinking", "thinking": "..." },
+      { "type": "text", "text": "world" }
+    ],
+    "usage": { "input_tokens": 5, "output_tokens": 2 },
+    "stop_reason": "end_turn"
+  },
+  "expect": {
+    "text": "Hello world",
+    "activity": "thinking",
+    "annotations_rendered": "",
+    "metadata": {
+      "model": "claude-sonnet-4-6",
+      "input_tokens": 5,
+      "output_tokens": 2,
+      "stop_reason": "end_turn"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "responses-basic",
+  "description": "Minimal OpenAI Responses request: input rendered with input_text parts; store (default true) is included because it has a default.",
+  "api": "responses",
+  "compose": {
+    "prompt_payload": { "prompt": "Hi", "role": "user", "model": "gpt-4o" }
+  },
+  "expect_body": {
+    "model": "gpt-4o",
+    "input": [
+      { "role": "user", "content": [ { "type": "input_text", "text": "Hi" } ] }
+    ],
+    "store": true
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "chat-completions-stop-overrides",
+  "description": "Overrides for temperature, a list-valued stop, and max_tokens; all included via if_set.",
+  "api": "chat-completions",
+  "compose": {
+    "prompt_payload": { "prompt": "Hi there", "role": "user", "model": "gpt-4o-mini" },
+    "overrides": { "temperature": 1.2, "stop": ["\n\n", "END"], "max_tokens": 256 }
+  },
+  "expect_body": {
+    "model": "gpt-4o-mini",
+    "messages": [ { "role": "user", "content": "Hi there" } ],
+    "temperature": 1.2,
+    "stop": ["\n\n", "END"],
+    "max_tokens": 256
+  }
+}

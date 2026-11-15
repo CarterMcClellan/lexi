@@ -1,0 +1,18 @@
+{
+  "name": "responses-reasoning-websearch-presets",
+  "description": "Two presets applied in order: reasoning_high adds a nested object; web_search concatenates into the (absent) tools list.",
+  "api": "responses",
+  "compose": {
+    "prompt_payload": { "prompt": "Hi", "role": "user", "model": "gpt-4o" },
+    "tool_presets": ["reasoning_high", "web_search"]
+  },
+  "expect_body": {
+    "model": "gpt-4o",
+    "input": [
+      { "role": "user", "content": [ { "type": "input_text", "text": "Hi" } ] }
+    ],
+    "store": true,
+    "reasoning": { "effort": "high" },
+    "tools": [ { "type": "web_search" } ]
+  }
+}

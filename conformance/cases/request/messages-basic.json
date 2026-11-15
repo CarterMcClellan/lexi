@@ -1,0 +1,15 @@
+{
+  "name": "messages-basic",
+  "description": "Minimal Anthropic Messages request: model bound, messages rendered, max_tokens default applied, stream (default false) omitted by if_truthy.",
+  "api": "messages",
+  "compose": {
+    "prompt_payload": { "prompt": "Hello", "role": "user", "model": "claude-sonnet-4-6" }
+  },
+  "expect_body": {
+    "model": "claude-sonnet-4-6",
+    "messages": [
+      { "role": "user", "content": [ { "type": "text", "text": "Hello" } ] }
+    ],
+    "max_tokens": 4096
+  }
+}
