@@ -19,7 +19,11 @@ import urllib.request
 from collections.abc import Iterable
 from pathlib import Path
 
-from lexi_cli import api_compose, message_ir
+import lexi  # the Rust engine (lexi-core) via its PyO3 wheel
+
+# api_compose is retained only for CLI-side helpers the engine wheel doesn't
+# expose: cli_flags_for, tool_preset_names, set_path/unset_path, _VALID_INCLUDES.
+from lexi_cli import api_compose
 
 try:
     from rich.console import Console
@@ -872,19 +876,19 @@ def respond_with_provider(
     # Route the message through the canonical IR, lowering its content to the
     # provider's wire shape via the API def's content_mapping. For text chat this
     # is an identity transform (same body as before); image parts are additive.
-    message = message_ir.normalize_prompt_payload(prompt_payload)
+    message = lexi.normalize_prompt_payload(prompt_payload)
     content_mapping = provider_cfg.get("content_mapping")
-    effective_payload = {**prompt_payload, **message_ir.lower_message(message, content_mapping)}
+    effective_payload = {**prompt_payload, **lexi.lower_message(message, content_mapping)}
 
     merged_overrides: dict[str, object] = dict(overrides or {})
     merged_overrides.setdefault("model", model)
 
     try:
-        body = api_compose.compose_request_body(
+        body = lexi.compose_request_body(
             provider_cfg,
             prompt_payload=effective_payload,
             overrides=merged_overrides,
-            tool_presets_selected=tool_presets_selected,
+            tool_presets=tool_presets_selected,
             set_paths=set_paths,
             unset_paths=unset_paths,
         )
@@ -1218,7 +1222,7 @@ def render_response_output(
     resp_cfg = (provider_cfg or {}).get("response", {})
     text_extract_cfg = resp_cfg.get("text_extract")
     if print_text:
-        text = api_compose.extract_text(data, text_extract_cfg)
+        text = lexi.extract_text(data, text_extract_cfg)
         if text:
             print(text)
         else:
@@ -1228,9 +1232,9 @@ def render_response_output(
     if cite:
         annotations_cfg = resp_cfg.get("annotations")
         if annotations_cfg:
-            text_items = api_compose.find_text_items(data, text_extract_cfg)
-            anns = api_compose.extract_annotations(data, annotations_cfg, text_items=text_items)
-            rendered = api_compose.render_annotations(anns, annotations_cfg)
+            text_items = lexi.find_text_items(data, text_extract_cfg)
+            anns = lexi.extract_annotations(data, annotations_cfg, text_items=text_items)
+            rendered = lexi.render_annotations(anns, annotations_cfg)
             if rendered:
                 print()
                 print("Sources:")
@@ -3420,7 +3424,7 @@ def handle_api(rest: str | None, tokens_override: list[str] | None = None) -> in
         }
         if not errors:
             try:
-                body = api_compose.compose_request_body(
+                body = lexi.compose_request_body(
                     data,
                     prompt_payload={"prompt": sample_prompt, "role": sample_role},
                     overrides={"model": sample_model},
@@ -3562,7 +3566,7 @@ def handle_respond(rest: str | None, tokens_override: list[str] | None = None) -
     if parsed["verbose"] and not parsed["raw"] and resp_json:
         metadata = extract_response_metadata(resp_json, effective_cfg)
         activity_cfg = (effective_cfg.get("response") or {}).get("activity")
-        activity_summary = api_compose.summarize_activity(resp_json, activity_cfg)
+        activity_summary = lexi.summarize_activity(resp_json, activity_cfg)
         print_response_metadata(metadata, activity_summary)
     return 0
 

@@ -34,6 +34,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # lexi-cli's engine now runs through the lexi wheel (Rust core via PyO3).
+      - name: Build & install the lexi wheel
+        run: pip install ./lexi-python
+        working-directory: ${{ github.workspace }}
       - name: Install (editable, with dev extras)
         run: pip install -e ".[dev]"
       - name: Lint (ruff check)
