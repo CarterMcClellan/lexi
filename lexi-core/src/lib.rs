@@ -10,6 +10,7 @@
 
 pub mod capabilities;
 pub mod compose;
+pub mod definition;
 pub mod extract;
 pub mod message_ir;
 pub mod operations;
@@ -21,6 +22,7 @@ pub mod validate;
 
 pub use capabilities::{resolve_capabilities, supports_input, supports_output, validate_message};
 pub use compose::compose_request_body;
+pub use definition::validate_definition;
 pub use extract::{
     extract_annotations, extract_artifacts, extract_text, find_text_items, render_annotations,
     summarize_activity,
