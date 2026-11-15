@@ -36,6 +36,9 @@ enum Cmd {
         /// Submit as a background operation and poll until it completes.
         #[arg(long)]
         background: bool,
+        /// Attach an image (URL or local file path). Repeatable.
+        #[arg(long = "image")]
+        images: Vec<String>,
     },
     /// Generate image(s) from a prompt and save them to disk.
     Generate {
@@ -63,7 +66,15 @@ async fn main() -> ExitCode {
             model,
             stream,
             background,
+            images,
         } => {
+            let resolved = match lexi_host::resolve_images(&images) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    return ExitCode::FAILURE;
+                }
+            };
             let result = if stream {
                 use std::io::Write;
                 let r = lexi_host::respond_stream_text(
@@ -71,6 +82,7 @@ async fn main() -> ExitCode {
                     &prompt,
                     &role,
                     model.as_deref(),
+                    &resolved,
                     |delta| {
                         print!("{delta}");
                         let _ = std::io::stdout().flush();
@@ -86,7 +98,7 @@ async fn main() -> ExitCode {
                     .await
                     .inspect(|res| println!("{}", res.text))
             } else {
-                lexi_host::respond_text(&provider, &prompt, &role, model.as_deref())
+                lexi_host::respond_text(&provider, &prompt, &role, model.as_deref(), &resolved)
                     .await
                     .inspect(|res| println!("{}", res.text))
             };

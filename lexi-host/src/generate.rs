@@ -42,7 +42,13 @@ pub async fn generate_images_with_effective(
     model: &str,
     out_dir: &Path,
 ) -> Result<Vec<SavedArtifact>, HostError> {
-    let body = compose_body(effective_cfg, prompt, "user", &json!({ "model": model }))?;
+    let body = compose_body(
+        effective_cfg,
+        prompt,
+        "user",
+        &[],
+        &json!({ "model": model }),
+    )?;
     let resp = client
         .post(endpoint_url(effective_cfg))
         .headers(auth::build_headers(effective_cfg, api_key))

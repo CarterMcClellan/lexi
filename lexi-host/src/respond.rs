@@ -2,8 +2,9 @@
 //! in both buffered and streaming (SSE) forms.
 
 use futures_util::StreamExt;
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 
+use crate::image::ResolvedImage;
 use crate::{auth, config, HostError};
 
 /// The result of a text chat: the extracted assistant text + the raw response
@@ -27,33 +28,27 @@ pub(crate) fn endpoint_url(effective_cfg: &Value) -> String {
     format!("{base}{path}")
 }
 
-/// Build the request body for a text prompt via the engine, with caller-supplied
-/// overrides (e.g. `model`, `stream`, `background`).
+/// Build the request body via the engine: assemble a canonical message (a text
+/// part plus any image parts), lower it via the API's `content_mapping`, and
+/// compose with caller-supplied `overrides` (e.g. `model`, `stream`,
+/// `background`). With no images this is the plain text-chat case.
 pub(crate) fn compose_body(
     effective_cfg: &Value,
     prompt: &str,
     role: &str,
+    images: &[ResolvedImage],
     overrides: &Value,
 ) -> Result<Value, HostError> {
-    let mut payload = Map::new();
-    payload.insert("prompt".into(), Value::from(prompt));
-    payload.insert("role".into(), Value::from(role));
-    let payload = Value::Object(payload);
-
-    let msg = lexi_core::normalize_prompt_payload(&payload);
+    let mut content = vec![json!({ "type": "text", "text": prompt })];
+    for img in images {
+        content.push(img.part_value());
+    }
+    let message = json!({ "role": role, "content": content });
+    let msg = lexi_core::message_from_dict(&message);
     let bindings = lexi_core::lower_message(&msg, effective_cfg.get("content_mapping"));
-    let effective_payload = config::deep_merge(&payload, &bindings);
 
-    lexi_core::compose_request_body(
-        effective_cfg,
-        &effective_payload,
-        overrides,
-        &[],
-        &[],
-        &[],
-        false,
-    )
-    .map_err(HostError::Compose)
+    lexi_core::compose_request_body(effective_cfg, &bindings, overrides, &[], &[], &[], false)
+        .map_err(HostError::Compose)
 }
 
 /// Buffered (non-streaming) pipeline over an already-resolved effective config.
@@ -65,8 +60,15 @@ pub async fn respond_with_effective(
     prompt: &str,
     role: &str,
     model: &str,
+    images: &[ResolvedImage],
 ) -> Result<RespondResult, HostError> {
-    let body = compose_body(effective_cfg, prompt, role, &json!({ "model": model }))?;
+    let body = compose_body(
+        effective_cfg,
+        prompt,
+        role,
+        images,
+        &json!({ "model": model }),
+    )?;
     let headers = auth::build_headers(effective_cfg, api_key);
     let resp = client
         .post(endpoint_url(effective_cfg))
@@ -93,6 +95,7 @@ pub async fn respond_with_effective(
 /// Streaming (SSE) pipeline: invokes `on_delta` with each text fragment as it
 /// arrives and returns the accumulated text. Reads `response.stream` to classify
 /// events via the engine.
+#[allow(clippy::too_many_arguments)]
 pub async fn respond_stream_with_effective<F: FnMut(&str)>(
     client: &reqwest::Client,
     effective_cfg: &Value,
@@ -100,12 +103,14 @@ pub async fn respond_stream_with_effective<F: FnMut(&str)>(
     prompt: &str,
     role: &str,
     model: &str,
+    images: &[ResolvedImage],
     mut on_delta: F,
 ) -> Result<RespondResult, HostError> {
     let body = compose_body(
         effective_cfg,
         prompt,
         role,
+        images,
         &json!({ "model": model, "stream": true }),
     )?;
     let headers = auth::build_headers(effective_cfg, api_key);
@@ -191,6 +196,7 @@ pub async fn respond_background_with_effective(
         effective_cfg,
         prompt,
         role,
+        &[],
         &json!({ "model": model, "background": true }),
     )?;
     let resp = client
@@ -271,29 +277,36 @@ async fn resolve(
     Ok((eff, api_key, model))
 }
 
-/// Load config, resolve the provider, and run a buffered text chat.
+/// Load config, resolve the provider, and run a buffered chat (optionally with
+/// image parts).
 pub async fn respond_text(
     provider: &str,
     prompt: &str,
     role: &str,
     model_override: Option<&str>,
+    images: &[ResolvedImage],
 ) -> Result<RespondResult, HostError> {
     let (eff, api_key, model) = resolve(provider, model_override).await?;
     let client = reqwest::Client::new();
-    respond_with_effective(&client, &eff, &api_key, prompt, role, &model).await
+    respond_with_effective(&client, &eff, &api_key, prompt, role, &model, images).await
 }
 
-/// Load config, resolve the provider, and run a streaming text chat.
+/// Load config, resolve the provider, and run a streaming chat (optionally with
+/// image parts).
 pub async fn respond_stream_text<F: FnMut(&str)>(
     provider: &str,
     prompt: &str,
     role: &str,
     model_override: Option<&str>,
+    images: &[ResolvedImage],
     on_delta: F,
 ) -> Result<RespondResult, HostError> {
     let (eff, api_key, model) = resolve(provider, model_override).await?;
     let client = reqwest::Client::new();
-    respond_stream_with_effective(&client, &eff, &api_key, prompt, role, &model, on_delta).await
+    respond_stream_with_effective(
+        &client, &eff, &api_key, prompt, role, &model, images, on_delta,
+    )
+    .await
 }
 
 /// Load config, resolve the provider, and run a background (submit/poll/fetch)
