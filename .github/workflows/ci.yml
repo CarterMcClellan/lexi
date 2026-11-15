@@ -63,3 +63,31 @@ jobs:
         run: cargo clippy -p lexi-core --all-targets -- -D warnings
       - name: Test (conformance parity)
         run: cargo test -p lexi-core
+
+  # Python wheel: the lexi-core engine exposed to Python via PyO3 (lexi-python).
+  # Build the wheel and run the SAME conformance fixtures from it — a third
+  # engine behind the one oracle. fmt + clippy gate the bindings crate too.
+  wheel:
+    name: wheel (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format check
+        run: cargo fmt -p lexi-python -- --check
+      - name: Clippy (warnings = errors)
+        run: cargo clippy -p lexi-python -- -D warnings
+      - name: Build & install the wheel
+        run: pip install ./lexi-python pytest pyyaml
+      - name: Conformance (from the wheel)
+        run: python -m pytest lexi-python/tests -q
