@@ -35,4 +35,7 @@ pub enum HostError {
     Yaml(#[from] serde_yaml::Error),
 }
 
-pub use respond::{respond_text, respond_with_effective, RespondResult};
+pub use respond::{
+    respond_stream_text, respond_stream_with_effective, respond_text, respond_with_effective,
+    RespondResult,
+};

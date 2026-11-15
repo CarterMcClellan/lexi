@@ -1,0 +1,17 @@
+{
+  "name": "messages-stream",
+  "description": "Anthropic SSE: content_block_delta events carry delta.text; message_stop terminates.",
+  "api": "messages",
+  "events": [
+    { "event": "message_start", "data": "{\"type\":\"message_start\"}" },
+    { "event": "content_block_delta", "data": "{\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}" },
+    { "event": "content_block_delta", "data": "{\"delta\":{\"type\":\"text_delta\",\"text\":\" world\"}}" },
+    { "event": "message_stop", "data": "{}" }
+  ],
+  "expect": [
+    { "kind": "other" },
+    { "kind": "delta", "text": "Hello" },
+    { "kind": "delta", "text": " world" },
+    { "kind": "done" }
+  ]
+}

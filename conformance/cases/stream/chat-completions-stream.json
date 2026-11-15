@@ -1,0 +1,17 @@
+{
+  "name": "chat-completions-stream",
+  "description": "Chat Completions SSE: unnamed events; delta at choices[0].delta.content; a role-only chunk has no content; data [DONE] terminates.",
+  "api": "chat-completions",
+  "events": [
+    { "event": null, "data": "{\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}" },
+    { "event": null, "data": "{\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}" },
+    { "event": null, "data": "{\"choices\":[{\"delta\":{\"content\":\" there\"}}]}" },
+    { "event": null, "data": "[DONE]" }
+  ],
+  "expect": [
+    { "kind": "other" },
+    { "kind": "delta", "text": "Hi" },
+    { "kind": "delta", "text": " there" },
+    { "kind": "done" }
+  ]
+}
