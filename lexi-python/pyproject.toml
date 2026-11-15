@@ -4,10 +4,14 @@ build-backend = "maturin"
 
 [project]
 name = "lexi"
-version = "0.0.0"
+version = "0.1.0"
 description = "Lexi — provider-agnostic LLM API engine (Rust core via PyO3)."
+readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
+
+[project.urls]
+Repository = "https://github.com/badscooter23/lexi"
 
 [tool.maturin]
 module-name = "lexi"
