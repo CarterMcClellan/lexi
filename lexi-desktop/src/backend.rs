@@ -25,6 +25,12 @@ pub async fn handle(method: &str, path: &str, body: Option<Value>) -> Result<Val
         )),
         ("GET", p) if p.starts_with("/api/definitions/") => api_show(base),
         ("GET", p) if p.starts_with("/api/respond/options") => Ok(json!({ "presets": [] })),
+        ("POST", "/api/config") | ("POST", "/api/config/") => {
+            config_set(body.unwrap_or(Value::Null))
+        }
+        ("POST", "/api/prompts") => prompt_save(body.unwrap_or(Value::Null)),
+        ("POST", "/api/prompts/active") => prompt_active(body.unwrap_or(Value::Null)),
+        ("POST", "/api/prompts/delete") => prompt_delete(body.unwrap_or(Value::Null)),
         ("POST", "/api/respond") => respond(body.unwrap_or(Value::Null)).await,
         _ => Err(format!(
             "endpoint not available in the desktop app: {method} {base}"
@@ -132,6 +138,84 @@ fn prompts_list() -> Result<Value, String> {
         })
         .collect();
     Ok(json!({ "prompts": prompts }))
+}
+
+/// `POST /api/config` — merge the posted keys into `config.json`, then return the
+/// updated settings (defaults layered on, as the GET does).
+fn config_set(body: Value) -> Result<Value, String> {
+    let updates = body
+        .as_object()
+        .ok_or_else(|| "config body must be an object".to_string())?;
+    config::set_config(updates).map_err(|e| e.to_string())?;
+    Ok(config_get())
+}
+
+/// `POST /api/prompts` — save a prompt (named, or the active `$$` slot when
+/// unnamed), then return the refreshed prompt list.
+fn prompt_save(body: Value) -> Result<Value, String> {
+    let prompt = body
+        .get("prompt")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "Prompt text is required".to_string())?;
+
+    let mut obj = Map::new();
+    obj.insert("prompt".into(), json!(prompt));
+    if let Some(v) = num_field(&body, "max_tokens") {
+        obj.insert("max_tokens".into(), v);
+    }
+    if let Some(v) = num_field(&body, "temperature") {
+        obj.insert("temperature".into(), v);
+    }
+    if let Some(role) = body
+        .get("role")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+    {
+        obj.insert("role".into(), json!(role));
+    }
+
+    let name = body
+        .get("name")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("$$");
+    config::save_prompt(name, &Value::Object(obj)).map_err(|e| e.to_string())?;
+    prompts_list()
+}
+
+/// `POST /api/prompts/active` — make the named prompt active, then refresh the list.
+fn prompt_active(body: Value) -> Result<Value, String> {
+    let name = require_name(&body)?;
+    config::set_active_prompt(&name).map_err(|e| e.to_string())?;
+    prompts_list()
+}
+
+/// `POST /api/prompts/delete` — delete the named prompt, then refresh the list.
+fn prompt_delete(body: Value) -> Result<Value, String> {
+    let name = require_name(&body)?;
+    config::delete_prompt(&name).map_err(|e| e.to_string())?;
+    prompts_list()
+}
+
+/// Pull a required `name` string from a request body.
+fn require_name(body: &Value) -> Result<String, String> {
+    body.get("name")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| "Prompt name is required".to_string())
+}
+
+/// Coerce a numeric prompt field: keep numbers, parse numeric strings, else drop.
+fn num_field(body: &Value, key: &str) -> Option<Value> {
+    match body.get(key) {
+        Some(Value::Number(n)) => Some(Value::Number(n.clone())),
+        Some(Value::String(s)) => serde_json::from_str::<serde_json::Number>(s.trim())
+            .ok()
+            .map(Value::Number),
+        _ => None,
+    }
 }
 
 /// `GET /api/definitions` — the available API definitions as `{ name, description }`.
@@ -341,5 +425,17 @@ mod tests {
             def_name("/api/definitions/a%20b", "/api/definitions/"),
             "a b"
         );
+    }
+
+    #[test]
+    fn num_field_coerces_numbers_and_numeric_strings() {
+        use super::num_field;
+        use serde_json::json;
+        let body = json!({ "a": 256, "b": "0.7", "c": "nope", "d": true });
+        assert_eq!(num_field(&body, "a"), Some(json!(256)));
+        assert_eq!(num_field(&body, "b"), Some(json!(0.7)));
+        assert_eq!(num_field(&body, "c"), None);
+        assert_eq!(num_field(&body, "d"), None);
+        assert_eq!(num_field(&body, "missing"), None);
     }
 }

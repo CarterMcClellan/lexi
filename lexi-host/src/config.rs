@@ -6,9 +6,12 @@
 
 use std::path::{Path, PathBuf};
 
-use serde_json::Value;
+use serde_json::{Map as JsonMap, Value};
 
 use crate::HostError;
+
+/// A JSON object map (shorthand used by the config writers).
+type Map = JsonMap<String, Value>;
 
 /// API definitions embedded at build time (the same files lexi-core bundles).
 const EMBEDDED_APIS: &[(&str, &str)] = &[
@@ -254,6 +257,87 @@ fn load_prompts_in(home: &Path) -> Result<Vec<(String, Value)>, HostError> {
     Ok(entries)
 }
 
+/// Merge `updates` into `config.json` (created if absent) and return the result.
+/// Existing keys not in `updates` are preserved.
+pub fn set_config(updates: &Map) -> Result<Value, HostError> {
+    set_config_in(&lexi_home(), updates)
+}
+
+fn set_config_in(home: &Path, updates: &Map) -> Result<Value, HostError> {
+    let mut cfg = match load_config_in(home)? {
+        Value::Object(m) => m,
+        _ => Map::new(),
+    };
+    for (k, v) in updates {
+        cfg.insert(k.clone(), v.clone());
+    }
+    write_json(&home.join("config.json"), &Value::Object(cfg.clone()))?;
+    Ok(Value::Object(cfg))
+}
+
+/// The `prompts/` dir name of the active prompt slot.
+const ACTIVE_PROMPT: &str = "$$";
+
+/// Save a prompt under `name` (or the active `$$` slot). `body` is written
+/// verbatim as the prompt's JSON object (e.g. `{prompt, max_tokens, …}`).
+pub fn save_prompt(name: &str, body: &Value) -> Result<(), HostError> {
+    save_prompt_in(&lexi_home(), name, body)
+}
+
+fn save_prompt_in(home: &Path, name: &str, body: &Value) -> Result<(), HostError> {
+    write_json(&prompt_path(home, name)?, body)
+}
+
+/// Delete the named prompt. Errors if the name is invalid or the file is absent.
+pub fn delete_prompt(name: &str) -> Result<(), HostError> {
+    delete_prompt_in(&lexi_home(), name)
+}
+
+fn delete_prompt_in(home: &Path, name: &str) -> Result<(), HostError> {
+    let path = prompt_path(home, name)?;
+    if !path.exists() {
+        return Err(HostError::Config(format!("prompt {name:?} not found")));
+    }
+    std::fs::remove_file(&path)?;
+    Ok(())
+}
+
+/// Make `name` the active prompt by copying its body into the `$$` slot.
+pub fn set_active_prompt(name: &str) -> Result<(), HostError> {
+    set_active_prompt_in(&lexi_home(), name)
+}
+
+fn set_active_prompt_in(home: &Path, name: &str) -> Result<(), HostError> {
+    let src = prompt_path(home, name)?;
+    if !src.exists() {
+        return Err(HostError::Config(format!("prompt {name:?} not found")));
+    }
+    let body: Value = serde_json::from_str(&std::fs::read_to_string(&src)?)?;
+    save_prompt_in(home, ACTIVE_PROMPT, &body)
+}
+
+/// Resolve a prompt name to its `prompts/<name>.json` path, rejecting names that
+/// contain path separators or `..` (so a name can't escape the prompts dir).
+fn prompt_path(home: &Path, name: &str) -> Result<PathBuf, HostError> {
+    if name.is_empty()
+        || name.contains('/')
+        || name.contains('\\')
+        || name.split(['/', '\\']).any(|seg| seg == "..")
+    {
+        return Err(HostError::Config(format!("invalid prompt name {name:?}")));
+    }
+    Ok(home.join("prompts").join(format!("{name}.json")))
+}
+
+/// Write `value` as pretty JSON, creating the parent dir if needed.
+fn write_json(path: &Path, value: &Value) -> Result<(), HostError> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, serde_json::to_string_pretty(value)?)?;
+    Ok(())
+}
+
 /// List available API definitions as `(name, description)` pairs — the union of
 /// shipped (embedded) definitions and any custom ones under `~/.lexi-cli/apis/`.
 pub fn list_api_defs() -> Result<Vec<(String, Option<String>)>, HostError> {
@@ -362,6 +446,61 @@ mod tests {
             load_config_in(dir.path()).unwrap(),
             json!({ "edit_mode": "vi" })
         );
+    }
+
+    #[test]
+    fn set_config_merges_and_persists() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("config.json"), r#"{"theme":"dark"}"#).unwrap();
+
+        let mut updates = Map::new();
+        updates.insert("edit_mode".into(), json!("vi"));
+        let merged = set_config_in(dir.path(), &updates).unwrap();
+        assert_eq!(merged, json!({ "theme": "dark", "edit_mode": "vi" }));
+        // Persisted to disk, with the prior key preserved.
+        assert_eq!(load_config_in(dir.path()).unwrap(), merged);
+    }
+
+    #[test]
+    fn set_config_creates_file_when_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut updates = Map::new();
+        updates.insert("prompt".into(), json!("hi"));
+        let merged = set_config_in(dir.path(), &updates).unwrap();
+        assert_eq!(merged, json!({ "prompt": "hi" }));
+    }
+
+    #[test]
+    fn save_and_delete_and_activate_prompt() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = json!({ "prompt": "tell a joke", "max_tokens": 256, "role": "user" });
+        save_prompt_in(dir.path(), "joke", &body).unwrap();
+
+        let prompts = load_prompts_in(dir.path()).unwrap();
+        assert_eq!(prompts, vec![("joke".to_string(), body.clone())]);
+
+        // Activating copies the body into the $$ slot.
+        set_active_prompt_in(dir.path(), "joke").unwrap();
+        let active = load_prompts_in(dir.path()).unwrap();
+        assert!(active.iter().any(|(n, b)| n == "$$" && *b == body));
+
+        // Delete removes just the named file.
+        delete_prompt_in(dir.path(), "joke").unwrap();
+        let after = load_prompts_in(dir.path()).unwrap();
+        assert_eq!(
+            after.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+            ["$$"]
+        );
+    }
+
+    #[test]
+    fn prompt_ops_reject_bad_names_and_missing_files() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(save_prompt_in(dir.path(), "../escape", &json!({})).is_err());
+        assert!(save_prompt_in(dir.path(), "a/b", &json!({})).is_err());
+        assert!(save_prompt_in(dir.path(), "", &json!({})).is_err());
+        assert!(delete_prompt_in(dir.path(), "nope").is_err());
+        assert!(set_active_prompt_in(dir.path(), "nope").is_err());
     }
 
     #[test]
