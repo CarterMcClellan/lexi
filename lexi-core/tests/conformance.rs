@@ -65,10 +65,23 @@ fn request_composition() {
         let api = load_api(case["api"].as_str().unwrap());
         let compose = &case["compose"];
 
-        let pp = compose
+        // Mirror respond_with_provider: normalize the message (or a canonical
+        // `message` with image parts) and lower its content via content_mapping.
+        let payload = compose
             .get("prompt_payload")
+            .and_then(Value::as_object)
             .cloned()
-            .unwrap_or(Value::Null);
+            .unwrap_or_default();
+        let msg = match compose.get("message") {
+            Some(m) => core::message_from_dict(m),
+            None => core::normalize_prompt_payload(&Value::Object(payload.clone())),
+        };
+        let bindings = core::lower_message(&msg, api.get("content_mapping"));
+        let mut effective = payload.clone();
+        for (k, v) in bindings.as_object().unwrap() {
+            effective.insert(k.clone(), v.clone());
+        }
+        let pp = Value::Object(effective);
         let ov = compose.get("overrides").cloned().unwrap_or(Value::Null);
         let presets: Vec<String> = compose
             .get("tool_presets")

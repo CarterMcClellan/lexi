@@ -1,0 +1,27 @@
+{
+  "name": "chat-completions-image-url",
+  "description": "With an image part present, Chat Completions content is an array even though text_only_as_string is set (that only collapses single text parts).",
+  "api": "chat-completions",
+  "compose": {
+    "prompt_payload": { "model": "gpt-4o" },
+    "message": {
+      "role": "user",
+      "content": [
+        { "type": "text", "text": "Describe this image." },
+        { "type": "image", "url": "https://example.com/cat.jpg" }
+      ]
+    }
+  },
+  "expect_body": {
+    "model": "gpt-4o",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          { "type": "text", "text": "Describe this image." },
+          { "type": "image_url", "image_url": { "url": "https://example.com/cat.jpg" } }
+        ]
+      }
+    ]
+  }
+}

@@ -1,29 +1,72 @@
 //! Canonical message intermediate representation (IR).
 //!
 //! Mirrors `lexi_cli.message_ir`. A message is an ordered list of typed content
-//! parts; v0 has only [`ContentPart::Text`], so a text message lowers losslessly
-//! to the `{prompt, role}` bindings the API-definition templates consume. See
+//! parts ([`ContentPart::Text`], [`ContentPart::Image`]); content is lowered to
+//! a provider's wire shape via that provider's `content_mapping`, so text chat
+//! stays byte-identical while image input is additive. See
 //! `docs/spec/message-ir-v0.md`.
 
 use serde_json::{Map, Value};
 
+use crate::template::render_template;
+
 pub const DEFAULT_ROLE: &str = "user";
+pub const TEXT: &str = "text";
+pub const IMAGE: &str = "image";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContentPart {
-    Text { text: String },
+    Text {
+        text: String,
+    },
+    Image {
+        url: String,
+        media_type: Option<String>,
+    },
 }
 
 impl ContentPart {
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            ContentPart::Text { .. } => TEXT,
+            ContentPart::Image { .. } => IMAGE,
+        }
+    }
+
     pub fn to_value(&self) -> Value {
+        let mut m = Map::new();
         match self {
             ContentPart::Text { text } => {
-                let mut m = Map::new();
-                m.insert("type".to_string(), Value::from("text"));
-                m.insert("text".to_string(), Value::from(text.clone()));
-                Value::Object(m)
+                m.insert("type".into(), Value::from(TEXT));
+                m.insert("text".into(), Value::from(text.clone()));
+            }
+            ContentPart::Image { url, media_type } => {
+                m.insert("type".into(), Value::from(IMAGE));
+                m.insert("url".into(), Value::from(url.clone()));
+                if let Some(mt) = media_type {
+                    m.insert("media_type".into(), Value::from(mt.clone()));
+                }
             }
         }
+        Value::Object(m)
+    }
+
+    /// Variables used to render this part's content-mapping template.
+    fn render_vars(&self) -> Map<String, Value> {
+        let mut m = Map::new();
+        match self {
+            ContentPart::Text { text } => {
+                m.insert("text".into(), Value::from(text.clone()));
+            }
+            ContentPart::Image { url, media_type } => {
+                m.insert("url".into(), Value::from(url.clone()));
+                m.insert(
+                    "media_type".into(),
+                    Value::from(media_type.clone().unwrap_or_default()),
+                );
+            }
+        }
+        m
     }
 }
 
@@ -36,16 +79,16 @@ pub struct Message {
 impl Message {
     pub fn to_value(&self) -> Value {
         let mut m = Map::new();
-        m.insert("role".to_string(), Value::from(self.role.clone()));
+        m.insert("role".into(), Value::from(self.role.clone()));
         m.insert(
-            "content".to_string(),
+            "content".into(),
             Value::Array(self.content.iter().map(ContentPart::to_value).collect()),
         );
         Value::Object(m)
     }
 }
 
-/// Build a single-text-part message (the v0 common case).
+/// Build a single-text-part message (the common case).
 pub fn text_message(text: &str, role: &str) -> Message {
     Message {
         role: role.to_string(),
@@ -55,18 +98,31 @@ pub fn text_message(text: &str, role: &str) -> Message {
     }
 }
 
-/// Parse a content-part dict. v0 supports only `type: "text"`.
+/// Parse a content-part dict (`type: text` or `type: image`).
 pub fn part_from_dict(data: &Value) -> Result<ContentPart, String> {
-    let part_type = data.get("type").and_then(Value::as_str).unwrap_or("text");
-    if part_type == "text" {
-        let text = data.get("text").and_then(Value::as_str).unwrap_or("");
-        Ok(ContentPart::Text {
-            text: text.to_string(),
-        })
-    } else {
-        Err(format!(
-            "unsupported content part type {part_type:?} (v0 supports only \"text\")"
-        ))
+    let part_type = data.get("type").and_then(Value::as_str).unwrap_or(TEXT);
+    match part_type {
+        TEXT => Ok(ContentPart::Text {
+            text: data
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+        }),
+        IMAGE => Ok(ContentPart::Image {
+            url: data
+                .get("url")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            media_type: data
+                .get("media_type")
+                .and_then(Value::as_str)
+                .map(String::from),
+        }),
+        other => Err(format!(
+            "unsupported content part type {other:?} (supported: \"text\", \"image\")"
+        )),
     }
 }
 
@@ -131,22 +187,87 @@ pub fn text_of(message: &Message) -> String {
     message
         .content
         .iter()
-        .map(|p| match p {
-            ContentPart::Text { text } => text.as_str(),
+        .filter_map(|p| match p {
+            ContentPart::Text { text } => Some(text.as_str()),
+            _ => None,
         })
         .collect()
 }
 
-/// Lower a text-only message to `{prompt, role}` bindings.
+/// Lower a text-only message to `{prompt, role}` bindings (no provider mapping).
 pub fn to_prompt_bindings(message: &Message) -> Result<Value, String> {
-    // All parts are text in v0; this match exists so new variants force a decision.
     for part in &message.content {
-        match part {
-            ContentPart::Text { .. } => {}
+        if !matches!(part, ContentPart::Text { .. }) {
+            return Err(format!(
+                "to_prompt_bindings supports only text parts; got {}",
+                part.type_name()
+            ));
         }
     }
     let mut m = Map::new();
-    m.insert("role".to_string(), Value::from(message.role.clone()));
-    m.insert("prompt".to_string(), Value::from(text_of(message)));
+    m.insert("role".into(), Value::from(message.role.clone()));
+    m.insert("prompt".into(), Value::from(text_of(message)));
     Ok(Value::Object(m))
+}
+
+/// Render one content part into a provider's wire shape via its template.
+fn lower_content_part(part: &ContentPart, parts_mapping: &Map<String, Value>) -> Value {
+    match parts_mapping
+        .get(part.type_name())
+        .and_then(|spec| spec.get("template"))
+    {
+        Some(template) => render_template(template, &part.render_vars()),
+        None => part.to_value(), // no mapping: best-effort passthrough
+    }
+}
+
+/// Lower a Message to template bindings, provider-aware.
+///
+/// Returns `{role, content, prompt}` (content a string when `text_only_as_string`
+/// and the message is a single text part, else a list of lowered parts). Falls
+/// back to `{role, prompt}` when `content_mapping` is absent.
+pub fn lower_message(message: &Message, content_mapping: Option<&Value>) -> Value {
+    let mapping = match content_mapping.and_then(Value::as_object) {
+        Some(m) => m,
+        None => {
+            let mut out = Map::new();
+            out.insert("role".into(), Value::from(message.role.clone()));
+            out.insert("prompt".into(), Value::from(text_of(message)));
+            return Value::Object(out);
+        }
+    };
+
+    let empty = Map::new();
+    let parts_mapping = mapping
+        .get("parts")
+        .and_then(Value::as_object)
+        .unwrap_or(&empty);
+    let text_only_as_string = mapping
+        .get("text_only_as_string")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    let content = if text_only_as_string
+        && message.content.len() == 1
+        && matches!(message.content[0], ContentPart::Text { .. })
+    {
+        match &message.content[0] {
+            ContentPart::Text { text } => Value::from(text.clone()),
+            _ => unreachable!(),
+        }
+    } else {
+        Value::Array(
+            message
+                .content
+                .iter()
+                .map(|p| lower_content_part(p, parts_mapping))
+                .collect(),
+        )
+    };
+
+    let mut out = Map::new();
+    out.insert("role".into(), Value::from(message.role.clone()));
+    out.insert("content".into(), content);
+    out.insert("prompt".into(), Value::from(text_of(message)));
+    Value::Object(out)
 }

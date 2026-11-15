@@ -18,11 +18,11 @@ request:
         x-bind: { from: model }
       messages:
         type: array
-        description: "Chat history. Rendered from the active prompt payload."
+        description: "Chat history. Content is lowered from the active message via content_mapping."
         x-render:
           template:
             - role: "{{role}}"
-              content: "{{prompt}}"
+              content: "{{content}}"
       temperature:
         type: number
         minimum: 0
@@ -130,6 +130,18 @@ tool_presets:
   json_object:
     response_format:
       type: json_object
+
+# How canonical message content parts lower into the Chat Completions wire shape.
+# text_only_as_string: a single text part renders as a bare string (not an array).
+content_mapping:
+  text_only_as_string: true
+  parts:
+    text:
+      template: { type: text, text: "{{text}}" }
+    image:
+      template:
+        type: image_url
+        image_url: { url: "{{url}}" }
 
 response:
   text_extract:

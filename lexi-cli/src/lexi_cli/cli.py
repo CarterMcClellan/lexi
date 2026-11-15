@@ -836,11 +836,12 @@ def respond_with_provider(
         print_error("Prompt text is empty.")
         return 1, None, False
 
-    # Route the message through the canonical IR. For text chat this is an
-    # identity transform (single text part -> the same prompt/role bindings the
-    # templates already consume); it exists so multimodal content is additive.
+    # Route the message through the canonical IR, lowering its content to the
+    # provider's wire shape via the API def's content_mapping. For text chat this
+    # is an identity transform (same body as before); image parts are additive.
     message = message_ir.normalize_prompt_payload(prompt_payload)
-    effective_payload = {**prompt_payload, **message_ir.to_prompt_bindings(message)}
+    content_mapping = provider_cfg.get("content_mapping")
+    effective_payload = {**prompt_payload, **message_ir.lower_message(message, content_mapping)}
 
     merged_overrides: dict[str, object] = dict(overrides or {})
     merged_overrides.setdefault("model", model)

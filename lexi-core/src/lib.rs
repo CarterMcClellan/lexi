@@ -20,7 +20,8 @@ pub use extract::{
     extract_annotations, extract_text, find_text_items, render_annotations, summarize_activity,
 };
 pub use message_ir::{
-    message_from_dict, normalize_prompt_payload, to_prompt_bindings, ContentPart, Message,
+    lower_message, message_from_dict, normalize_prompt_payload, to_prompt_bindings, ContentPart,
+    Message,
 };
 pub use path::{get_path, set_path, unset_path};
 pub use template::render_template;

@@ -291,3 +291,43 @@ If a provider defines `request.body_schema` inline and has no `api:` reference, 
 - This document is **v0** and freezes current behavior. Changes that alter composed bodies or extracted results are **breaking** and require a version bump plus new/updated conformance fixtures.
 - Forward-compatible extension points (added in later versions, see [target-architecture.md](../target-architecture.md)): typed multimodal content parts in request/response, an `operation` lifecycle for async APIs, and a capability registry. v0 engines must preserve the behavior pinned here while those are layered on.
 - Provider-specific fields that the schema does not model can still be injected via `set_paths` (escape hatch); unknown response fields are simply not extracted.
+
+---
+
+## 9. `content_mapping` (v0.1 — multimodal message content)
+
+Each API def declares how canonical message content parts (see
+[message-ir-v0.md](message-ir-v0.md)) lower into that provider's wire shape:
+
+```yaml
+content_mapping:
+  text_only_as_string: false        # true -> a single text part renders as a bare string
+  parts:
+    text:
+      template: { type: text, text: "{{text}}" }        # {{text}} from a TextPart
+    image:
+      template:                                          # {{url}} from an ImagePart
+        type: image
+        source: { type: url, url: "{{url}}" }
+```
+
+- The engine renders each part through its type's `template` (standard `{{var}}`
+  substitution; a TextPart binds `{{text}}`, an ImagePart binds `{{url}}` and
+  `{{media_type}}`), producing the provider's content.
+- The message's `role` and the lowered `content` are supplied to the `messages`
+  (or `input`) property's `x-render` template, which now binds `{{content}}`:
+
+  ```yaml
+  x-render:
+    template:
+      - role: "{{role}}"
+        content: "{{content}}"
+  ```
+
+- `text_only_as_string: true` (Chat Completions) collapses a lone text part to a
+  bare string; with any non-text part present, content is always a list.
+
+This keeps text composition byte-identical to v0 while making image input
+additive. The three shipped defs map: Anthropic → `text`/`image(source.url)`;
+Chat Completions → `text`/`image_url` (string content when text-only); Responses
+→ `input_text`/`input_image`.
