@@ -8,6 +8,7 @@
 pub mod auth;
 pub mod config;
 pub mod generate;
+pub mod image;
 pub mod respond;
 
 use thiserror::Error;
@@ -41,6 +42,7 @@ pub enum HostError {
 }
 
 pub use generate::{generate_images_text, generate_images_with_effective, SavedArtifact};
+pub use image::{resolve_image, resolve_images, ResolvedImage};
 pub use respond::{
     respond_background_text, respond_background_with_effective, respond_stream_text,
     respond_stream_with_effective, respond_text, respond_with_effective, RespondResult,

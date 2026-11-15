@@ -35,9 +35,17 @@ async fn text_chat_end_to_end() {
     eff["url"] = Value::from(server.uri());
 
     let client = reqwest::Client::new();
-    let res = respond_with_effective(&client, &eff, "test-key", "Hi there", "user", "claude-x")
-        .await
-        .expect("respond ok");
+    let res = respond_with_effective(
+        &client,
+        &eff,
+        "test-key",
+        "Hi there",
+        "user",
+        "claude-x",
+        &[],
+    )
+    .await
+    .expect("respond ok");
 
     // Text extraction walks content[] and concatenates text blocks.
     assert_eq!(res.text, "Hello from the mock.");
@@ -65,7 +73,7 @@ async fn http_error_surfaces() {
     eff["url"] = Value::from(server.uri());
 
     let client = reqwest::Client::new();
-    let err = respond_with_effective(&client, &eff, "bad", "hi", "user", "claude-x")
+    let err = respond_with_effective(&client, &eff, "bad", "hi", "user", "claude-x", &[])
         .await
         .unwrap_err();
     assert!(matches!(
@@ -101,11 +109,12 @@ async fn text_chat_streaming() {
     let deltas = Arc::new(Mutex::new(Vec::<String>::new()));
     let sink = deltas.clone();
     let client = reqwest::Client::new();
-    let res = respond_stream_with_effective(&client, &eff, "k", "Hi", "user", "claude-x", |d| {
-        sink.lock().unwrap().push(d.to_string());
-    })
-    .await
-    .expect("stream ok");
+    let res =
+        respond_stream_with_effective(&client, &eff, "k", "Hi", "user", "claude-x", &[], |d| {
+            sink.lock().unwrap().push(d.to_string());
+        })
+        .await
+        .expect("stream ok");
 
     assert_eq!(res.text, "Hello world");
     assert_eq!(*deltas.lock().unwrap(), vec!["Hello", " world"]);
@@ -168,4 +177,39 @@ async fn background_submit_poll_fetch() {
     let submit: Value = serde_json::from_slice(&reqs[0].body).unwrap();
     assert_eq!(submit["background"], true);
     assert_eq!(reqs[1].url.path(), "/responses/resp_1");
+}
+
+#[tokio::test]
+async fn text_plus_image_url() {
+    use lexi_host::image::ResolvedImage;
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/messages"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "content": [{"type": "text", "text": "A cat."}],
+            "stop_reason": "end_turn"
+        })))
+        .mount(&server)
+        .await;
+
+    let mut eff = config::load_api_def("messages").unwrap();
+    eff["url"] = Value::from(server.uri());
+
+    let images = vec![ResolvedImage::Url("https://example.com/cat.jpg".into())];
+    let client = reqwest::Client::new();
+    respond_with_effective(&client, &eff, "k", "Describe", "user", "claude-x", &images)
+        .await
+        .expect("respond ok");
+
+    // The composed message carries a text part + an Anthropic image(url) block.
+    let sent: Value =
+        serde_json::from_slice(&server.received_requests().await.unwrap()[0].body).unwrap();
+    assert_eq!(
+        sent["messages"][0]["content"],
+        json!([
+            {"type": "text", "text": "Describe"},
+            {"type": "image", "source": {"type": "url", "url": "https://example.com/cat.jpg"}}
+        ])
+    );
 }
