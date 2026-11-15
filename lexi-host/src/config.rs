@@ -118,3 +118,34 @@ pub fn resolve_api_key(provider_name: &str, provider_cfg: &Value) -> Result<Stri
     }
     Err(HostError::MissingApiKey(provider_name.to_string()))
 }
+
+/// Extract provider names from a loaded providers config (declaration order).
+pub fn provider_names(providers: &Value) -> Vec<String> {
+    providers
+        .get("providers")
+        .and_then(Value::as_object)
+        .map(|m| m.keys().cloned().collect())
+        .unwrap_or_default()
+}
+
+/// Load the providers config and return the configured provider names.
+pub fn list_providers() -> Result<Vec<String>, HostError> {
+    Ok(provider_names(&load_providers()?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn provider_names_in_order() {
+        let cfg = json!({ "providers": { "anthropic": {}, "openai": {}, "nvidia": {} } });
+        assert_eq!(provider_names(&cfg), ["anthropic", "openai", "nvidia"]);
+    }
+
+    #[test]
+    fn provider_names_empty_when_absent() {
+        assert!(provider_names(&json!({})).is_empty());
+    }
+}

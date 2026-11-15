@@ -31,3 +31,6 @@ htmlcov/
 providers/*/api-key
 providers/*/api-key.old
 !providers/*/api-key.example
+
+# Tauri generated
+lexi-desktop/gen/
