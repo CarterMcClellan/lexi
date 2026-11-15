@@ -27,10 +27,12 @@ Rust-core architecture vs. bundling Chromium + Node + Python.
 - The admin **read** endpoints are real, so the management tabs display live data:
   models (`/api/models`), API definitions (`/api/definitions` + `/raw`/`{name}`),
   prompts (`/api/prompts`), and config (`/api/config`) — all read from `~/.lexi-cli/`.
-- Config and prompt **writes** are real: `POST /api/config` (save settings) and
-  `POST /api/prompts` + `/active` + `/delete` (save / activate / remove prompts).
-- The remaining admin **writes** (model add/delete/default/aliases, definition
-  create/edit/save/delete, validate/preview) are still stubs — in progress.
+- Config, prompt, and **model** writes are real: config (`POST /api/config`),
+  prompts (`/api/prompts` + `/active` + `/delete`), and models
+  (`/api/models/add|set|delete|default`, `/api/models/aliases` + `/delete`).
+- Still stubbed: **API-definition writes** (create/edit/save/delete, validate/
+  preview) and hosted-model discovery (`GET /api/models/hosted`, needs a live
+  provider call) — the remaining work.
 
 ## Releases
 

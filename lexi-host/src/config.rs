@@ -215,6 +215,197 @@ fn load_models_in(home: &Path, provider: &str) -> Result<Vec<ModelInfo>, HostErr
         .collect())
 }
 
+/// Path to a per-provider config file under `providers/<provider>/`.
+fn provider_file(home: &Path, provider: &str, file: &str) -> PathBuf {
+    home.join("providers").join(provider).join(file)
+}
+
+/// Write `value` as YAML, creating the parent dir if needed.
+fn write_yaml(path: &Path, value: &Value) -> Result<(), HostError> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, serde_yaml::to_string(value)?)?;
+    Ok(())
+}
+
+/// The provider's current default model id, if set.
+pub fn default_model(provider: &str) -> Result<Option<String>, HostError> {
+    default_model_in(&lexi_home(), provider)
+}
+
+fn default_model_in(home: &Path, provider: &str) -> Result<Option<String>, HostError> {
+    Ok(read_provider_file(home, provider, "default-model.yaml")?
+        .get("default_model")
+        .and_then(Value::as_str)
+        .map(str::to_string))
+}
+
+/// Set (or clear, with `None`) the provider's default model.
+pub fn set_default_model(provider: &str, model: Option<&str>) -> Result<(), HostError> {
+    set_default_model_in(&lexi_home(), provider, model)
+}
+
+fn set_default_model_in(home: &Path, provider: &str, model: Option<&str>) -> Result<(), HostError> {
+    let data = match model {
+        Some(m) => serde_json::json!({ "default_model": m }),
+        None => Value::Object(Map::new()),
+    };
+    write_yaml(&provider_file(home, provider, "default-model.yaml"), &data)
+}
+
+/// The provider's `alias -> model` map (empty if none configured).
+pub fn model_aliases(provider: &str) -> Result<Map, HostError> {
+    model_aliases_in(&lexi_home(), provider)
+}
+
+fn model_aliases_in(home: &Path, provider: &str) -> Result<Map, HostError> {
+    let raw = read_provider_file(home, provider, "model-aliases.yaml")?;
+    // Files use either a top-level `aliases:` wrapper or a flat map.
+    let map = raw
+        .get("aliases")
+        .and_then(Value::as_object)
+        .or_else(|| raw.as_object())
+        .cloned()
+        .unwrap_or_default();
+    Ok(map)
+}
+
+/// Save the alias map, preserving the file's existing wrapper format (a
+/// top-level `aliases:` key if present, else a flat map — matching the CLI).
+fn save_model_aliases_in(home: &Path, provider: &str, aliases: &Map) -> Result<(), HostError> {
+    let path = provider_file(home, provider, "model-aliases.yaml");
+    let wrapped = path.exists()
+        && read_provider_file(home, provider, "model-aliases.yaml")?
+            .get("aliases")
+            .is_some();
+    let data = if wrapped {
+        serde_json::json!({ "aliases": aliases })
+    } else {
+        Value::Object(aliases.clone())
+    };
+    write_yaml(&path, &data)
+}
+
+/// Set an alias to point at a model.
+pub fn set_model_alias(provider: &str, alias: &str, model: &str) -> Result<(), HostError> {
+    set_model_alias_in(&lexi_home(), provider, alias, model)
+}
+
+fn set_model_alias_in(
+    home: &Path,
+    provider: &str,
+    alias: &str,
+    model: &str,
+) -> Result<(), HostError> {
+    let mut aliases = model_aliases_in(home, provider)?;
+    aliases.insert(alias.to_string(), Value::String(model.to_string()));
+    save_model_aliases_in(home, provider, &aliases)
+}
+
+/// Remove an alias. Errors if it doesn't exist.
+pub fn delete_model_alias(provider: &str, alias: &str) -> Result<(), HostError> {
+    delete_model_alias_in(&lexi_home(), provider, alias)
+}
+
+fn delete_model_alias_in(home: &Path, provider: &str, alias: &str) -> Result<(), HostError> {
+    let mut aliases = model_aliases_in(home, provider)?;
+    if aliases.remove(alias).is_none() {
+        return Err(HostError::Config(format!(
+            "alias {alias:?} not found for {provider}"
+        )));
+    }
+    save_model_aliases_in(home, provider, &aliases)
+}
+
+/// Add or update a model's metadata (merging over any existing entry), optionally
+/// making it the default. Returns whether the model already existed. Mirrors the
+/// CLI's `models add`/`set` (both upsert-merge).
+pub fn upsert_model(
+    provider: &str,
+    model: &str,
+    meta: &Map,
+    set_default: bool,
+) -> Result<bool, HostError> {
+    upsert_model_in(&lexi_home(), provider, model, meta, set_default)
+}
+
+fn upsert_model_in(
+    home: &Path,
+    provider: &str,
+    model: &str,
+    meta: &Map,
+    set_default: bool,
+) -> Result<bool, HostError> {
+    let mut data = match read_provider_file(home, provider, "configured-models.yaml")? {
+        Value::Object(m) => m,
+        _ => Map::new(),
+    };
+    let models = data
+        .entry("models")
+        .or_insert_with(|| Value::Object(Map::new()));
+    if !models.is_object() {
+        *models = Value::Object(Map::new());
+    }
+    let models = models.as_object_mut().unwrap();
+    let existed = models.contains_key(model);
+    let mut merged = models
+        .get(model)
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    for (k, v) in meta {
+        merged.insert(k.clone(), v.clone());
+    }
+    models.insert(model.to_string(), Value::Object(merged));
+
+    write_yaml(
+        &provider_file(home, provider, "configured-models.yaml"),
+        &Value::Object(data),
+    )?;
+    if set_default {
+        set_default_model_in(home, provider, Some(model))?;
+    }
+    Ok(existed)
+}
+
+/// Remove a model. Errors if absent. If it was the default, the default falls to
+/// the first remaining model (or is cleared when none remain).
+pub fn delete_model(provider: &str, model: &str) -> Result<(), HostError> {
+    delete_model_in(&lexi_home(), provider, model)
+}
+
+fn delete_model_in(home: &Path, provider: &str, model: &str) -> Result<(), HostError> {
+    let mut data = match read_provider_file(home, provider, "configured-models.yaml")? {
+        Value::Object(m) => m,
+        _ => Map::new(),
+    };
+    let new_default;
+    {
+        let models = data
+            .get_mut("models")
+            .and_then(Value::as_object_mut)
+            .ok_or_else(|| {
+                HostError::Config(format!("model {model:?} not found for {provider}"))
+            })?;
+        if models.remove(model).is_none() {
+            return Err(HostError::Config(format!(
+                "model {model:?} not found for {provider}"
+            )));
+        }
+        new_default = models.keys().next().cloned();
+    }
+    let was_default = default_model_in(home, provider)?.as_deref() == Some(model);
+    write_yaml(
+        &provider_file(home, provider, "configured-models.yaml"),
+        &Value::Object(data),
+    )?;
+    if was_default {
+        set_default_model_in(home, provider, new_default.as_deref())?;
+    }
+    Ok(())
+}
+
 /// Load `config.json` (the CLI's app settings), or an empty object if absent.
 /// Caller-supplied defaults are layered on top by the frontend.
 pub fn load_config() -> Result<Value, HostError> {
@@ -435,6 +626,79 @@ mod tests {
     fn load_models_empty_for_unknown_provider() {
         let dir = tempfile::tempdir().unwrap();
         assert!(load_models_in(dir.path(), "nope").unwrap().is_empty());
+    }
+
+    #[test]
+    fn upsert_model_adds_then_merges_and_sets_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut meta = Map::new();
+        meta.insert("description".into(), json!("cap"));
+        meta.insert("max_tokens".into(), json!(4096));
+
+        // First upsert creates the entry and sets it default.
+        let existed = upsert_model_in(dir.path(), "openai", "gpt-4o", &meta, true).unwrap();
+        assert!(!existed);
+        assert_eq!(
+            default_model_in(dir.path(), "openai").unwrap().as_deref(),
+            Some("gpt-4o")
+        );
+
+        // Second upsert merges new fields over the existing entry.
+        let mut meta2 = Map::new();
+        meta2.insert("context_window".into(), json!(128000));
+        let existed = upsert_model_in(dir.path(), "openai", "gpt-4o", &meta2, false).unwrap();
+        assert!(existed);
+        let models = load_models_in(dir.path(), "openai").unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].description.as_deref(), Some("cap"));
+        assert!(models[0].default);
+    }
+
+    #[test]
+    fn delete_model_fixes_default_and_errors_when_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let empty = Map::new();
+        upsert_model_in(dir.path(), "openai", "a", &empty, true).unwrap();
+        upsert_model_in(dir.path(), "openai", "b", &empty, false).unwrap();
+
+        // Deleting the default promotes the first remaining model.
+        delete_model_in(dir.path(), "openai", "a").unwrap();
+        assert_eq!(
+            default_model_in(dir.path(), "openai").unwrap().as_deref(),
+            Some("b")
+        );
+
+        // Deleting the last model clears the default.
+        delete_model_in(dir.path(), "openai", "b").unwrap();
+        assert_eq!(default_model_in(dir.path(), "openai").unwrap(), None);
+
+        assert!(delete_model_in(dir.path(), "openai", "gone").is_err());
+    }
+
+    #[test]
+    fn alias_set_delete_preserves_wrapper() {
+        let dir = tempfile::tempdir().unwrap();
+        let pdir = dir.path().join("providers").join("openai");
+        std::fs::create_dir_all(&pdir).unwrap();
+        std::fs::write(
+            pdir.join("model-aliases.yaml"),
+            "aliases:\n  gpt4: gpt-4o\n",
+        )
+        .unwrap();
+
+        set_model_alias_in(dir.path(), "openai", "mini", "gpt-4o-mini").unwrap();
+        let aliases = model_aliases_in(dir.path(), "openai").unwrap();
+        assert_eq!(aliases["gpt4"], "gpt-4o");
+        assert_eq!(aliases["mini"], "gpt-4o-mini");
+        // Wrapper preserved on disk.
+        let raw = std::fs::read_to_string(pdir.join("model-aliases.yaml")).unwrap();
+        assert!(raw.contains("aliases:"));
+
+        delete_model_alias_in(dir.path(), "openai", "gpt4").unwrap();
+        assert!(!model_aliases_in(dir.path(), "openai")
+            .unwrap()
+            .contains_key("gpt4"));
+        assert!(delete_model_alias_in(dir.path(), "openai", "nope").is_err());
     }
 
     #[test]
