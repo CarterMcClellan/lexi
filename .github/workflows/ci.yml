@@ -122,3 +122,23 @@ jobs:
         run: cargo test -p lexi-host
       - name: Build CLI
         run: cargo build -p lexi-cli-rs
+
+  # Desktop app (Tauri over lexi-host). macOS only for now: WKWebView is a system
+  # framework there, so no extra deps. Linux (webkit2gtk) / Windows (WebView2)
+  # Tauri builds + installers are a later slice. Compile-level gate only — a GUI
+  # can't be visually verified in CI.
+  desktop:
+    name: desktop (macos)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format check
+        run: cargo fmt -p lexi-desktop -- --check
+      - name: Clippy (warnings = errors)
+        run: cargo clippy -p lexi-desktop --all-targets -- -D warnings
+      - name: Build
+        run: cargo build -p lexi-desktop

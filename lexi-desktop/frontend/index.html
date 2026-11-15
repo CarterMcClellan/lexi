@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lexi</title>
+    <style>
+      :root { color-scheme: light dark; }
+      * { box-sizing: border-box; }
+      body {
+        font-family: -apple-system, system-ui, sans-serif;
+        margin: 0; padding: 24px; max-width: 900px; margin: 0 auto;
+      }
+      h1 { font-size: 20px; margin: 0 0 16px; }
+      .row { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
+      select, input, textarea, button { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid #8884; }
+      select { min-width: 160px; }
+      input { flex: 1; }
+      textarea { width: 100%; min-height: 120px; resize: vertical; }
+      button { cursor: pointer; font-weight: 600; }
+      button:disabled { opacity: 0.5; cursor: default; }
+      #out {
+        white-space: pre-wrap; word-break: break-word; margin-top: 16px;
+        padding: 14px; border-radius: 10px; background: #8881; min-height: 60px;
+      }
+      .err { color: #c0392b; }
+    </style>
+  </head>
+  <body>
+    <h1>Lexi</h1>
+    <div class="row">
+      <select id="provider"></select>
+      <input id="model" placeholder="model (optional — uses provider default)" />
+    </div>
+    <textarea id="prompt" placeholder="Ask something…"></textarea>
+    <div class="row">
+      <button id="send">Send</button>
+    </div>
+    <div id="out"></div>
+
+    <script>
+      const { invoke } = window.__TAURI__.core;
+      const $ = (id) => document.getElementById(id);
+      const out = $("out");
+
+      function showError(e) {
+        out.classList.add("err");
+        out.textContent = "error: " + e;
+      }
+
+      async function loadProviders() {
+        try {
+          const names = await invoke("list_providers");
+          $("provider").innerHTML = names
+            .map((n) => `<option value="${n}">${n}</option>`)
+            .join("");
+          if (!names.length) showError("no providers configured in ~/.lexi-cli");
+        } catch (e) {
+          showError(e);
+        }
+      }
+
+      async function send() {
+        const provider = $("provider").value;
+        const prompt = $("prompt").value.trim();
+        const model = $("model").value.trim() || null;
+        if (!provider || !prompt) return;
+        out.classList.remove("err");
+        out.textContent = "…";
+        $("send").disabled = true;
+        try {
+          out.textContent = await invoke("respond", { provider, prompt, model });
+        } catch (e) {
+          showError(e);
+        } finally {
+          $("send").disabled = false;
+        }
+      }
+
+      $("send").addEventListener("click", send);
+      $("prompt").addEventListener("keydown", (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") send();
+      });
+      loadProviders();
+    </script>
+  </body>
+</html>
