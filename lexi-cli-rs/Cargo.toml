@@ -1,0 +1,16 @@
+[package]
+name = "lexi-cli-rs"
+version = "0.0.0"
+edition = "2021"
+description = "Lexi CLI — a thin Rust shell over lexi-host / lexi-core."
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "lexi"
+path = "src/main.rs"
+
+[dependencies]
+lexi-host = { path = "../lexi-host" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+clap = { version = "4", features = ["derive"] }
