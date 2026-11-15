@@ -43,14 +43,26 @@ Rust-core architecture vs. bundling Chromium + Node + Python.
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-## Signing / notarization (follow-up — needs your credentials)
+## Signing / notarization (needs your credentials)
 
-The release builds are **unsigned**, so the OS warns on first launch
-(macOS Gatekeeper, Windows SmartScreen). To ship signed/notarized builds:
+The release workflow is **already wired for signing** — it stays unsigned (and
+green) until the secrets below exist, then signs automatically on the next tag.
+Unsigned builds warn on first launch (macOS Gatekeeper, Windows SmartScreen).
 
-- **macOS**: an Apple Developer ID certificate + notarization. Provide
-  `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`,
-  `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` as repo secrets; `tauri-action`
-  picks them up.
-- **Windows**: an Authenticode code-signing certificate.
+Add these repo secrets (**Settings → Secrets and variables → Actions**):
+
+- **macOS** (Developer ID + notarization; `tauri-action` picks them up):
+  - `APPLE_CERTIFICATE` — base64 of your Developer ID `.p12` (`base64 -i cert.p12 | pbcopy`)
+  - `APPLE_CERTIFICATE_PASSWORD` — the `.p12` password
+  - `APPLE_SIGNING_IDENTITY` — e.g. `Developer ID Application: You (TEAMID)`
+  - `APPLE_ID` — your Apple ID email
+  - `APPLE_PASSWORD` — an app-specific password for that Apple ID
+  - `APPLE_TEAM_ID` — your 10-char Developer Team ID
+- **Windows** (Authenticode): a `.pfx` code-signing cert — the workflow imports
+  it and sets `tauri.conf.json`'s `certificateThumbprint`:
+  - `WINDOWS_CERTIFICATE` — base64 of the `.pfx`
+  - `WINDOWS_CERTIFICATE_PASSWORD` — the `.pfx` password
 - **Linux**: typically unsigned; `.AppImage` runs as-is.
+
+Once the secrets are in place, re-run the release (`git tag v0.1.1 && git push
+origin v0.1.1`) to get signed artifacts.
