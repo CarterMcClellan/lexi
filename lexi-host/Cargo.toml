@@ -1,0 +1,20 @@
+[package]
+name = "lexi-host"
+version = "0.0.0"
+edition = "2021"
+description = "Runtime (I/O layer) for Lexi: HTTP transport, config/key loading, and auth over the pure lexi-core engine."
+license = "MIT"
+publish = false
+
+[dependencies]
+lexi-core = { path = "../lexi-core" }
+serde_json = { version = "1", features = ["preserve_order"] }
+serde_yaml = "0.9"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
+thiserror = "1"
+dirs = "5"
+
+[dev-dependencies]
+wiremock = "0.6"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
