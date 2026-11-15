@@ -10,7 +10,9 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "Project Authors" }]
-dependencies = ["pyyaml>=6.0", "rich>=13.0"]
+# "lexi" is the engine wheel (Rust lexi-core via PyO3), built from ../lexi-python.
+# Until it's published, install it first: `pip install ./lexi-python`.
+dependencies = ["pyyaml>=6.0", "rich>=13.0", "lexi"]
 
 [project.optional-dependencies]
 crypto = ["cryptography>=41.0"]
