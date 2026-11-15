@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
+import lexi  # the engine wheel (validate_definition lives here now)
 import pytest
 
 from lexi_cli.cli import (
@@ -23,7 +24,6 @@ from lexi_cli.cli import (
     resolve_effective_config,
     save_api_definition,
     seed_default_apis,
-    validate_api_definition,
 )
 
 # ---------------------------------------------------------------------------
@@ -153,63 +153,63 @@ class TestAPICrud:
 
 class TestValidateAPIDefinition:
     def test_valid(self, sample_api):
-        assert validate_api_definition(sample_api) == []
+        assert lexi.validate_definition(sample_api) == []
 
     def test_missing_name(self, sample_api):
         del sample_api["name"]
-        assert any("name" in e for e in validate_api_definition(sample_api))
+        assert any("name" in e for e in lexi.validate_definition(sample_api))
 
     def test_missing_request(self, sample_api):
         del sample_api["request"]
-        assert any("request" in e for e in validate_api_definition(sample_api))
+        assert any("request" in e for e in lexi.validate_definition(sample_api))
 
     def test_missing_path(self, sample_api):
         del sample_api["request"]["path"]
-        assert any("path" in e for e in validate_api_definition(sample_api))
+        assert any("path" in e for e in lexi.validate_definition(sample_api))
 
     def test_missing_body_schema(self, sample_api):
         del sample_api["request"]["body_schema"]
-        errors = validate_api_definition(sample_api)
+        errors = lexi.validate_definition(sample_api)
         assert any("body_schema" in e for e in errors)
 
     def test_rejects_legacy_body(self, sample_api):
         sample_api["request"]["body"] = {"model": "{{model}}"}
-        errors = validate_api_definition(sample_api)
+        errors = lexi.validate_definition(sample_api)
         assert any("legacy" in e.lower() for e in errors)
 
     def test_rejects_legacy_parameters(self, sample_api):
         sample_api["request"]["parameters"] = {"temperature": {"body_field": "temperature"}}
-        errors = validate_api_definition(sample_api)
+        errors = lexi.validate_definition(sample_api)
         assert any("legacy" in e.lower() for e in errors)
 
     def test_invalid_x_include(self, sample_api):
         sample_api["request"]["body_schema"]["properties"]["temperature"]["x-include"] = "wrong"
-        errors = validate_api_definition(sample_api)
+        errors = lexi.validate_definition(sample_api)
         assert any("x-include" in e for e in errors)
 
     def test_missing_response(self, sample_api):
         del sample_api["response"]
-        assert any("response" in e for e in validate_api_definition(sample_api))
+        assert any("response" in e for e in lexi.validate_definition(sample_api))
 
     def test_missing_text_extract(self, sample_api):
         del sample_api["response"]["text_extract"]
-        assert any("text_extract" in e for e in validate_api_definition(sample_api))
+        assert any("text_extract" in e for e in lexi.validate_definition(sample_api))
 
     def test_rejects_legacy_text_path(self, sample_api):
         sample_api["response"]["text_path"] = "x"
-        assert any("legacy" in e.lower() for e in validate_api_definition(sample_api))
+        assert any("legacy" in e.lower() for e in lexi.validate_definition(sample_api))
 
     def test_text_extract_requires_one_of_path_or_items(self, sample_api):
         sample_api["response"]["text_extract"] = {}
-        assert any("text_path or items_path" in e for e in validate_api_definition(sample_api))
+        assert any("text_path or items_path" in e for e in lexi.validate_definition(sample_api))
 
     def test_text_extract_rejects_both_modes(self, sample_api):
         sample_api["response"]["text_extract"] = {"text_path": "a", "items_path": "b"}
-        assert any("not both" in e for e in validate_api_definition(sample_api))
+        assert any("not both" in e for e in lexi.validate_definition(sample_api))
 
     def test_tool_presets_must_be_dict(self, sample_api):
         sample_api["tool_presets"] = "nope"
-        assert any("tool_presets" in e for e in validate_api_definition(sample_api))
+        assert any("tool_presets" in e for e in lexi.validate_definition(sample_api))
 
 
 # ---------------------------------------------------------------------------
@@ -374,7 +374,7 @@ class TestAPICommand:
     def test_api_create_default_template_validates(self, apis_dir):
         main(["api", "create", "new-api"])
         loaded = load_api_definition("new-api")
-        assert validate_api_definition(loaded) == []
+        assert lexi.validate_definition(loaded) == []
 
     def test_api_create_from_existing(self, apis_dir, sample_api):
         save_api_definition("source", sample_api)

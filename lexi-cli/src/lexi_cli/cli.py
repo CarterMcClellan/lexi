@@ -21,8 +21,8 @@ from pathlib import Path
 
 import lexi  # the Rust engine (lexi-core) via its PyO3 wheel
 
-# api_compose is retained only for CLI-side helpers the engine wheel doesn't
-# expose: cli_flags_for, tool_preset_names, set_path/unset_path, _VALID_INCLUDES.
+# api_compose is retained only for CLI-side path helpers the engine wheel doesn't
+# expose: parse_path / set_path / unset_path (used by --set / --unset).
 from lexi_cli import api_compose
 
 try:
@@ -302,174 +302,6 @@ def delete_api_definition(name: str) -> bool:
     except OSError as exc:
         print_error(f"Could not delete API definition {name!r}: {exc}")
         return False
-
-
-def validate_api_definition(data: dict) -> list[str]:
-    """Validate a schema-driven API definition. Returns error messages (empty = valid)."""
-    errors: list[str] = []
-    if not isinstance(data.get("name"), str) or not data["name"]:
-        errors.append("Missing or empty 'name' field.")
-    req = data.get("request")
-    if not isinstance(req, dict):
-        errors.append("Missing 'request' block.")
-    else:
-        if not isinstance(req.get("path"), str) or not req["path"]:
-            errors.append("Missing or empty 'request.path'.")
-        body_schema = req.get("body_schema")
-        if not isinstance(body_schema, dict):
-            errors.append("Missing or invalid 'request.body_schema' (must be a dict).")
-        else:
-            if body_schema.get("type") not in (None, "object"):
-                errors.append("'request.body_schema.type' must be 'object'.")
-            props = body_schema.get("properties")
-            if props is not None and not isinstance(props, dict):
-                errors.append("'request.body_schema.properties' must be a dict.")
-            elif isinstance(props, dict):
-                for pname, pdef in props.items():
-                    if not isinstance(pdef, dict):
-                        errors.append(f"Property {pname!r} must be a dict.")
-                        continue
-                    inc = pdef.get("x-include")
-                    if inc is not None and inc not in api_compose._VALID_INCLUDES:
-                        errors.append(
-                            f"Property {pname!r}: invalid x-include {inc!r} "
-                            f"(expected one of {sorted(api_compose._VALID_INCLUDES)})"
-                        )
-        # Reject legacy keys outright (no backward compat).
-        for legacy in ("body", "parameters", "param_mapping", "tools", "tools_key"):
-            if legacy in req:
-                errors.append(
-                    f"'request.{legacy}' is from the legacy schema; "
-                    f"use 'request.body_schema' instead."
-                )
-    presets = data.get("tool_presets")
-    if presets is not None and not isinstance(presets, dict):
-        errors.append("'tool_presets' must be a dict mapping name -> body fragment.")
-    resp = data.get("response")
-    if not isinstance(resp, dict):
-        errors.append("Missing 'response' block.")
-    else:
-        # Reject legacy top-level text_path/text_fallbacks (they live inside
-        # response.text_extract now).
-        for legacy in ("text_path", "text_fallbacks"):
-            if legacy in resp:
-                errors.append(
-                    f"'response.{legacy}' is from the legacy schema; "
-                    f"use 'response.text_extract' instead."
-                )
-        te = resp.get("text_extract")
-        arts = resp.get("artifacts")
-        if te is None and arts is None:
-            errors.append(
-                "response must define 'text_extract' (text output) or "
-                "'artifacts' (binary output)."
-            )
-        if te is not None and not isinstance(te, dict):
-            errors.append("'response.text_extract' must be a dict.")
-        elif isinstance(te, dict):
-            has_path = isinstance(te.get("text_path"), str) and te["text_path"]
-            has_items = isinstance(te.get("items_path"), str) and te["items_path"]
-            if has_path and has_items:
-                errors.append(
-                    "'response.text_extract' must specify either text_path "
-                    "(simple) OR items_path (walked), not both."
-                )
-            elif not has_path and not has_items:
-                errors.append(
-                    "'response.text_extract' must specify either text_path "
-                    "or items_path."
-                )
-            for opt_dict in ("item_filter", "content_filter"):
-                v = te.get(opt_dict)
-                if v is not None and not isinstance(v, dict):
-                    errors.append(
-                        f"'response.text_extract.{opt_dict}' must be a dict of field=value pairs."
-                    )
-        if arts is not None and not isinstance(arts, dict):
-            errors.append("'response.artifacts' must be a dict.")
-        meta = resp.get("metadata")
-        if meta is not None and not isinstance(meta, dict):
-            errors.append("'response.metadata' must be a dict.")
-        stream = resp.get("stream")
-        if stream is not None:
-            if not isinstance(stream, dict):
-                errors.append("'response.stream' must be a dict.")
-            else:
-                ae = stream.get("activity_events")
-                if ae is not None and not isinstance(ae, dict):
-                    errors.append("'response.stream.activity_events' must be a dict.")
-                elif isinstance(ae, dict):
-                    for evname, msg in ae.items():
-                        if not isinstance(msg, str):
-                            errors.append(
-                                f"'response.stream.activity_events.{evname}' must be a string."
-                            )
-        act = resp.get("activity")
-        if act is not None:
-            if not isinstance(act, dict):
-                errors.append("'response.activity' must be a dict.")
-            else:
-                if "items_path" in act and not isinstance(act["items_path"], str):
-                    errors.append("'response.activity.items_path' must be a string.")
-                sbt = act.get("summarize_by_type")
-                if sbt is not None and not isinstance(sbt, dict):
-                    errors.append("'response.activity.summarize_by_type' must be a dict.")
-                elif isinstance(sbt, dict):
-                    for tname, label in sbt.items():
-                        if not isinstance(label, str):
-                            errors.append(
-                                f"'response.activity.summarize_by_type.{tname}' must be a string."
-                            )
-        ann = resp.get("annotations")
-        if ann is not None:
-            if not isinstance(ann, dict):
-                errors.append("'response.annotations' must be a dict.")
-            else:
-                scope = ann.get("scope", "text_items")
-                if scope not in ("text_items", "response_root"):
-                    errors.append(
-                        f"'response.annotations.scope' must be 'text_items' or 'response_root' (got {scope!r})."
-                    )
-                types = ann.get("types")
-                if types is not None and not isinstance(types, dict):
-                    errors.append("'response.annotations.types' must be a dict mapping type → format spec.")
-                elif isinstance(types, dict):
-                    for tname, tcfg in types.items():
-                        if not isinstance(tcfg, dict):
-                            errors.append(
-                                f"'response.annotations.types.{tname}' must be a dict (e.g. {{format: ...}})."
-                            )
-                            continue
-                        if "format" in tcfg and not isinstance(tcfg["format"], str):
-                            errors.append(
-                                f"'response.annotations.types.{tname}.format' must be a string."
-                            )
-
-    op = data.get("operation")
-    if op is not None:
-        if not isinstance(op, dict):
-            errors.append("'operation' must be a dict.")
-        else:
-            poll = op.get("poll")
-            if poll is not None and not isinstance(poll, dict):
-                errors.append("'operation.poll' must be a dict.")
-            elif isinstance(poll, dict) and not isinstance(poll.get("path_template", ""), str):
-                errors.append("'operation.poll.path_template' must be a string.")
-            sm = op.get("status_map")
-            if sm is not None and not isinstance(sm, dict):
-                errors.append("'operation.status_map' must be a dict.")
-
-    files = data.get("files")
-    if files is not None:
-        if not isinstance(files, dict):
-            errors.append("'files' must be a dict.")
-        else:
-            up = files.get("upload")
-            if up is not None and not isinstance(up, dict):
-                errors.append("'files.upload' must be a dict.")
-            elif isinstance(up, dict) and not isinstance(up.get("path", ""), str):
-                errors.append("'files.upload.path' must be a string.")
-    return errors
 
 
 def seed_default_apis() -> None:
@@ -3328,7 +3160,7 @@ def handle_api(rest: str | None, tokens_override: list[str] | None = None) -> in
         if data is None:
             print_error(f"API definition {name!r} not found.")
             return 1
-        errors = validate_api_definition(data)
+        errors = lexi.validate_definition(data)
         if errors:
             print_error(f"Validation errors for {name!r}:")
             for err in errors:
@@ -3413,25 +3245,7 @@ def handle_api(rest: str | None, tokens_override: list[str] | None = None) -> in
                 print_error(f"API definition {target_name!r} not found.")
                 return 1
 
-        errors = validate_api_definition(data)
-        result: dict[str, object] = {
-            "name": data.get("name", target_name or ""),
-            "description": data.get("description", ""),
-            "valid": not errors,
-            "errors": errors,
-            "flags": api_compose.cli_flags_for(data),
-            "presets": api_compose.tool_preset_names(data),
-        }
-        if not errors:
-            try:
-                body = lexi.compose_request_body(
-                    data,
-                    prompt_payload={"prompt": sample_prompt, "role": sample_role},
-                    overrides={"model": sample_model},
-                )
-                result["body"] = body
-            except (ValueError, KeyError) as exc:
-                result["body_error"] = str(exc)
+        result = lexi.preview_definition(data, sample_prompt, sample_model, sample_role)
         print(json.dumps(result, indent=2, default=str))
         return 0
 
@@ -3465,8 +3279,8 @@ def handle_respond(rest: str | None, tokens_override: list[str] | None = None) -
 
     # Resolve effective config so we know the schema before parsing flags.
     effective_cfg_for_flags = resolve_effective_config(provider, provider_cfg)
-    flag_specs = api_compose.cli_flags_for(effective_cfg_for_flags)
-    presets_available = api_compose.tool_preset_names(effective_cfg_for_flags)
+    flag_specs = lexi.cli_flags(effective_cfg_for_flags)
+    presets_available = lexi.tool_preset_names(effective_cfg_for_flags)
 
     parsed, err = _parse_respond_flags(flag_specs, presets_available, tokens, start=flag_start)
     if err:

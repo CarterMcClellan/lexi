@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 
+import lexi  # cli_flags / tool_preset_names live in the engine wheel now
 import pytest
 
-from lexi_cli.api_compose import cli_flags_for, tool_preset_names
 from lexi_cli.cli import (
     _coerce_set_value,
     _coerce_typed_value,
@@ -213,8 +213,8 @@ class TestNormalizeFlag:
 
 class TestParseRespondFlags:
     def _parse(self, api_def, tokens):
-        specs = cli_flags_for(api_def)
-        presets = tool_preset_names(api_def)
+        specs = lexi.cli_flags(api_def)
+        presets = lexi.tool_preset_names(api_def)
         return _parse_respond_flags(specs, presets, tokens, start=0)
 
     def test_temperature(self, api_def):
