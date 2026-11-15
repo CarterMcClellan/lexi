@@ -27,14 +27,19 @@ APIS_DIR = Path(lexi_cli.__file__).resolve().parent / "apis"
 
 
 def _load_json(path: Path) -> dict:
-    return json.loads(path.read_text())
+    # Explicit UTF-8: fixtures contain non-ASCII (em dash, guillemets); Windows
+    # would otherwise decode with the locale codepage (cp1252) and fail.
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _load_api(name: str) -> dict:
     """Resolve an API definition by name from the packaged apis/ directory."""
     path = APIS_DIR / f"{name}.yaml"
     assert path.exists(), f"API definition {name!r} not found at {path}"
-    return yaml.safe_load(path.read_text())
+    # Explicit UTF-8: API defs contain emoji (stream.activity_events) whose
+    # bytes are undefined in Windows' cp1252 default. Rust's read_to_string
+    # is always UTF-8, which is why only the Python runner hit this.
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
 def _case_id(path: Path) -> str:
