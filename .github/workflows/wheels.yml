@@ -1,0 +1,84 @@
+name: Wheels
+
+# Build the `lexi` engine's Python wheels (abi3, one build per platform works on
+# CPython 3.9+) and an sdist, and attach them to the GitHub Release for a version
+# tag. workflow_dispatch builds them as downloadable artifacts only (no release),
+# so the build matrix can be tested without cutting a tag.
+#
+# Not published to PyPI (the `lexi` name there is taken) — users install from the
+# release artifacts. Runs only on tags / manual dispatch, so it never gates CI.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wheels:
+    name: wheel (${{ matrix.os }} ${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64 }
+          - { os: ubuntu-latest, target: aarch64 }
+          - { os: macos-latest, target: aarch64 }
+          - { os: macos-latest, target: x86_64 }
+          - { os: windows-latest, target: x64 }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --manifest-path lexi-python/Cargo.toml
+          manylinux: auto
+          sccache: "true"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}-${{ matrix.target }}
+          path: dist/*.whl
+
+  sdist:
+    name: sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist --manifest-path lexi-python/Cargo.toml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-sdist
+          path: dist/*.tar.gz
+
+  attach:
+    name: Attach to release
+    needs: [wheels, sdist]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: dist
+      - name: Upload wheels + sdist to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # Create the draft release if it doesn't exist yet (the desktop
+          # installers workflow may have already created it for this tag).
+          gh release create "$GITHUB_REF_NAME" --draft --title "Lexi $GITHUB_REF_NAME" \
+            --notes "Automated build — Python wheels and desktop installers." \
+            2>/dev/null || true
+          gh release upload "$GITHUB_REF_NAME" dist/* --clobber

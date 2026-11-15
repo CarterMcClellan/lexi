@@ -1,9 +1,10 @@
 [package]
 name = "lexi-python"
-version = "0.0.0"
+version = "0.1.0"
 edition = "2021"
 description = "Python bindings (PyO3) for the Lexi provider-agnostic engine (lexi-core)."
 license = "MIT"
+repository = "https://github.com/badscooter23/lexi"
 publish = false
 
 [lib]

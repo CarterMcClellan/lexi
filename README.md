@@ -147,6 +147,14 @@ cargo tauri build      # produce a native installer (target/release/bundle/)
 Prebuilt installers (macOS `.dmg`, Linux `.deb`/`.AppImage`, Windows `.msi`) are
 attached to GitHub Releases. See `lexi-desktop/README.md`.
 
+## Python engine (`import lexi`)
+
+The engine is also packaged as an `abi3` Python wheel (a PyO3 binding over the
+Rust core — one engine, not a reimplementation). Prebuilt wheels (macOS, Linux,
+Windows) and an sdist are attached to each GitHub Release; download the wheel for
+your platform and `pip install ./lexi-*.whl`, then `import lexi`. See
+`lexi-python/README.md`. (Not on PyPI — the `lexi` name there is taken.)
+
 ## Development
 
 ```bash
