@@ -15,6 +15,7 @@ use crate::HostError;
 pub enum ResolvedImage {
     Url(String),
     Base64 { data: String, media_type: String },
+    FileId(String),
 }
 
 impl ResolvedImage {
@@ -25,11 +26,12 @@ impl ResolvedImage {
             ResolvedImage::Base64 { data, media_type } => {
                 json!({ "type": "image", "data": data, "media_type": media_type })
             }
+            ResolvedImage::FileId(id) => json!({ "type": "image", "file_id": id }),
         }
     }
 }
 
-fn guess_media_type(path: &str) -> String {
+pub(crate) fn guess_media_type(path: &str) -> String {
     let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
     match ext.as_str() {
         "jpg" | "jpeg" => "image/jpeg",
@@ -40,11 +42,13 @@ fn guess_media_type(path: &str) -> String {
     .to_string()
 }
 
-/// Resolve one `--image` spec: a URL is used as-is; a local path is read and
-/// base64-encoded.
+/// Resolve one `--image` spec: a URL is used as-is; `file:<id>` references a
+/// previously uploaded file; anything else is a local path (read + base64).
 pub fn resolve_image(spec: &str) -> Result<ResolvedImage, HostError> {
     if spec.starts_with("http://") || spec.starts_with("https://") {
         Ok(ResolvedImage::Url(spec.to_string()))
+    } else if let Some(id) = spec.strip_prefix("file:") {
+        Ok(ResolvedImage::FileId(id.to_string()))
     } else {
         let bytes = std::fs::read(spec)?;
         Ok(ResolvedImage::Base64 {

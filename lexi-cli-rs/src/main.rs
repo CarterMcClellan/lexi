@@ -53,6 +53,13 @@ enum Cmd {
         #[arg(long, default_value = ".")]
         out: std::path::PathBuf,
     },
+    /// Upload a file to a provider's Files API; prints the file id.
+    Upload {
+        /// Provider name.
+        provider: String,
+        /// Path to the file to upload.
+        file: std::path::PathBuf,
+    },
 }
 
 #[tokio::main]
@@ -130,5 +137,15 @@ async fn main() -> ExitCode {
                 }
             }
         }
+        Cmd::Upload { provider, file } => match lexi_host::upload_file(&provider, &file).await {
+            Ok(id) => {
+                println!("{id}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("error: {e}");
+                ExitCode::FAILURE
+            }
+        },
     }
 }
