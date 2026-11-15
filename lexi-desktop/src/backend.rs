@@ -25,9 +25,7 @@ pub async fn handle(method: &str, path: &str, body: Option<Value>) -> Result<Val
         ("GET", p) if p.starts_with("/api/models") => models(path),
         ("GET", p) if p.starts_with("/api/definitions/raw/") => api_raw(base),
         ("GET", "/api/definitions") | ("GET", "/api/definitions/") => api_list(),
-        ("GET", p) if p.starts_with("/api/definitions/validate/") => Err(format!(
-            "endpoint not available in the desktop app: {method} {base}"
-        )),
+        ("GET", p) if p.starts_with("/api/definitions/validate/") => api_validate(base),
         ("GET", p) if p.starts_with("/api/definitions/") => api_show(base),
         ("GET", p) if p.starts_with("/api/respond/options") => Ok(json!({ "presets": [] })),
         ("POST", "/api/config") | ("POST", "/api/config/") => {
@@ -42,6 +40,9 @@ pub async fn handle(method: &str, path: &str, body: Option<Value>) -> Result<Val
         ("POST", "/api/models/add") => models_upsert(body.unwrap_or(Value::Null), false),
         ("POST", "/api/models/set") => models_upsert(body.unwrap_or(Value::Null), true),
         ("POST", "/api/models/delete") => models_delete(body.unwrap_or(Value::Null)),
+        ("POST", "/api/definitions/create") => api_create(body.unwrap_or(Value::Null)),
+        ("POST", "/api/definitions/save-raw") => api_save_raw(body.unwrap_or(Value::Null)),
+        ("POST", "/api/definitions/delete") => api_delete(body.unwrap_or(Value::Null)),
         ("POST", "/api/respond") => respond(body.unwrap_or(Value::Null)).await,
         _ => Err(format!(
             "endpoint not available in the desktop app: {method} {base}"
@@ -362,6 +363,55 @@ fn api_raw(base: &str) -> Result<Value, String> {
     let name = def_name(base, "/api/definitions/raw/");
     let yaml = config::load_api_raw(&name).map_err(|e| e.to_string())?;
     Ok(json!({ "name": name, "yaml": yaml }))
+}
+
+/// `GET /api/definitions/validate/{name}` — validate a stored definition.
+fn api_validate(base: &str) -> Result<Value, String> {
+    let name = def_name(base, "/api/definitions/validate/");
+    let (valid, errors) = config::validate_api_def(&name).map_err(|e| e.to_string())?;
+    Ok(json!({ "name": name, "valid": valid, "output": errors.join("\n") }))
+}
+
+/// `POST /api/definitions/create` — scaffold or clone a new definition.
+fn api_create(body: Value) -> Result<Value, String> {
+    let name = require_field(&body, "name")?;
+    let from = body
+        .get("from")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty());
+    let path = body
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty());
+    let text_path = body
+        .get("text_path")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty());
+    config::create_api_def(&name, from, path, text_path).map_err(|e| e.to_string())?;
+    Ok(json!({ "name": name, "output": format!("Created {name:?}.") }))
+}
+
+/// `POST /api/definitions/save-raw` — save edited YAML, then validate.
+fn api_save_raw(body: Value) -> Result<Value, String> {
+    let name = require_field(&body, "name")?;
+    let yaml = body
+        .get("yaml")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "yaml content is required".to_string())?;
+    let errors = config::save_api_raw(&name, yaml).map_err(|e| e.to_string())?;
+    Ok(json!({
+        "name": name,
+        "valid": errors.is_empty(),
+        "validation": errors.join("\n"),
+    }))
+}
+
+/// `POST /api/definitions/delete` — remove a custom definition.
+fn api_delete(body: Value) -> Result<Value, String> {
+    let name = require_field(&body, "name")?;
+    config::delete_api_def(&name).map_err(|e| e.to_string())?;
+    Ok(json!({ "name": name, "output": format!("Removed {name:?}.") }))
 }
 
 /// Extract (and percent-decode) a definition name from a `/api/definitions/...` path.

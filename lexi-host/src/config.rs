@@ -582,6 +582,175 @@ fn load_api_raw_in(home: &Path, name: &str) -> Result<String, HostError> {
     Err(HostError::UnknownApi(name.to_string()))
 }
 
+/// The user-dir path for a custom API definition, rejecting names that contain
+/// path separators or `..` (so a name can't escape the apis dir).
+fn api_def_path(home: &Path, name: &str) -> Result<PathBuf, HostError> {
+    let name = name.trim();
+    if name.is_empty()
+        || name.contains('/')
+        || name.contains('\\')
+        || name.split(['/', '\\']).any(|seg| seg == "..")
+    {
+        return Err(HostError::Config(format!(
+            "invalid definition name {name:?}"
+        )));
+    }
+    Ok(home.join("apis").join(format!("{name}.yaml")))
+}
+
+/// Create a new API definition. With `from`, deep-copies that definition as a
+/// template (embedded or user); otherwise scaffolds a default chat-style schema.
+/// `path`/`text_path` override the request path and response text path. Mirrors
+/// the CLI's `api create`.
+pub fn create_api_def(
+    name: &str,
+    from: Option<&str>,
+    path: Option<&str>,
+    text_path: Option<&str>,
+) -> Result<(), HostError> {
+    create_api_def_in(&lexi_home(), name, from, path, text_path)
+}
+
+fn create_api_def_in(
+    home: &Path,
+    name: &str,
+    from: Option<&str>,
+    path: Option<&str>,
+    text_path: Option<&str>,
+) -> Result<(), HostError> {
+    let dest = api_def_path(home, name)?;
+    let name = name.trim();
+
+    let mut data = match from {
+        Some(src) => load_api_def_from(home, src)?,
+        None => default_api_scaffold(name, path, text_path),
+    };
+    let obj = data
+        .as_object_mut()
+        .ok_or_else(|| HostError::Config("definition must be a mapping".into()))?;
+    obj.insert("name".into(), Value::String(name.to_string()));
+    if let Some(p) = path {
+        obj.entry("request")
+            .or_insert_with(|| Value::Object(Map::new()));
+        if let Some(req) = obj.get_mut("request").and_then(Value::as_object_mut) {
+            req.insert("path".into(), Value::String(p.to_string()));
+        }
+    }
+    if let Some(tp) = text_path {
+        obj.entry("response")
+            .or_insert_with(|| Value::Object(Map::new()));
+        if let Some(resp) = obj.get_mut("response").and_then(Value::as_object_mut) {
+            let te = resp
+                .entry("text_extract")
+                .or_insert_with(|| Value::Object(Map::new()));
+            if let Some(te) = te.as_object_mut() {
+                te.insert("text_path".into(), Value::String(tp.to_string()));
+                for drop in [
+                    "items_path",
+                    "item_filter",
+                    "content_path",
+                    "content_filter",
+                ] {
+                    te.remove(drop);
+                }
+            }
+        }
+    }
+    write_yaml(&dest, &data)
+}
+
+/// Load a definition to use as a `create --from` template: the embedded copy for
+/// shipped names, else the user file.
+fn load_api_def_from(home: &Path, name: &str) -> Result<Value, HostError> {
+    if let Some(text) = embedded_api_text(name) {
+        return Ok(serde_yaml::from_str(text)?);
+    }
+    let user = home.join("apis").join(format!("{name}.yaml"));
+    if user.exists() {
+        return Ok(serde_yaml::from_str(&std::fs::read_to_string(&user)?)?);
+    }
+    Err(HostError::Config(format!(
+        "source API definition {name:?} not found"
+    )))
+}
+
+/// The default chat-style definition scaffold the CLI seeds a new def with.
+fn default_api_scaffold(name: &str, path: Option<&str>, text_path: Option<&str>) -> Value {
+    serde_json::json!({
+        "name": name,
+        "description": "",
+        "auth": { "header": "Authorization", "value_prefix": "Bearer " },
+        "request": {
+            "method": "POST",
+            "path": path.unwrap_or("/chat/completions"),
+            "body_schema": {
+                "type": "object",
+                "required": ["model", "messages"],
+                "properties": {
+                    "model": { "type": "string", "x-bind": { "from": "model" } },
+                    "messages": {
+                        "type": "array",
+                        "x-render": { "template": [{ "role": "{{role}}", "content": "{{prompt}}" }] }
+                    },
+                    "temperature": {
+                        "type": "number", "minimum": 0, "maximum": 2,
+                        "x-cli": { "flag": "--temperature", "alias": "-t" }
+                    },
+                    "max_tokens": {
+                        "type": "integer", "minimum": 1,
+                        "x-cli": { "flag": "--max-tokens", "alias": "-m" }
+                    }
+                }
+            }
+        },
+        "response": {
+            "text_extract": { "text_path": text_path.unwrap_or("choices[0].message.content") }
+        }
+    })
+}
+
+/// Save raw YAML for a (custom) API definition, then validate it. Errors if the
+/// YAML doesn't parse; otherwise writes the file and returns the validation
+/// errors (empty = valid). Mirrors the CLI's save-then-validate.
+pub fn save_api_raw(name: &str, yaml: &str) -> Result<Vec<String>, HostError> {
+    save_api_raw_in(&lexi_home(), name, yaml)
+}
+
+fn save_api_raw_in(home: &Path, name: &str, yaml: &str) -> Result<Vec<String>, HostError> {
+    let dest = api_def_path(home, name)?;
+    let parsed: Value =
+        serde_yaml::from_str(yaml).map_err(|e| HostError::Config(format!("Invalid YAML: {e}")))?;
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&dest, yaml)?;
+    Ok(lexi_core::validate_definition(&parsed))
+}
+
+/// Validate a stored API definition, returning `(valid, errors)`.
+pub fn validate_api_def(name: &str) -> Result<(bool, Vec<String>), HostError> {
+    let def = load_api_def(name)?;
+    let errors = lexi_core::validate_definition(&def);
+    Ok((errors.is_empty(), errors))
+}
+
+/// Delete a custom API definition. Errors if no user file exists (shipped
+/// definitions have no user file to remove).
+pub fn delete_api_def(name: &str) -> Result<(), HostError> {
+    delete_api_def_in(&lexi_home(), name)
+}
+
+fn delete_api_def_in(home: &Path, name: &str) -> Result<(), HostError> {
+    let path = api_def_path(home, name)?;
+    if !path.exists() {
+        return Err(HostError::Config(format!(
+            "API definition {name:?} not found"
+        )));
+    }
+    std::fs::remove_file(&path)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -796,6 +965,68 @@ mod tests {
         assert!(names.contains(&"custom")); // user
         let custom = defs.iter().find(|(n, _)| n == "custom").unwrap();
         assert_eq!(custom.1.as_deref(), Some("my api"));
+    }
+
+    #[test]
+    fn create_api_def_scaffolds_valid_definition() {
+        let dir = tempfile::tempdir().unwrap();
+        create_api_def_in(dir.path(), "mine", None, None, None).unwrap();
+        let raw = load_api_raw_in(dir.path(), "mine").unwrap();
+        let def: Value = serde_yaml::from_str(&raw).unwrap();
+        assert_eq!(def["name"], "mine");
+        // The scaffold is itself a valid definition.
+        assert!(lexi_core::validate_definition(&def).is_empty());
+    }
+
+    #[test]
+    fn create_api_def_from_copies_source_and_applies_overrides() {
+        let dir = tempfile::tempdir().unwrap();
+        create_api_def_in(
+            dir.path(),
+            "copy",
+            Some("messages"),
+            Some("/v2/x"),
+            Some("a.b"),
+        )
+        .unwrap();
+        let def: Value =
+            serde_yaml::from_str(&load_api_raw_in(dir.path(), "copy").unwrap()).unwrap();
+        assert_eq!(def["name"], "copy");
+        assert_eq!(def["request"]["path"], "/v2/x");
+        assert_eq!(def["response"]["text_extract"]["text_path"], "a.b");
+    }
+
+    #[test]
+    fn save_api_raw_writes_and_validates() {
+        let dir = tempfile::tempdir().unwrap();
+        // Invalid YAML is rejected before any write.
+        assert!(save_api_raw_in(dir.path(), "bad", "a: [unclosed").is_err());
+        assert!(!dir.path().join("apis").join("bad.yaml").exists());
+
+        // Valid YAML writes; incomplete definition returns errors (still saved).
+        let errors = save_api_raw_in(dir.path(), "wip", "name: wip\n").unwrap();
+        assert!(!errors.is_empty());
+        assert!(dir.path().join("apis").join("wip.yaml").exists());
+
+        // A complete definition validates clean.
+        let good = "name: ok\nrequest:\n  path: /x\n  body_schema:\n    type: object\nresponse:\n  text_extract:\n    text_path: a.b\n";
+        assert!(save_api_raw_in(dir.path(), "ok", good).unwrap().is_empty());
+    }
+
+    #[test]
+    fn delete_api_def_removes_user_file_or_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(delete_api_def_in(dir.path(), "nope").is_err());
+        save_api_raw_in(dir.path(), "temp", "name: temp\n").unwrap();
+        delete_api_def_in(dir.path(), "temp").unwrap();
+        assert!(!dir.path().join("apis").join("temp.yaml").exists());
+    }
+
+    #[test]
+    fn api_def_name_guard_rejects_traversal() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(create_api_def_in(dir.path(), "../evil", None, None, None).is_err());
+        assert!(save_api_raw_in(dir.path(), "a/b", "name: x\n").is_err());
     }
 
     #[test]
