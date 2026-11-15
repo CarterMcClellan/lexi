@@ -1,0 +1,13 @@
+{
+  "name": "legacy-keys",
+  "description": "Legacy schema keys are rejected: request.body (use body_schema) and response.text_path (use text_extract).",
+  "definition": {
+    "name": "x",
+    "request": { "path": "/x", "body_schema": { "type": "object" }, "body": {} },
+    "response": { "text_extract": { "text_path": "a.b" }, "text_path": "legacy" }
+  },
+  "expect_errors": [
+    "'request.body' is from the legacy schema; use 'request.body_schema' instead.",
+    "'response.text_path' is from the legacy schema; use 'response.text_extract' instead."
+  ]
+}

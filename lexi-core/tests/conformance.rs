@@ -340,3 +340,42 @@ fn capabilities() {
     }
     finish("capability", failures);
 }
+
+#[test]
+fn definitions() {
+    let mut failures = Vec::new();
+    let files = case_files("definition");
+    assert!(!files.is_empty(), "no definition cases found");
+
+    for path in files {
+        let case = load_json(&path);
+        let nm = name_of(&path);
+        let def = &case["definition"];
+
+        if let Some(exp) = case.get("expect_errors") {
+            let got: Vec<Value> = core::validate_definition(def)
+                .into_iter()
+                .map(Value::from)
+                .collect();
+            if &Value::Array(got.clone()) != exp {
+                failures.push(format!("{nm}: validate_definition mismatch (got {got:?})"));
+            }
+        }
+        if let Some(exp) = case.get("expect_flags") {
+            let got = Value::Array(core::cli_flags(def));
+            if &got != exp {
+                failures.push(format!("{nm}: cli_flags mismatch (got {got})"));
+            }
+        }
+        if let Some(exp) = case.get("expect_presets") {
+            let got: Vec<Value> = core::tool_preset_names(def)
+                .into_iter()
+                .map(Value::from)
+                .collect();
+            if &Value::Array(got.clone()) != exp {
+                failures.push(format!("{nm}: tool_preset_names mismatch (got {got:?})"));
+            }
+        }
+    }
+    finish("definition", failures);
+}

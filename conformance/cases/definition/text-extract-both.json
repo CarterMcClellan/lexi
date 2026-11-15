@@ -1,0 +1,12 @@
+{
+  "name": "text-extract-both",
+  "description": "response.text_extract must specify text_path OR items_path, not both.",
+  "definition": {
+    "name": "x",
+    "request": { "path": "/x", "body_schema": { "type": "object" } },
+    "response": { "text_extract": { "text_path": "a", "items_path": "b" } }
+  },
+  "expect_errors": [
+    "'response.text_extract' must specify either text_path (simple) OR items_path (walked), not both."
+  ]
+}

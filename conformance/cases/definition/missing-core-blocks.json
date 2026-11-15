@@ -1,0 +1,12 @@
+{
+  "name": "missing-core-blocks",
+  "description": "An empty definition flags the missing name, request, and response blocks (in that order).",
+  "definition": {},
+  "expect_errors": [
+    "Missing or empty 'name' field.",
+    "Missing 'request' block.",
+    "Missing 'response' block."
+  ],
+  "expect_flags": [],
+  "expect_presets": []
+}

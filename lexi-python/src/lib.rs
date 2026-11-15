@@ -209,6 +209,34 @@ fn get_path(py: Python<'_>, obj: &Bound<'_, PyAny>, path: String) -> PyResult<Py
 // --- capabilities ---------------------------------------------------------
 
 #[pyfunction]
+fn validate_definition(def: &Bound<'_, PyAny>) -> PyResult<Vec<String>> {
+    Ok(lexi_core::validate_definition(&from_py(def)?))
+}
+
+#[pyfunction]
+fn cli_flags<'py>(py: Python<'py>, api_def: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    let flags = lexi_core::cli_flags(&from_py(api_def)?);
+    to_py(py, &Value::Array(flags))
+}
+
+#[pyfunction]
+fn tool_preset_names(api_def: &Bound<'_, PyAny>) -> PyResult<Vec<String>> {
+    Ok(lexi_core::tool_preset_names(&from_py(api_def)?))
+}
+
+#[pyfunction]
+fn preview_definition<'py>(
+    py: Python<'py>,
+    def: &Bound<'py, PyAny>,
+    prompt: &str,
+    model: &str,
+    role: &str,
+) -> PyResult<Bound<'py, PyAny>> {
+    let result = lexi_core::preview_definition(&from_py(def)?, prompt, model, role);
+    to_py(py, &result)
+}
+
+#[pyfunction]
 #[pyo3(signature = (api_def, model_capabilities=None))]
 fn resolve_capabilities<'py>(
     py: Python<'py>,
@@ -331,6 +359,10 @@ fn lexi(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(render_annotations, m)?)?;
     m.add_function(wrap_pyfunction!(extract_artifacts, m)?)?;
     m.add_function(wrap_pyfunction!(get_path, m)?)?;
+    m.add_function(wrap_pyfunction!(validate_definition, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_flags, m)?)?;
+    m.add_function(wrap_pyfunction!(tool_preset_names, m)?)?;
+    m.add_function(wrap_pyfunction!(preview_definition, m)?)?;
     m.add_function(wrap_pyfunction!(resolve_capabilities, m)?)?;
     m.add_function(wrap_pyfunction!(supports_input, m)?)?;
     m.add_function(wrap_pyfunction!(supports_output, m)?)?;

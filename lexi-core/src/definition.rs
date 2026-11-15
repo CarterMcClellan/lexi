@@ -78,9 +78,14 @@ fn validate_request(req: Option<&Value>, errors: &mut Vec<String>) {
                             if !ok {
                                 let mut valid: Vec<&str> = VALID_INCLUDES.to_vec();
                                 valid.sort_unstable();
+                                let got = inc
+                                    .as_str()
+                                    .map(str::to_string)
+                                    .unwrap_or_else(|| inc.to_string());
                                 errors.push(format!(
-                                    "Property {pname:?}: invalid x-include {inc} \
-                                     (expected one of {valid:?})"
+                                    "Property '{pname}': invalid x-include '{got}' \
+                                     (expected one of: {})",
+                                    valid.join(", ")
                                 ));
                             }
                         }

@@ -1,0 +1,60 @@
+{
+  "name": "valid-with-flags-and-presets",
+  "description": "A complete, valid definition: no validation errors; CLI flags collected from x-cli properties (including nested objects, by dotted path); tool presets sorted.",
+  "definition": {
+    "name": "demo",
+    "request": {
+      "path": "/chat/completions",
+      "body_schema": {
+        "type": "object",
+        "properties": {
+          "model": { "type": "string", "x-bind": { "from": "model" } },
+          "temperature": {
+            "type": "number",
+            "description": "sampling temp",
+            "x-cli": { "flag": "--temperature", "alias": "-t" }
+          },
+          "opts": {
+            "type": "object",
+            "properties": {
+              "max_tokens": {
+                "type": "integer",
+                "x-cli": { "flag": "--max-tokens" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "response": { "text_extract": { "text_path": "choices[0].message.content" } },
+    "tool_presets": { "web": {}, "arith": {} }
+  },
+  "expect_errors": [],
+  "expect_flags": [
+    {
+      "flag": "--temperature",
+      "alias": "-t",
+      "path": "temperature",
+      "type": "number",
+      "enum": null,
+      "default": null,
+      "description": "sampling temp",
+      "repeat": false,
+      "invert": false,
+      "enum_map": null
+    },
+    {
+      "flag": "--max-tokens",
+      "alias": null,
+      "path": "opts.max_tokens",
+      "type": "integer",
+      "enum": null,
+      "default": null,
+      "description": null,
+      "repeat": false,
+      "invert": false,
+      "enum_map": null
+    }
+  ],
+  "expect_presets": ["arith", "web"]
+}

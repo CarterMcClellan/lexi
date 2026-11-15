@@ -1,0 +1,20 @@
+{
+  "name": "bad-x-include",
+  "description": "A body_schema property with an unknown x-include mode is reported with the valid modes.",
+  "definition": {
+    "name": "x",
+    "request": {
+      "path": "/x",
+      "body_schema": {
+        "type": "object",
+        "properties": {
+          "p": { "type": "string", "x-include": "sometimes" }
+        }
+      }
+    },
+    "response": { "text_extract": { "text_path": "a.b" } }
+  },
+  "expect_errors": [
+    "Property 'p': invalid x-include 'sometimes' (expected one of: always, if_any_child_set, if_non_empty, if_set, if_truthy)"
+  ]
+}
