@@ -1,0 +1,7 @@
+{
+  "name": "responses-poll-in-progress",
+  "description": "A poll with status 'in_progress' classifies as running and is not terminal.",
+  "api": "responses",
+  "response": { "id": "resp_abc123", "status": "in_progress" },
+  "expect_operation": { "id": "resp_abc123", "status": "in_progress", "state": "running", "done": false }
+}

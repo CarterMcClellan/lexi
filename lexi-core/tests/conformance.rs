@@ -229,6 +229,34 @@ fn message_ir() {
 }
 
 #[test]
+fn operations() {
+    let mut failures = Vec::new();
+    let files = case_files("operation");
+    assert!(!files.is_empty(), "no operation cases found");
+
+    for path in files {
+        let case = load_json(&path);
+        let api = load_api(case["api"].as_str().unwrap());
+        let nm = name_of(&path);
+        let op = core::read_operation(&case["response"], api.get("operation"));
+
+        if let Some(exp) = case.get("expect_operation") {
+            if &op != exp {
+                failures.push(format!("{nm}: operation mismatch (got {op})"));
+            }
+        }
+        if let Some(Value::String(exp_path)) = case.get("expect_poll_path") {
+            let id = op.get("id").cloned().unwrap_or(Value::Null);
+            let got = core::poll_path(api.get("operation").unwrap(), &id);
+            if &got != exp_path {
+                failures.push(format!("{nm}: poll path mismatch (got {got})"));
+            }
+        }
+    }
+    finish("operation", failures);
+}
+
+#[test]
 fn capabilities() {
     let mut failures = Vec::new();
     let files = case_files("capability");

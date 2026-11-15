@@ -1,0 +1,7 @@
+{
+  "name": "responses-poll-completed",
+  "description": "A poll with status 'completed' is succeeded and terminal.",
+  "api": "responses",
+  "response": { "id": "resp_abc123", "status": "completed" },
+  "expect_operation": { "id": "resp_abc123", "status": "completed", "state": "succeeded", "done": true }
+}

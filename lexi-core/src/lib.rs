@@ -12,6 +12,7 @@ pub mod capabilities;
 pub mod compose;
 pub mod extract;
 pub mod message_ir;
+pub mod operations;
 pub mod path;
 pub mod template;
 pub mod validate;
@@ -26,6 +27,7 @@ pub use message_ir::{
     lower_message, message_from_dict, normalize_prompt_payload, to_prompt_bindings, ContentPart,
     Message,
 };
+pub use operations::{classify_status, is_terminal, poll_path, read_operation};
 pub use path::{get_path, set_path, unset_path};
 pub use template::render_template;
 pub use validate::validate;
