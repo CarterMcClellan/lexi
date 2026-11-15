@@ -14,6 +14,7 @@ pub mod extract;
 pub mod message_ir;
 pub mod operations;
 pub mod path;
+pub mod stream;
 pub mod template;
 pub mod uploads;
 pub mod validate;
@@ -30,6 +31,7 @@ pub use message_ir::{
 };
 pub use operations::{classify_status, is_terminal, poll_path, read_operation};
 pub use path::{get_path, set_path, unset_path};
+pub use stream::{classify_event, parse_sse_block};
 pub use template::render_template;
 pub use uploads::{read_upload, upload_path, upload_purpose_field};
 pub use validate::validate;

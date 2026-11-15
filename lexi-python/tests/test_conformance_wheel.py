@@ -45,6 +45,7 @@ MESSAGE = _cases("message")
 CAPABILITY = _cases("capability")
 OPERATION = _cases("operation")
 UPLOAD = _cases("upload")
+STREAM = _cases("stream")
 
 
 @pytest.mark.parametrize("path", REQUEST, ids=[_id(p) for p in REQUEST])
@@ -140,5 +141,14 @@ def test_upload(path: Path) -> None:
         assert lexi.upload_path(files_cfg) == case["expect_upload_path"], case["name"]
 
 
+@pytest.mark.parametrize("path", STREAM, ids=[_id(p) for p in STREAM])
+def test_stream(path: Path) -> None:
+    case = _load_json(path)
+    cfg = _load_api(case["api"])["response"]["stream"]
+    for i, ev in enumerate(case["events"]):
+        got = lexi.classify_event(ev["event"], ev["data"], cfg)
+        assert got == case["expect"][i], f"{case['name']}[{i}]"
+
+
 def test_suite_non_empty() -> None:
-    assert REQUEST and RESPONSE and MESSAGE and CAPABILITY and OPERATION and UPLOAD
+    assert REQUEST and RESPONSE and MESSAGE and CAPABILITY and OPERATION and UPLOAD and STREAM

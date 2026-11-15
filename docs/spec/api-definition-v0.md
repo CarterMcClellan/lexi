@@ -248,6 +248,20 @@ stream:
 ```
 Interpreted by streaming consumers. `activity_events`, if present, must map event names to string labels.
 
+**Classification (v0.1).** The host splits the SSE byte stream into event blocks;
+`parse_sse_block` reads each into `{ event, data }` (one optional leading space
+stripped from `data:` lines, multi-`data:` joined with `\n`). `classify_event`
+then maps an `(event, data)` pair to a typed outcome, in this order:
+
+1. `done` — `data` equals `done_marker` (e.g. Chat Completions `[DONE]`), **or**
+   `event` equals `done_event`.
+2. `activity` — `event` is a key in `activity_events` (→ its label).
+3. `delta` — `delta_event` matches (a string event name, or null/absent = any)
+   **and** `delta_path` resolves to a string in the parsed `data` (→ the fragment).
+4. `other` — none of the above.
+
+Pinned by `conformance/cases/stream/` across the Rust core and the wheel.
+
 ---
 
 ## 6. Validation (`validate_api_definition`)

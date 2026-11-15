@@ -1,0 +1,17 @@
+{
+  "name": "responses-stream",
+  "description": "Responses SSE: output_text.delta carries delta; a web_search status maps to an activity label; response.completed terminates.",
+  "api": "responses",
+  "events": [
+    { "event": "response.web_search_call.searching", "data": "{}" },
+    { "event": "response.output_text.delta", "data": "{\"delta\":\"Answer\"}" },
+    { "event": "response.output_text.delta", "data": "{\"delta\":\".\"}" },
+    { "event": "response.completed", "data": "{\"response\":{\"status\":\"completed\"}}" }
+  ],
+  "expect": [
+    { "kind": "activity", "label": "🔍 searching the web" },
+    { "kind": "delta", "text": "Answer" },
+    { "kind": "delta", "text": "." },
+    { "kind": "done" }
+  ]
+}

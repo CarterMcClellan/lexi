@@ -30,6 +30,9 @@ enum Cmd {
         /// Override the provider's default model.
         #[arg(long)]
         model: Option<String>,
+        /// Stream the response token-by-token (SSE).
+        #[arg(long)]
+        stream: bool,
     },
 }
 
@@ -42,15 +45,37 @@ async fn main() -> ExitCode {
             prompt,
             role,
             model,
-        } => match lexi_host::respond_text(&provider, &prompt, &role, model.as_deref()).await {
-            Ok(res) => {
-                println!("{}", res.text);
-                ExitCode::SUCCESS
+            stream,
+        } => {
+            let result = if stream {
+                use std::io::Write;
+                let r = lexi_host::respond_stream_text(
+                    &provider,
+                    &prompt,
+                    &role,
+                    model.as_deref(),
+                    |delta| {
+                        print!("{delta}");
+                        let _ = std::io::stdout().flush();
+                    },
+                )
+                .await;
+                if r.is_ok() {
+                    println!();
+                }
+                r
+            } else {
+                lexi_host::respond_text(&provider, &prompt, &role, model.as_deref())
+                    .await
+                    .inspect(|res| println!("{}", res.text))
+            };
+            match result {
+                Ok(_) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    ExitCode::FAILURE
+                }
             }
-            Err(e) => {
-                eprintln!("error: {e}");
-                ExitCode::FAILURE
-            }
-        },
+        }
     }
 }

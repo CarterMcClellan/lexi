@@ -296,6 +296,25 @@ fn upload_path(files: Option<&Bound<'_, PyAny>>) -> PyResult<String> {
     Ok(lexi_core::upload_path(opt_from_py(files)?.as_ref()))
 }
 
+// --- streaming ------------------------------------------------------------
+
+#[pyfunction]
+fn parse_sse_block<'py>(py: Python<'py>, block: &str) -> PyResult<Bound<'py, PyAny>> {
+    to_py(py, &lexi_core::parse_sse_block(block))
+}
+
+#[pyfunction]
+#[pyo3(signature = (event, data, stream_cfg))]
+fn classify_event<'py>(
+    py: Python<'py>,
+    event: Option<&str>,
+    data: &str,
+    stream_cfg: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let cfg = from_py(stream_cfg)?;
+    to_py(py, &lexi_core::classify_event(event, data, &cfg))
+}
+
 // --- module ---------------------------------------------------------------
 
 #[pymodule]
@@ -321,5 +340,7 @@ fn lexi(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(classify_status, m)?)?;
     m.add_function(wrap_pyfunction!(read_upload, m)?)?;
     m.add_function(wrap_pyfunction!(upload_path, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_sse_block, m)?)?;
+    m.add_function(wrap_pyfunction!(classify_event, m)?)?;
     Ok(())
 }

@@ -1,6 +1,8 @@
 //! End-to-end text chat against a mock HTTP server (no live provider).
 
-use lexi_host::{config, respond::respond_with_effective};
+use std::sync::{Arc, Mutex};
+
+use lexi_host::{config, respond::respond_stream_with_effective, respond::respond_with_effective};
 use serde_json::{json, Value};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -66,4 +68,46 @@ async fn http_error_surfaces() {
         err,
         lexi_host::HostError::HttpStatus { status: 401, .. }
     ));
+}
+
+#[tokio::test]
+async fn text_chat_streaming() {
+    let server = MockServer::start().await;
+
+    // An Anthropic-style SSE body: deltas then message_stop.
+    let sse = concat!(
+        "event: message_start\ndata: {\"type\":\"message_start\"}\n\n",
+        "event: content_block_delta\ndata: {\"delta\":{\"text\":\"Hello\"}}\n\n",
+        "event: content_block_delta\ndata: {\"delta\":{\"text\":\" world\"}}\n\n",
+        "event: message_stop\ndata: {}\n\n",
+    );
+    Mock::given(method("POST"))
+        .and(path("/messages"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(sse),
+        )
+        .mount(&server)
+        .await;
+
+    let mut eff = config::load_api_def("messages").unwrap();
+    eff["url"] = Value::from(server.uri());
+
+    let deltas = Arc::new(Mutex::new(Vec::<String>::new()));
+    let sink = deltas.clone();
+    let client = reqwest::Client::new();
+    let res = respond_stream_with_effective(&client, &eff, "k", "Hi", "user", "claude-x", |d| {
+        sink.lock().unwrap().push(d.to_string());
+    })
+    .await
+    .expect("stream ok");
+
+    assert_eq!(res.text, "Hello world");
+    assert_eq!(*deltas.lock().unwrap(), vec!["Hello", " world"]);
+
+    // The request opted into streaming.
+    let received = &server.received_requests().await.unwrap()[0];
+    let sent: Value = serde_json::from_slice(&received.body).unwrap();
+    assert_eq!(sent["stream"], true);
 }

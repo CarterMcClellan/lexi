@@ -229,6 +229,32 @@ fn message_ir() {
 }
 
 #[test]
+fn streaming() {
+    let mut failures = Vec::new();
+    let files = case_files("stream");
+    assert!(!files.is_empty(), "no stream cases found");
+
+    for path in files {
+        let case = load_json(&path);
+        let api = load_api(case["api"].as_str().unwrap());
+        let nm = name_of(&path);
+        let stream_cfg = &api["response"]["stream"];
+        let events = case["events"].as_array().unwrap();
+        let expect = case["expect"].as_array().unwrap();
+
+        for (i, ev) in events.iter().enumerate() {
+            let event_name = ev["event"].as_str();
+            let data = ev["data"].as_str().unwrap_or("");
+            let got = core::classify_event(event_name, data, stream_cfg);
+            if got != expect[i] {
+                failures.push(format!("{nm}[{i}]: classify mismatch (got {got})"));
+            }
+        }
+    }
+    finish("stream", failures);
+}
+
+#[test]
 fn uploads() {
     let mut failures = Vec::new();
     let files = case_files("upload");
