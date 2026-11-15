@@ -1,0 +1,8 @@
+{
+  "name": "responses-upload",
+  "description": "Read the file handle from an OpenAI Files upload response and the upload path.",
+  "api": "responses",
+  "response": { "id": "file-abc123", "object": "file", "purpose": "vision", "filename": "cat.png" },
+  "expect_upload": { "id": "file-abc123" },
+  "expect_upload_path": "/files"
+}

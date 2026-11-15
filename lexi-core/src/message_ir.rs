@@ -21,7 +21,8 @@ pub enum ContentPart {
     },
     Image {
         url: Option<String>,
-        data: Option<String>, // base64-encoded image bytes
+        data: Option<String>,    // base64-encoded image bytes
+        file_id: Option<String>, // handle from a prior Files-API upload
         media_type: Option<String>,
     },
 }
@@ -34,10 +35,16 @@ impl ContentPart {
         }
     }
 
-    /// For images: `"base64"` when inline `data` is present, else `"url"`.
+    /// For images: `"file"` (file_id) > `"base64"` (data) > `"url"`.
     pub fn source_kind(&self) -> Option<&'static str> {
         match self {
-            ContentPart::Image { data, .. } => Some(if data.is_some() { "base64" } else { "url" }),
+            ContentPart::Image { data, file_id, .. } => Some(if file_id.is_some() {
+                "file"
+            } else if data.is_some() {
+                "base64"
+            } else {
+                "url"
+            }),
             _ => None,
         }
     }
@@ -52,6 +59,7 @@ impl ContentPart {
             ContentPart::Image {
                 url,
                 data,
+                file_id,
                 media_type,
             } => {
                 m.insert("type".into(), Value::from(IMAGE));
@@ -60,6 +68,9 @@ impl ContentPart {
                 }
                 if let Some(d) = data {
                     m.insert("data".into(), Value::from(d.clone()));
+                }
+                if let Some(f) = file_id {
+                    m.insert("file_id".into(), Value::from(f.clone()));
                 }
                 if let Some(mt) = media_type {
                     m.insert("media_type".into(), Value::from(mt.clone()));
@@ -79,6 +90,7 @@ impl ContentPart {
             ContentPart::Image {
                 url,
                 data,
+                file_id,
                 media_type,
             } => {
                 let mt = media_type.clone().unwrap_or_default();
@@ -88,6 +100,10 @@ impl ContentPart {
                 };
                 m.insert("url".into(), Value::from(url.clone().unwrap_or_default()));
                 m.insert("data".into(), Value::from(data.clone().unwrap_or_default()));
+                m.insert(
+                    "file_id".into(),
+                    Value::from(file_id.clone().unwrap_or_default()),
+                );
                 m.insert("media_type".into(), Value::from(mt));
                 m.insert("data_uri".into(), Value::from(data_uri));
             }
@@ -140,10 +156,18 @@ pub fn part_from_dict(data: &Value) -> Result<ContentPart, String> {
                 .get("media_type")
                 .and_then(Value::as_str)
                 .map(String::from);
-            if let Some(d) = data.get("data").and_then(Value::as_str) {
+            if let Some(f) = data.get("file_id").and_then(Value::as_str) {
+                Ok(ContentPart::Image {
+                    url: None,
+                    data: None,
+                    file_id: Some(f.to_string()),
+                    media_type,
+                })
+            } else if let Some(d) = data.get("data").and_then(Value::as_str) {
                 Ok(ContentPart::Image {
                     url: None,
                     data: Some(d.to_string()),
+                    file_id: None,
                     media_type,
                 })
             } else {
@@ -155,6 +179,7 @@ pub fn part_from_dict(data: &Value) -> Result<ContentPart, String> {
                             .to_string(),
                     ),
                     data: None,
+                    file_id: None,
                     media_type,
                 })
             }

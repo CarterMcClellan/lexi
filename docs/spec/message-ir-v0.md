@@ -154,3 +154,7 @@ providers that take base64 as a data URI — OpenAI Chat Completions / Responses
 The three shipped defs map base64 to: Anthropic → structured `base64` source;
 Chat Completions / Responses → a `data:` URI in `image_url`. Pinned by the
 `*-image-base64.json` request fixtures. URL output is unchanged.
+
+A third source, an uploaded **`file_id`** (Files API), adds a `by_source.file`
+template; `source_kind` precedence is **file > base64 > url**. See
+[uploads-v0.md](uploads-v0.md).

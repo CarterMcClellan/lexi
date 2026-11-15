@@ -1,0 +1,28 @@
+{
+  "name": "messages-image-file",
+  "description": "A file-id image part lowers to Anthropic's file source.",
+  "api": "messages",
+  "compose": {
+    "prompt_payload": { "model": "claude-sonnet-4-6" },
+    "message": {
+      "role": "user",
+      "content": [
+        { "type": "text", "text": "Describe this image." },
+        { "type": "image", "file_id": "file_abc123" }
+      ]
+    }
+  },
+  "expect_body": {
+    "model": "claude-sonnet-4-6",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          { "type": "text", "text": "Describe this image." },
+          { "type": "image", "source": { "type": "file", "file_id": "file_abc123" } }
+        ]
+      }
+    ],
+    "max_tokens": 4096
+  }
+}

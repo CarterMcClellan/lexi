@@ -39,17 +39,23 @@ class TextPart:
 
 @dataclass(frozen=True)
 class ImagePart:
-    """An image content part, sourced by URL or inline base64 ``data``."""
+    """An image content part, sourced by URL, inline base64 ``data``, or an
+    uploaded ``file_id`` (Files API)."""
 
     url: str | None = None
     data: str | None = None  # base64-encoded image bytes
+    file_id: str | None = None  # handle from a prior Files-API upload
     media_type: str | None = None
     type: str = IMAGE
 
     @property
     def source_kind(self) -> str:
-        """``"base64"`` when inline ``data`` is present, else ``"url"``."""
-        return "base64" if self.data is not None else "url"
+        """``"file"`` (file_id) > ``"base64"`` (data) > ``"url"``."""
+        if self.file_id is not None:
+            return "file"
+        if self.data is not None:
+            return "base64"
+        return "url"
 
     def to_dict(self) -> dict:
         d: dict[str, Any] = {"type": self.type}
@@ -57,15 +63,22 @@ class ImagePart:
             d["url"] = self.url
         if self.data is not None:
             d["data"] = self.data
+        if self.file_id is not None:
+            d["file_id"] = self.file_id
         if self.media_type is not None:
             d["media_type"] = self.media_type
         return d
 
     def render_vars(self) -> dict:
-        data_uri = f"data:{self.media_type or ''};base64,{self.data}" if self.data is not None else (self.url or "")
+        data_uri = (
+            f"data:{self.media_type or ''};base64,{self.data}"
+            if self.data is not None
+            else (self.url or "")
+        )
         return {
             "url": self.url or "",
             "data": self.data or "",
+            "file_id": self.file_id or "",
             "media_type": self.media_type or "",
             "data_uri": data_uri,
         }
@@ -96,6 +109,8 @@ def part_from_dict(data: Mapping[str, Any]) -> ContentPart:
     if part_type == TEXT:
         return TextPart(text=data.get("text", ""))
     if part_type == IMAGE:
+        if "file_id" in data:
+            return ImagePart(file_id=data["file_id"], media_type=data.get("media_type"))
         if "data" in data:
             return ImagePart(data=data["data"], media_type=data.get("media_type"))
         return ImagePart(url=data.get("url", ""), media_type=data.get("media_type"))
