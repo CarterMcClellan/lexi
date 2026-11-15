@@ -43,6 +43,7 @@ pub async fn handle(method: &str, path: &str, body: Option<Value>) -> Result<Val
         ("POST", "/api/definitions/create") => api_create(body.unwrap_or(Value::Null)),
         ("POST", "/api/definitions/save-raw") => api_save_raw(body.unwrap_or(Value::Null)),
         ("POST", "/api/definitions/delete") => api_delete(body.unwrap_or(Value::Null)),
+        ("POST", "/api/definitions/preview") => api_preview(body.unwrap_or(Value::Null)),
         ("POST", "/api/respond") => respond(body.unwrap_or(Value::Null)).await,
         _ => Err(format!(
             "endpoint not available in the desktop app: {method} {base}"
@@ -412,6 +413,30 @@ fn api_delete(body: Value) -> Result<Value, String> {
     let name = require_field(&body, "name")?;
     config::delete_api_def(&name).map_err(|e| e.to_string())?;
     Ok(json!({ "name": name, "output": format!("Removed {name:?}.") }))
+}
+
+/// `POST /api/definitions/preview` — live-preview a definition (from edited `yaml`
+/// or a stored `name`) with sample inputs: validation, flags, presets, and a
+/// sample composed body.
+fn api_preview(body: Value) -> Result<Value, String> {
+    let yaml = body
+        .get("yaml")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty());
+    let name = body
+        .get("name")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty());
+    let prompt = body
+        .get("prompt")
+        .and_then(Value::as_str)
+        .unwrap_or("hello world");
+    let model = body
+        .get("model")
+        .and_then(Value::as_str)
+        .unwrap_or("sample-model");
+    let role = body.get("role").and_then(Value::as_str).unwrap_or("user");
+    config::preview_api_def(name, yaml, prompt, model, role).map_err(|e| e.to_string())
 }
 
 /// Extract (and percent-decode) a definition name from a `/api/definitions/...` path.

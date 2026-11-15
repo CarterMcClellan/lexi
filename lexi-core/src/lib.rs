@@ -22,7 +22,7 @@ pub mod validate;
 
 pub use capabilities::{resolve_capabilities, supports_input, supports_output, validate_message};
 pub use compose::compose_request_body;
-pub use definition::validate_definition;
+pub use definition::{cli_flags, preview_definition, tool_preset_names, validate_definition};
 pub use extract::{
     extract_annotations, extract_artifacts, extract_text, find_text_items, render_annotations,
     summarize_activity,

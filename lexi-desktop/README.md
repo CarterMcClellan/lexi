@@ -28,12 +28,11 @@ Rust-core architecture vs. bundling Chromium + Node + Python.
   models (`/api/models`), API definitions (`/api/definitions` + `/raw`/`{name}`),
   prompts (`/api/prompts`), and config (`/api/config`) — all read from `~/.lexi-cli/`.
 - All admin **tabs are functional**: config, prompts, models, and API-definition
-  management (create / edit-save / delete / validate) all read and write
-  `~/.lexi-cli/` over `lexi-host`. Definition validation reuses `lexi-core`'s
-  `validate_definition`.
-- Not yet wired (small follow-ups): the API-definition **live preview**
-  (`POST /api/definitions/preview`, needs compose + flag/preset introspection)
-  and hosted-model discovery (`GET /api/models/hosted`, needs a live provider call).
+  management (create / edit-save / delete / validate / **live preview**) all read
+  and write `~/.lexi-cli/` over `lexi-host`. Definition validation, CLI-flag/preset
+  introspection, and the preview's sample-body compose all reuse `lexi-core`.
+- Only remaining follow-up: hosted-model discovery (`GET /api/models/hosted`,
+  needs a live call to the provider's models endpoint).
 
 ## Releases
 
