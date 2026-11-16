@@ -4,6 +4,7 @@
 mod api;
 mod chat;
 pub(crate) mod config;
+mod jobs;
 mod models;
 mod prompts;
 mod providers;
@@ -23,6 +24,7 @@ pub(crate) async fn dispatch(cmd: Cmd, io: &mut Io<'_>, opts: RunOptions) -> u8 
             out,
         } => chat::generate(io, provider, prompt, model, out).await,
         Cmd::Upload { provider, file } => chat::upload(io, provider, file).await,
+        Cmd::Jobs { cmd } => jobs::run(io, cmd).await,
         Cmd::Version => chat::version(io),
         Cmd::Help { topic } => shell_cmds::help(io, topic, opts).await,
         Cmd::Alias { cmd } => shell_cmds::alias(io, cmd),

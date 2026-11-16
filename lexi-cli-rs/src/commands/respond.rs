@@ -30,6 +30,7 @@ struct Plan {
     model: Option<String>,
     stream: bool,
     background: bool,
+    detach: bool,
     images: Vec<String>,
     set_paths: Vec<(String, Value)>,
     unset_paths: Vec<String>,
@@ -97,12 +98,13 @@ fn parse(args: &[String], flag_specs: &[Value], presets: &[String]) -> Result<Pl
                     plan.tools.push(name.to_string());
                 }
             }
-            "--stream" | "--background" | "--cite" | "--raw" | "-r" | "--verbose" | "-v"
-            | "--no-validate" => {
+            "--stream" | "--background" | "--detach" | "--cite" | "--raw" | "-r" | "--verbose"
+            | "-v" | "--no-validate" => {
                 step = 1;
                 match tok.as_str() {
                     "--stream" => plan.stream = true,
                     "--background" => plan.background = true,
+                    "--detach" => plan.detach = true,
                     "--cite" => plan.cite = true,
                     "--raw" | "-r" => plan.raw = true,
                     "--verbose" | "-v" => plan.verbose = true,
@@ -142,6 +144,9 @@ fn parse(args: &[String], flag_specs: &[Value], presets: &[String]) -> Result<Pl
     }
     if plan.stream && plan.background {
         return Err("--stream and --background can't be combined".into());
+    }
+    if plan.detach && !plan.background {
+        return Err("--detach needs --background".into());
     }
     Ok(plan)
 }
@@ -318,6 +323,22 @@ pub(crate) async fn respond(io: &mut Io<'_>, provider: &str, args: &[String]) ->
         Err(e) => return io.fail(e),
     };
 
+    if plan.detach {
+        return match lexi_host::submit_chat(&chat).await {
+            Ok(st) => {
+                let id = crate::output::scalar(st.operation.get("id"));
+                let state = crate::output::scalar(st.operation.get("state"));
+                let human = format!(
+                    "Submitted job {id} ({state}).\nCheck it with: lexi jobs status {provider} {id}\n\
+                     Wait for it with: lexi jobs wait {provider} {id}"
+                );
+                let mut json = st.operation.clone();
+                json["provider"] = Value::from(provider);
+                io.result(human, json)
+            }
+            Err(e) => io.fail(e),
+        };
+    }
     let streaming = chat.streams();
     let json_mode = io.json;
     let show_text = !plan.raw;

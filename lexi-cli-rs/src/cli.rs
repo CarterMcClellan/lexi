@@ -35,7 +35,7 @@ pub enum Cmd {
     /// Send a saved prompt (the active one by default) or --text to a provider.
     ///
     /// respond <provider> [prompt_name] [--text TEXT|-] [--model M] [--role R]
-    /// [--stream] [--background] [--image URL|PATH]... [<schema flags>]
+    /// [--stream] [--background [--detach]] [--image URL|PATH]... [<schema flags>]
     /// [--set path=value]... [--unset path]... [--tool preset[,preset]]...
     /// [--params FILE] [--cite] [--raw|-r] [--verbose|-v] [--no-validate]
     ///
@@ -72,6 +72,11 @@ pub enum Cmd {
         provider: String,
         /// Path to the file to upload.
         file: PathBuf,
+    },
+    /// Check or wait for a background job (`respond --background --detach`).
+    Jobs {
+        #[command(subcommand)]
+        cmd: JobsCmd,
     },
     /// Show the CLI version.
     Version,
@@ -124,6 +129,23 @@ pub enum Cmd {
     Api {
         #[command(subcommand)]
         cmd: ApiCmd,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum JobsCmd {
+    /// Check a job once; prints its result if it has finished.
+    Status { provider: String, id: String },
+    /// Wait for a job to finish and print its result.
+    Wait {
+        provider: String,
+        id: String,
+        /// Seconds between polls.
+        #[arg(long, default_value_t = 2)]
+        interval: u64,
+        /// Give up after this many seconds.
+        #[arg(long, default_value_t = 600)]
+        timeout: u64,
     },
 }
 
