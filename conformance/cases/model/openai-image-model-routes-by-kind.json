@@ -1,0 +1,63 @@
+{
+  "name": "openai-image-model-routes-by-kind",
+  "description": "A tag rule sets kind:image-generation; the binding `for: [kind:image-generation]` takes it. The first matching rule's kind wins; later rules still add other tags.",
+  "provider": {
+    "apis": [
+      {
+        "api": "responses",
+        "default_model": "gpt-4o"
+      },
+      {
+        "api": "image-generations",
+        "for": [
+          "kind:image-generation"
+        ],
+        "default_model": "gpt-image-2.5-flare"
+      }
+    ],
+    "tag_rules": {
+      "gpt-image-*": [
+        "kind:image-generation"
+      ],
+      "chatgpt-image-*": [
+        "kind:image-generation"
+      ],
+      "text-embedding-*": [
+        "kind:embedding"
+      ],
+      "gpt-*": [
+        "feature:tools",
+        "feature:web-search"
+      ]
+    }
+  },
+  "model": "gpt-image-2.5-flare",
+  "expect": {
+    "model": "gpt-image-2.5-flare",
+    "kind": "image-generation",
+    "api": "image-generations",
+    "binding": 1,
+    "tags": [
+      {
+        "tag": "in:text",
+        "source": "api:image-generations"
+      },
+      {
+        "tag": "out:image",
+        "source": "api:image-generations"
+      },
+      {
+        "tag": "kind:image-generation",
+        "source": "rule:gpt-image-*"
+      },
+      {
+        "tag": "feature:tools",
+        "source": "rule:gpt-*"
+      },
+      {
+        "tag": "feature:web-search",
+        "source": "rule:gpt-*"
+      }
+    ]
+  }
+}

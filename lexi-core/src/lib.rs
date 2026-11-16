@@ -13,6 +13,7 @@ pub mod compose;
 pub mod definition;
 pub mod extract;
 pub mod message_ir;
+pub mod models;
 pub mod operations;
 pub mod path;
 pub mod stream;
@@ -30,6 +31,10 @@ pub use extract::{
 pub use message_ir::{
     lower_message, message_from_dict, normalize_prompt_payload, to_prompt_bindings, ContentPart,
     Message,
+};
+pub use models::{
+    api_kind, api_tags, binding_for_output, classify_model, glob_match, merge_provider_template,
+    parse_tag_op, provider_bindings, tag_vocabulary, validate_tag,
 };
 pub use operations::{classify_status, is_terminal, poll_path, read_operation};
 pub use path::{get_path, set_path, unset_path};

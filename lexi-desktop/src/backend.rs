@@ -61,14 +61,21 @@ fn providers() -> Result<Value, String> {
         .and_then(Value::as_object)
         .unwrap_or(&empty);
 
+    // The catch-all API and default model, read through templates and bindings.
+    let summaries = lexi_host::admin::provider_summaries().map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     for (name, meta) in providers {
+        let summary = summaries.iter().find(|s| s["name"] == name.as_str());
+        let field = |k: &str| {
+            summary
+                .and_then(|s| s.get(k))
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string()
+        };
         let url = meta.get("url").and_then(Value::as_str).unwrap_or("");
-        let default_model = meta
-            .get("default_model")
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        let api = meta.get("api").and_then(Value::as_str).unwrap_or("");
+        let default_model = field("default_model");
+        let api = field("api");
         let has_key_meta = meta
             .get("api_key")
             .and_then(Value::as_str)

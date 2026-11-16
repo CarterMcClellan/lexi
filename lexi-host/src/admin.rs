@@ -38,8 +38,9 @@ pub fn provider_config(name: &str) -> Result<Value, HostError> {
         .ok_or_else(|| HostError::UnknownProvider(name.to_string()))
 }
 
-/// Every provider: `{name, url, api, default_model, hosted_models,
-/// hosted_model_fields, key_source}` (never the key itself).
+/// Every provider: `{name, template, url, api, apis, default_model,
+/// hosted_models, hosted_model_fields, key_source}` (never the key itself).
+/// `api` is the catch-all binding's API; `apis` lists every binding's.
 pub fn provider_summaries() -> Result<Vec<Value>, HostError> {
     let cfg = config::load_providers()?;
     let Some(providers) = cfg.get("providers").and_then(Value::as_object) else {
@@ -48,11 +49,20 @@ pub fn provider_summaries() -> Result<Vec<Value>, HostError> {
     providers
         .iter()
         .map(|(name, pcfg)| {
+            let bindings = lexi_core::provider_bindings(pcfg);
+            let catch_all = bindings
+                .iter()
+                .find(|b| b.get("for").is_none())
+                .or(bindings.first());
             Ok(json!({
                 "name": name,
+                "template": pcfg.get("template"),
                 "url": pcfg.get("url"),
-                "api": pcfg.get("api"),
-                "default_model": pcfg.get("default_model"),
+                "api": catch_all.and_then(|b| b.get("api")),
+                "apis": bindings.iter().filter_map(|b| b.get("api")).collect::<Vec<_>>(),
+                "default_model": catch_all
+                    .and_then(|b| b.get("default_model"))
+                    .or(pcfg.get("default_model")),
                 "hosted_models": pcfg.get("hosted_models"),
                 "hosted_model_fields": pcfg.get("hosted_model_fields"),
                 "key_source": config::api_key_source(name, pcfg)?,

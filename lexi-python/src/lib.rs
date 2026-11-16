@@ -346,6 +346,67 @@ fn classify_event<'py>(
     to_py(py, &lexi_core::classify_event(event, data, &cfg))
 }
 
+// --- model classification -------------------------------------------------
+
+#[pyfunction]
+#[pyo3(signature = (provider, api_defs, model, user_tags=None, catalog_tags=None, pinned_api=None))]
+fn classify_model<'py>(
+    py: Python<'py>,
+    provider: &Bound<'py, PyAny>,
+    api_defs: &Bound<'py, PyAny>,
+    model: &str,
+    user_tags: Option<&Bound<'py, PyAny>>,
+    catalog_tags: Option<&Bound<'py, PyAny>>,
+    pinned_api: Option<&str>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let defs = match from_py(api_defs)? {
+        Value::Object(m) => m,
+        _ => return Err(PyValueError::new_err("api_defs must be a dict")),
+    };
+    let out = lexi_core::classify_model(
+        &from_py(provider)?,
+        &defs,
+        model,
+        &opt_from_py(user_tags)?.unwrap_or(Value::Null),
+        &opt_from_py(catalog_tags)?.unwrap_or(Value::Null),
+        pinned_api,
+    );
+    to_py(py, &out)
+}
+
+#[pyfunction]
+fn merge_provider_template<'py>(
+    py: Python<'py>,
+    template: &Bound<'py, PyAny>,
+    entry: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    to_py(
+        py,
+        &lexi_core::merge_provider_template(&from_py(template)?, &from_py(entry)?),
+    )
+}
+
+#[pyfunction]
+fn provider_bindings<'py>(
+    py: Python<'py>,
+    provider: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    to_py(
+        py,
+        &Value::Array(lexi_core::provider_bindings(&from_py(provider)?)),
+    )
+}
+
+#[pyfunction]
+fn validate_tag(tag: &str) -> PyResult<()> {
+    lexi_core::validate_tag(tag).map_err(PyValueError::new_err)
+}
+
+#[pyfunction]
+fn glob_match(pattern: &str, text: &str) -> bool {
+    lexi_core::glob_match(pattern, text)
+}
+
 // --- module ---------------------------------------------------------------
 
 #[pymodule]
@@ -378,5 +439,10 @@ fn _lexi(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(upload_path, m)?)?;
     m.add_function(wrap_pyfunction!(parse_sse_block, m)?)?;
     m.add_function(wrap_pyfunction!(classify_event, m)?)?;
+    m.add_function(wrap_pyfunction!(classify_model, m)?)?;
+    m.add_function(wrap_pyfunction!(merge_provider_template, m)?)?;
+    m.add_function(wrap_pyfunction!(provider_bindings, m)?)?;
+    m.add_function(wrap_pyfunction!(validate_tag, m)?)?;
+    m.add_function(wrap_pyfunction!(glob_match, m)?)?;
     Ok(())
 }

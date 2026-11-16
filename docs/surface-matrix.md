@@ -35,12 +35,16 @@ not enforced). The wheel's engine functions (`lexi.compose_request_body`, …) w
 | Add / rename / remove a provider | `add_provider`, `rename_provider`, `remove_provider`, `create_provider` | `providers add`, `providers rename`, `providers rm` | `lexi.providers.add`, `lexi.providers.rename`, `lexi.providers.remove` | — |
 | Store / show / remove an API key | `set_api_key`, `remove_api_key`, `api_key_info` | `providers api-key set`, `providers api-key show`, `providers api-key remove` | `lexi.providers.set_key`, `lexi.providers.show_key`, `lexi.providers.remove_key` | — |
 | Check an API key | `check_api_key` | `providers status` | `lexi.providers.status` | Providers |
-| List configured models | `load_models` | `models list` | `lexi.models.list` | Models |
+| List configured models | `load_models`, `model_summaries` | `models list` | `lexi.models.list` | Models |
 | List hosted models | `fetch_hosted_models`, `fetch_hosted_models_with` | `models hosted` | `lexi.models.hosted` | Models |
 | Get / set default model | `default_model`, `set_default_model` | `models default` | `lexi.models.default`, `lexi.models.set_default` | Models |
 | List model aliases | `model_aliases` | `models alias list` | `lexi.models.aliases` | Models |
 | Set / remove model aliases | `set_model_alias`, `delete_model_alias` | `models alias set`, `models alias rm` | `lexi.models.set_alias`, `lexi.models.remove_alias` | Models |
 | Add / update / remove a model | `upsert_model`, `delete_model` | `models add`, `models set`, `models rm` | `lexi.models.add`, `lexi.models.set`, `lexi.models.remove` | Models |
+| Tag models (add / remove / clear your tags) | `tag_model`, `clear_model_tags`, `user_model_tags` | `models tag` | `lexi.models.tag` | — |
+| Show a model's tags, kind and API | `classify` | `models tags` | `lexi.models.tags` | — |
+| Resolve which model and API a request uses | `resolve_model` | `respond`, `generate` | `lexi.models.resolve` | — |
+| Show the tag vocabulary | `tag_vocabulary` | `tags` | `lexi.tags` | — |
 | Read config | `load_config`, `settings` | `config list` | `lexi.config.list`, `lexi.config.get` | Config |
 | Write config | `set_config`, `delete_config` | `config set`, `config rm` | `lexi.config.set`, `lexi.config.remove` | Config |
 | List prompts | `load_prompts`, `prompt_summaries` | `prompts list` | `lexi.prompts.list`, `lexi.prompts.get` | Prompts |
@@ -56,7 +60,7 @@ not enforced). The wheel's engine functions (`lexi.compose_request_body`, …) w
 Building blocks used by the operations above, or run implicitly by every surface
 (home seeding fills in missing defaults at CLI/GUI startup); not surfaced on their own.
 
-`ensure_home`, `ensure_home_in`, `default_aliases`, `lexi_home`, `provider_config`, `prompt_defaults`, `prompt_value`, `load_api_def`, `deep_merge`, `effective_config`, `resolve_api_key`, `build_headers`
+`ensure_home`, `ensure_home_in`, `default_aliases`, `lexi_home`, `template_names`, `provider_template`, `binding_config`, `provider_config`, `prompt_defaults`, `prompt_value`, `load_api_def`, `deep_merge`, `effective_config`, `resolve_api_key`, `build_headers`
 
 ## CLI-only
 

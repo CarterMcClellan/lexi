@@ -1,0 +1,41 @@
+{
+  "name": "nvidia-classifier-is-refused-with-its-kind",
+  "description": "NVIDIA lists safety classifiers alongside chat models (observed); a rule marks them.",
+  "provider": {
+    "apis": [
+      "chat-completions"
+    ],
+    "tag_rules": {
+      "*embed*": [
+        "kind:embedding"
+      ],
+      "*guard*": [
+        "kind:classifier"
+      ],
+      "*safety*": [
+        "kind:classifier"
+      ],
+      "*-vl-*": [
+        "in:image"
+      ]
+    }
+  },
+  "model": "nvidia/nemotron-3.5-content-safety",
+  "expect": {
+    "model": "nvidia/nemotron-3.5-content-safety",
+    "kind": "classifier",
+    "api": null,
+    "binding": null,
+    "tags": [
+      {
+        "tag": "in:text",
+        "source": "kind"
+      },
+      {
+        "tag": "kind:classifier",
+        "source": "rule:*safety*"
+      }
+    ],
+    "error": "nvidia/nemotron-3.5-content-safety is a kind:classifier model, and this provider has no API configured for it"
+  }
+}

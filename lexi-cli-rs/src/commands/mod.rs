@@ -25,6 +25,7 @@ pub(crate) async fn dispatch(cmd: Cmd, io: &mut Io<'_>, opts: RunOptions) -> u8 
         } => chat::generate(io, provider, prompt, model, out).await,
         Cmd::Upload { provider, file } => chat::upload(io, provider, file).await,
         Cmd::Jobs { cmd } => jobs::run(io, cmd).await,
+        Cmd::Tags => models::vocabulary(io),
         Cmd::Version => chat::version(io),
         Cmd::Help { topic } => shell_cmds::help(io, topic, opts).await,
         Cmd::Alias { cmd } => shell_cmds::alias(io, cmd),

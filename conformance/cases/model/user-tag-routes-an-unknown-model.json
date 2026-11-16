@@ -1,0 +1,60 @@
+{
+  "name": "user-tag-routes-an-unknown-model",
+  "description": "No rule knows this id; the user's kind tag sends it to the image binding.",
+  "provider": {
+    "apis": [
+      {
+        "api": "responses",
+        "default_model": "gpt-4o"
+      },
+      {
+        "api": "image-generations",
+        "for": [
+          "kind:image-generation"
+        ],
+        "default_model": "gpt-image-2.5-flare"
+      }
+    ],
+    "tag_rules": {
+      "gpt-image-*": [
+        "kind:image-generation"
+      ],
+      "chatgpt-image-*": [
+        "kind:image-generation"
+      ],
+      "text-embedding-*": [
+        "kind:embedding"
+      ],
+      "gpt-*": [
+        "feature:tools",
+        "feature:web-search"
+      ]
+    }
+  },
+  "model": "vendor-image-x",
+  "user_tags": {
+    "vendor-image-x": [
+      "+kind:image-generation"
+    ]
+  },
+  "expect": {
+    "model": "vendor-image-x",
+    "kind": "image-generation",
+    "api": "image-generations",
+    "binding": 1,
+    "tags": [
+      {
+        "tag": "in:text",
+        "source": "api:image-generations"
+      },
+      {
+        "tag": "out:image",
+        "source": "api:image-generations"
+      },
+      {
+        "tag": "kind:image-generation",
+        "source": "user"
+      }
+    ]
+  }
+}

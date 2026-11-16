@@ -1,0 +1,34 @@
+# Shipped template for OpenAI. A provider entry with `template: openai` is this
+# file deep-merged with the entry (docs/provider-model-design.md §4.4): your
+# keys win, `apis` merge by `api` name, `tag_rules` by pattern.
+url: https://api.openai.com/v1
+api_key: ${OPENAI_API_KEY}
+
+apis:
+  - api: responses              # catch-all: chat models
+    default_model: gpt-4o
+  - api: image-generations
+    for: [kind:image-generation]
+    default_model: gpt-image-2.5-flare
+
+# Model-id globs → tags; the first rule that sets a kind: wins. OpenAI's
+# /models listing carries no type data, but its names are consistent.
+tag_rules:
+  "gpt-image-*": [kind:image-generation]
+  "chatgpt-image-*": [kind:image-generation]
+  "dall-e-*": [kind:image-generation, status:deprecated]
+  "text-embedding-*": [kind:embedding]
+  "tts-*": [kind:speech]
+  "gpt-*-tts*": [kind:speech]
+  "whisper-*": [kind:transcription]
+  "gpt-*-transcribe*": [kind:transcription]
+  "omni-moderation-*": [kind:classifier]
+  "text-moderation-*": [kind:classifier]
+  "gpt-4*": [feature:tools]
+  "gpt-5*": [feature:tools, feature:thinking]
+  "o1*": [feature:tools, feature:thinking]
+  "o3*": [feature:tools, feature:thinking]
+  "o4*": [feature:tools, feature:thinking]
+
+hosted_models: /models
+hosted_model_fields: [id, created, owned_by]

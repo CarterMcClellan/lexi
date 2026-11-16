@@ -1,0 +1,33 @@
+{
+  "name": "template-merge-replace",
+  "description": "`replace: [apis]` replaces the template's bindings outright.",
+  "template": {
+    "url": "u",
+    "apis": [
+      {
+        "api": "responses"
+      },
+      {
+        "api": "image-generations",
+        "for": [
+          "kind:image-generation"
+        ]
+      }
+    ]
+  },
+  "entry": {
+    "template": "openai",
+    "replace": [
+      "apis"
+    ],
+    "apis": [
+      "chat-completions"
+    ]
+  },
+  "expect": {
+    "url": "u",
+    "apis": [
+      "chat-completions"
+    ]
+  }
+}

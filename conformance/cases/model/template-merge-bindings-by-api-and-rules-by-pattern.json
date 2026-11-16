@@ -1,0 +1,77 @@
+{
+  "name": "template-merge-bindings-by-api-and-rules-by-pattern",
+  "description": "User bindings merge by `api` (new ones first); user tag rules come first; scalars deep-merge.",
+  "template": {
+    "url": "https://api.openai.com/v1",
+    "apis": [
+      {
+        "api": "responses",
+        "default_model": "gpt-4o"
+      },
+      {
+        "api": "image-generations",
+        "for": [
+          "kind:image-generation"
+        ],
+        "default_model": "img-1"
+      }
+    ],
+    "tag_rules": {
+      "gpt-image-*": [
+        "kind:image-generation"
+      ]
+    }
+  },
+  "entry": {
+    "template": "openai",
+    "api_key": "${OPENAI_API_KEY}",
+    "apis": [
+      {
+        "api": "image-generations",
+        "default_model": "img-2"
+      },
+      {
+        "api": "embeddings",
+        "for": [
+          "kind:embedding"
+        ]
+      }
+    ],
+    "tag_rules": {
+      "my-*": [
+        "label:mine"
+      ]
+    }
+  },
+  "expect": {
+    "url": "https://api.openai.com/v1",
+    "apis": [
+      {
+        "api": "embeddings",
+        "for": [
+          "kind:embedding"
+        ]
+      },
+      {
+        "api": "responses",
+        "default_model": "gpt-4o"
+      },
+      {
+        "api": "image-generations",
+        "for": [
+          "kind:image-generation"
+        ],
+        "default_model": "img-2"
+      }
+    ],
+    "tag_rules": {
+      "my-*": [
+        "label:mine"
+      ],
+      "gpt-image-*": [
+        "kind:image-generation"
+      ]
+    },
+    "api_key": "${OPENAI_API_KEY}"
+  }
+}

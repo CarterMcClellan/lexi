@@ -455,77 +455,23 @@ pub async fn respond_background_with_effective(
 // Provider + model resolution (shared by both layers).
 // ---------------------------------------------------------------------------
 
-/// Resolve `provider` and its model, returning the effective config (with any
-/// per-model `auth`/`request`/`response` overrides merged in), the API key, and
-/// the model id. Model: an override is resolved through the provider's
-/// aliases and must be configured (when the provider lists models); otherwise
-/// `default-model.yaml`, else the config's `default_model`.
+/// Resolve `provider` and its model for a text chat via
+/// [`crate::models::resolve_model`]: the effective config of the binding that
+/// serves the model (per-model `auth`/`request`/`response` overrides merged
+/// in), the API key, and the model id.
 fn resolve_provider_model(
     provider: &str,
     model_override: Option<&str>,
 ) -> Result<(Value, String, String), HostError> {
+    let resolved = crate::models::resolve_model(provider, model_override, "text")?;
     let providers = config::load_providers()?;
-    let mut provider_cfg = providers
+    let provider_cfg = providers
         .get("providers")
         .and_then(|p| p.get(provider))
         .cloned()
         .ok_or_else(|| HostError::UnknownProvider(provider.to_string()))?;
-    let models = config::load_models(provider)?;
-
-    let model = match model_override {
-        Some(m) => {
-            let aliases = config::model_aliases(provider)?;
-            if let Some(target) = aliases.get(m).and_then(Value::as_str) {
-                target.to_string()
-            } else if !models.is_empty() && !models.iter().any(|x| x.id == m) {
-                let mut msg = format!(
-                    "model {m:?} is not a configured model or alias for provider {provider:?}"
-                );
-                if !aliases.is_empty() {
-                    let mut names: Vec<&str> = aliases.keys().map(String::as_str).collect();
-                    names.sort();
-                    msg.push_str(&format!("\navailable aliases: {}", names.join(", ")));
-                }
-                let mut ids: Vec<&str> = models.iter().map(|x| x.id.as_str()).collect();
-                ids.sort();
-                msg.push_str(&format!("\nconfigured models: {}", ids.join(", ")));
-                return Err(HostError::Config(msg));
-            } else {
-                m.to_string()
-            }
-        }
-        None => config::default_model(provider)?
-            .or_else(|| {
-                provider_cfg
-                    .get("default_model")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-            })
-            .ok_or_else(|| {
-                HostError::Config("no model (pass --model or set a default model)".into())
-            })?,
-    };
-
-    // Per-model overrides of the API's auth/request/response blocks.
-    if let Some(meta) = models.iter().find(|x| x.id == model).map(|x| &x.metadata) {
-        if let Some(cfg) = provider_cfg.as_object_mut() {
-            for key in ["auth", "request", "response"] {
-                if let Some(over) = meta.get(key) {
-                    let merged = match cfg.get(key) {
-                        Some(existing) if existing.is_object() && over.is_object() => {
-                            config::deep_merge(existing, over)
-                        }
-                        _ => over.clone(),
-                    };
-                    cfg.insert(key.to_string(), merged);
-                }
-            }
-        }
-    }
-
-    let eff = config::effective_config(provider, &provider_cfg)?;
     let api_key = config::resolve_api_key(provider, &provider_cfg)?;
-    Ok((eff, api_key, model))
+    Ok((resolved.effective, api_key, resolved.model))
 }
 
 // ---------------------------------------------------------------------------

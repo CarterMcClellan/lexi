@@ -498,8 +498,41 @@ fn _admin<'py>(py: Python<'py>, op: &str, args: &Bound<'py, PyAny>) -> PyResult<
         "models.list" => {
             let p = a.str("provider")?;
             require_provider(p).map_err(e)?;
-            json!(cfg::load_models(p).map_err(e)?)
+            json!(lexi_host::models::model_summaries(p).map_err(e)?)
         }
+        "models.tag" => {
+            let (p, m) = (a.str("provider")?, a.str("model")?);
+            if a.flag("clear") {
+                let had = lexi_host::models::clear_model_tags(p, m).map_err(e)?;
+                json!({ "provider": p, "model": m, "cleared": had })
+            } else {
+                let ops: Vec<String> =
+                    a.0.get("ops")
+                        .and_then(Value::as_array)
+                        .map(|v| {
+                            v.iter()
+                                .filter_map(Value::as_str)
+                                .map(String::from)
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                let now = lexi_host::models::tag_model(p, m, &ops).map_err(e)?;
+                json!({ "provider": p, "model": m, "tags": now })
+            }
+        }
+        "models.tags" => {
+            lexi_host::models::classify(a.str("provider")?, a.str("model")?).map_err(e)?
+        }
+        "models.resolve" => {
+            let r = lexi_host::models::resolve_model(
+                a.str("provider")?,
+                a.opt_str("model"),
+                a.opt_str("output").unwrap_or("text"),
+            )
+            .map_err(e)?;
+            json!({ "provider": r.provider, "model": r.model, "api": r.api, "kind": r.kind, "tags": r.tags })
+        }
+        "tags.vocabulary" => lexi_host::models::tag_vocabulary(),
         "models.hosted" => {
             let p = a.string("provider")?;
             require_provider(&p).map_err(e)?;

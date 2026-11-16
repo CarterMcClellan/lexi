@@ -110,22 +110,17 @@ pub async fn generate_images_text(
     model_override: Option<&str>,
     out_dir: &Path,
 ) -> Result<Vec<SavedArtifact>, HostError> {
+    // The binding that produces images: by the model's tags when one is given,
+    // else the provider's image API and its default model.
+    let resolved = crate::models::resolve_model(provider, model_override, "image")?;
     let providers = config::load_providers()?;
     let provider_cfg = providers
         .get("providers")
         .and_then(|p| p.get(provider))
         .cloned()
         .ok_or_else(|| HostError::UnknownProvider(provider.to_string()))?;
-    let eff = config::effective_config(provider, &provider_cfg)?;
     let api_key = config::resolve_api_key(provider, &provider_cfg)?;
-    let model = model_override
-        .map(String::from)
-        .or_else(|| {
-            eff.get("default_model")
-                .and_then(Value::as_str)
-                .map(String::from)
-        })
-        .ok_or_else(|| HostError::Config("no model (pass --model or set default_model)".into()))?;
+    let (eff, model) = (resolved.effective, resolved.model);
 
     let client = reqwest::Client::new();
     generate_images_with_effective(&client, &eff, &api_key, prompt, &model, out_dir).await

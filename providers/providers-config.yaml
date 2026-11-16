@@ -1,27 +1,14 @@
+# Providers. Each entry builds on a shipped template (url, auth, the APIs the
+# provider offers, and tag rules for its models) — anything you set here wins.
+# See docs/provider-model-design.md. Without `template:`, an entry is fully
+# yours: `url`, `api` (or `apis`), `api_key`, `default_model`, ...
 providers:
   openai:
-    url: https://api.openai.com/v1
-    hosted_models: /models
-    hosted_model_fields: [id, object, created, owned_by]
-    api_key: ${OPENAI_API_KEY}
-    api: responses
-    default_model: gpt-4o
-
+    template: openai
   anthropic:
-    url: https://api.anthropic.com/v1
-    hosted_models: /models
-    hosted_model_fields: [id, type]
-    api_key: ${ANTHROPIC_API_KEY}
-    api: messages
-    default_model: claude-3-5-sonnet-20241022
-
+    template: anthropic
   nvidia:
-    url: https://integrate.api.nvidia.com/v1
-    hosted_models: /models
-    hosted_model_fields: [id, object, owned_by]
-    api_key: ${NVIDIA_API_KEY}
-    api: chat-completions
-    default_model: meta/llama-3.1-70b-instruct
+    template: nvidia
 
 defaults:
   max_tokens: 4096

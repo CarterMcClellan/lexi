@@ -12,6 +12,7 @@ pub mod config;
 pub mod generate;
 pub mod hosted;
 pub mod image;
+pub mod models;
 pub mod respond;
 pub mod upload;
 
@@ -38,6 +39,12 @@ pub enum HostError {
     Http(#[from] reqwest::Error),
     #[error("provider returned HTTP {status}: {body}")]
     HttpStatus { status: u16, body: String },
+    /// Invalid input, e.g. a tag not in the vocabulary (the message says why).
+    #[error("{0}")]
+    Invalid(String),
+    /// No configured API serves this model / output (the message says why).
+    #[error("{0}")]
+    Unsupported(String),
     #[error("background operation failed: {0}")]
     OperationFailed(String),
     #[error("background operation did not finish within the poll budget")]
@@ -54,6 +61,7 @@ pub use bootstrap::{ensure_home, ensure_home_in};
 pub use generate::{generate_images_text, generate_images_with_effective, SavedArtifact};
 pub use hosted::{check_api_key, fetch_hosted_models, fetch_hosted_models_with, KeyStatus};
 pub use image::{resolve_image, resolve_images, ResolvedImage};
+pub use models::{resolve_model, ResolvedModel};
 pub use respond::{
     compose_chat_body, operation_status, prepare_chat, respond_background_text,
     respond_background_with_effective, respond_stream_text, respond_stream_with_effective,

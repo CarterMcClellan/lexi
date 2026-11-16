@@ -78,6 +78,8 @@ pub enum Cmd {
         #[command(subcommand)]
         cmd: JobsCmd,
     },
+    /// Show the model tag vocabulary (namespaces, kinds and what they imply).
+    Tags,
     /// Show the CLI version.
     Version,
     /// Show help for a command (`help models alias`) or a topic
@@ -377,6 +379,24 @@ pub enum ModelsCmd {
     /// Remove a model.
     #[command(visible_aliases = ["del", "delete"])]
     Rm { provider: String, model: String },
+    /// Add or remove tags on a model id or glob: `+out:image`, `-in:image`.
+    ///
+    /// Tags describe what a model takes, produces and supports; they decide
+    /// which of the provider's APIs serves it. Your tags win over the
+    /// provider's tag rules. See `lexi tags` for the vocabulary.
+    Tag {
+        provider: String,
+        /// A model id, or a glob such as "meta/*".
+        model: String,
+        /// Tag operations: `+tag` (or `tag`) adds, `-tag` removes.
+        #[arg(allow_hyphen_values = true, required_unless_present = "clear")]
+        ops: Vec<String>,
+        /// Remove all of your tags on this model or glob.
+        #[arg(long, conflicts_with = "ops")]
+        clear: bool,
+    },
+    /// Show a model's effective tags, where each came from, and its API.
+    Tags { provider: String, model: String },
 }
 
 #[derive(Debug, Subcommand)]

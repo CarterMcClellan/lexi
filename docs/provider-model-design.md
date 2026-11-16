@@ -61,7 +61,7 @@ what `models hosted --tag …` filters on.
 
 ### 3.1 The vocabulary (predefined)
 
-Shipped with Lexi (`lexi-core/tags.yaml`), namespaced, closed: a tag not in the
+Shipped with Lexi (`lexi_core::models::TAG_VOCABULARY`), namespaced, closed: a tag not in the
 vocabulary is rejected, so typos can't silently change routing.
 
 | Namespace | Tags | Meaning |
@@ -98,7 +98,7 @@ Every effective tag remembers its source, so `models tags` can say *why*.
 
 ```yaml
 openai:
-  tag_rules:                          # first matching rule per tag namespace wins
+  tag_rules:                          # every matching rule applies, in order; the first to set a kind: wins
     "gpt-image-*":        [kind:image-generation]
     "chatgpt-image-*":    [kind:image-generation]
     "text-embedding-*":   [kind:embedding]
@@ -124,9 +124,10 @@ Stored per provider in `providers/<p>/model-tags.yaml` — separate from
 Keys are model ids or patterns:
 
 ```yaml
-nvidia/nemotron-3.5-super-vl-120b-a12b: [+feature:tools, +feature:thinking]
-some-vendor/new-image-model:           [+kind:image-generation]
-"meta/*":                              [-feature:tools]
+tags:
+  nvidia/nemotron-3.5-super-vl-120b-a12b: [+feature:tools, +feature:thinking]
+  some-vendor/new-image-model:           [+kind:image-generation]
+  "meta/*":                              [-feature:tools]
 ```
 
 ```bash
@@ -233,7 +234,9 @@ the user's file once and never updated. Instead:
 - Lexi embeds **provider templates** (`lexi-core/providers/openai.yaml`, …), as it
   embeds API definitions.
 - An entry with `template: openai` is the template **deep-merged with the user's
-  entry**; `apis` merge by `api` name and `tag_rules` by pattern; `replace: true` on either replaces the template's (Q3).
+  entry**; `apis` merge by `api` name (the user's new bindings first) and
+  `tag_rules` by pattern (the user's rules first); `replace: [apis, tag_rules]`
+  replaces the template's (Q3).
 - Seeding writes `template:` entries, so a Lexi upgrade brings new rules and models
   to existing installs. User tags (`model-tags.yaml`) are never touched.
 - A provider without `template:` is fully user-defined (any OpenAI-compatible
