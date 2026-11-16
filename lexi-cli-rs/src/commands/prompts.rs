@@ -1,12 +1,12 @@
 //! `prompts` — saved prompts (`prompts/*.json`; the active one is named `$$`).
 
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 
 use crate::cli::PromptsCmd;
 use crate::output::{pretty, scalar, table, Io};
 
-/// The saved-prompt name that holds the active prompt.
-pub(crate) const ACTIVE_PROMPT: &str = "$$";
+use lexi_host::admin::{prompt_defaults, prompt_value as prompt_json};
+use lexi_host::config::ACTIVE_PROMPT;
 
 pub(crate) fn run(io: &mut Io<'_>, cmd: PromptsCmd) -> u8 {
     match cmd {
@@ -21,11 +21,6 @@ pub(crate) fn run(io: &mut Io<'_>, cmd: PromptsCmd) -> u8 {
         PromptsCmd::Activate { name } => activate(io, &name),
         PromptsCmd::Text(args) => adhoc(io, &args),
     }
-}
-
-/// A new prompt's fields before any options are applied.
-fn prompt_defaults() -> Value {
-    json!({ "prompt": "", "max_tokens": 256, "temperature": 0.7, "role": "user" })
 }
 
 /// Apply prompt text and options to `base` (the Python CLI's
@@ -156,19 +151,6 @@ fn adhoc(io: &mut Io<'_>, args: &[String]) -> u8 {
         Ok(body) => io.result(pretty(&body), body),
         Err(e) => io.fail(e),
     }
-}
-
-/// A prompt as JSON output: its body plus `name` and `active`.
-fn prompt_json(name: &str, body: &Value) -> Value {
-    let mut obj = Map::new();
-    obj.insert("name".into(), Value::from(name));
-    obj.insert("active".into(), Value::from(name == ACTIVE_PROMPT));
-    if let Value::Object(fields) = body {
-        for (k, v) in fields {
-            obj.entry(k.clone()).or_insert_with(|| v.clone());
-        }
-    }
-    Value::Object(obj)
 }
 
 fn line(name: &str, body: &Value, detailed: bool) -> String {

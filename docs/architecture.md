@@ -46,7 +46,7 @@ This document describes Lexi's internal architecture for developers working on t
 
 **lexi-desktop** (`lexi-desktop/`) — A native Tauri app: a thin webview shell whose reused frontend's `/api/*` calls route (via a `fetch`-shim → Tauri `invoke`) to `src/backend.rs`, which dispatches to `lexi-host` in-process. No Node, no Python, no localhost server. Replaced the old Node/Electron `lexi-gui`.
 
-**lexi-python** (`lexi-python/`) — A PyO3 wheel (`import lexi`): the Python library. It wraps both the engine (`lexi-core`: compose/extract/validate) and the runtime (`lexi-host`: `lexi.respond`, `lexi.stream`, `lexi.submit`, `lexi.jobs`, `lexi.generate`, `lexi.upload`), sharing `~/.lexi-cli` with the CLI and returning the CLI's `--json` shapes.
+**lexi-python** (`lexi-python/`) — A PyO3 wheel (`import lexi`): the Python library. It wraps both the engine (`lexi-core`: compose/extract/validate) and the runtime (`lexi-host`: `lexi.respond`, `lexi.stream`, `lexi.submit`, `lexi.jobs`, `lexi.generate`, `lexi.upload`, and the admin namespaces `lexi.providers` / `models` / `prompts` / `config` / `apis`), sharing `~/.lexi-cli` with the CLI and returning the CLI's `--json` shapes.
 
 **~/.lexi-cli/** — All persistent state (YAML/JSON), overridable with `$LEXI_HOME`. Every surface reads and writes the same files, so the CLI and desktop app share one configuration.
 

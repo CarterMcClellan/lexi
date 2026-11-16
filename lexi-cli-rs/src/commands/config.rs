@@ -5,27 +5,6 @@ use serde_json::{json, Map, Value};
 use crate::cli::ConfigCmd;
 use crate::output::{pretty, scalar, Io};
 
-/// Settings every install has, overlaid by `config.json` (as the Python CLI does).
-pub(crate) const CONFIG_DEFAULTS: &[(&str, &str)] = &[
-    ("cli_name", "lexi"),
-    ("prompt", "cmd"),
-    ("prompt_delimiter", ">"),
-    ("edit_mode", "vi"),
-];
-
-/// Defaults overlaid with the saved `config.json`.
-pub(crate) fn effective_config() -> Result<Map<String, Value>, lexi_host::HostError> {
-    let mut merged: Map<String, Value> = CONFIG_DEFAULTS
-        .iter()
-        .map(|(k, v)| (k.to_string(), Value::from(*v)))
-        .collect();
-    if let Value::Object(saved) = lexi_host::config::load_config()? {
-        merged.extend(saved);
-    }
-    merged.shift_remove("version"); // legacy key; the version comes from the binary
-    Ok(merged)
-}
-
 pub(crate) fn run(io: &mut Io<'_>, cmd: ConfigCmd) -> u8 {
     match cmd {
         ConfigCmd::List { key, raw, value } => list(io, key, raw, value),
@@ -35,7 +14,7 @@ pub(crate) fn run(io: &mut Io<'_>, cmd: ConfigCmd) -> u8 {
 }
 
 fn list(io: &mut Io<'_>, key: Option<String>, raw: bool, value_only: bool) -> u8 {
-    let config = match effective_config() {
+    let config = match lexi_host::admin::settings() {
         Ok(c) => c,
         Err(e) => return io.fail(e),
     };

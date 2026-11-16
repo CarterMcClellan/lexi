@@ -46,6 +46,39 @@ lexi.prepare("openai", "hi", mode="stream")["body"]   # the request body, not se
 | `upload(provider, path)` | `lexi upload` |
 | `prepare(...)` → `{"provider", "model", "body"}` | — (compose only) |
 
+## Manage the config
+
+The same operations as the CLI's admin commands, over the same files:
+
+```python
+lexi.providers.list()                         # [{name, url, api, default_model, key_source, …}]
+lexi.providers.add("local", "http://localhost:8000/v1", "llama-3", api_key="…")
+lexi.providers.status("openai")               # {"status": "ready", "source": "env", …}
+lexi.providers.set_key("openai", "sk-…")      # stored 0600, never in the config
+
+lexi.models.list("openai"); lexi.models.hosted("openai")
+lexi.models.add("openai", "gpt-4.1", name="GPT-4.1", default=True)
+lexi.models.set_alias("openai", "fast", "gpt-4.1-mini")
+
+lexi.prompts.save("review", "Review this code", temperature=0.2)
+lexi.prompts.activate("review")               # the default for respond()
+lexi.config.set("edit_mode", "emacs")
+
+lexi.apis.list(); lexi.apis.validate("mine")
+lexi.apis.create("mine", template="chat-completions", path="/v2/chat")
+lexi.apis.preview("mine", prompt="hi", model="m")["body"]
+```
+
+| Module | Functions | CLI |
+|---|---|---|
+| `lexi.providers` | `list`, `status`, `add`, `rename`, `remove`, `set_key`, `show_key`, `remove_key` | `lexi providers …` |
+| `lexi.models` | `list`, `hosted`, `default`, `set_default`, `add` / `set`, `remove`, `aliases`, `set_alias`, `remove_alias` | `lexi models …` |
+| `lexi.prompts` | `list`, `get`, `save`, `remove`, `activate` | `lexi prompts …` |
+| `lexi.config` | `list`, `get`, `set`, `remove` | `lexi config …` |
+| `lexi.apis` | `list`, `show`, `validate`, `preview`, `create`, `edit`, `save`, `remove` | `lexi api …` |
+
+## Results and errors
+
 Results are plain dicts in the same shapes as the CLI's `--json` output
 ([`docs/spec/cli-machine-v0.md`](../docs/spec/cli-machine-v0.md)), built by the
 same code. Failures raise `lexi.LexiError`; bad arguments raise `ValueError`.

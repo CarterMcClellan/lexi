@@ -14,6 +14,10 @@ Two layers, one Rust core:
       job = lexi.submit("openai", "Write a long essay")
       done = lexi.jobs.wait("openai", job["id"])
 
+  Manage the same config: ``lexi.providers``, ``lexi.models``,
+  ``lexi.prompts``, ``lexi.config``, ``lexi.apis`` (``lexi.models.list("openai")``,
+  ``lexi.prompts.save("review", "Review this code")``, …).
+
   Results are the CLI's ``--json`` shapes (``docs/spec/cli-machine-v0.md``);
   failures raise :class:`LexiError`.
 
@@ -41,6 +45,11 @@ __all__ = [
     "generate",
     "upload",
     "jobs",
+    "providers",
+    "models",
+    "prompts",
+    "config",
+    "apis",
 ] + [n for n in dir(_lexi) if not n.startswith("_") and n not in ("LexiError", "ChatStream")]
 
 SetPaths = Union[Mapping[str, Any], Sequence[Tuple[str, Any]]]
@@ -226,4 +235,6 @@ def upload(provider: str, path: Union[str, "os.PathLike[str]"]) -> Dict[str, Any
     return _lexi._upload(provider, os.fspath(path))
 
 
-from . import jobs  # noqa: E402 — after the functions it doesn't depend on
+# The admin namespaces (``lexi providers`` / ``models`` / ``prompts`` /
+# ``config`` / ``api``) and background jobs.
+from . import apis, config, jobs, models, prompts, providers  # noqa: E402

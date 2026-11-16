@@ -1,6 +1,7 @@
 //! Enforces `docs/surface-matrix.md`: every `lexi-host` operation is classified,
-//! and every operation's CLI cell names real `lexi` commands (or a planned
-//! consolidation slice), so the CLI can't silently fall behind the runtime.
+//! every operation's CLI cell names real `lexi` commands (or a planned
+//! consolidation slice), and every operation's Python cell names real functions
+//! of the `lexi` wheel — so neither surface can silently fall behind the runtime.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -38,6 +39,7 @@ struct Row {
     operation: String,
     host_fns: Vec<String>,
     cli: String,
+    python: String,
 }
 
 fn operation_rows(doc: &str) -> Vec<Row> {
@@ -57,6 +59,7 @@ fn operation_rows(doc: &str) -> Vec<Row> {
                 operation: cells[0].to_string(),
                 host_fns: backticked(cells[1]),
                 cli: cells[2].to_string(),
+                python: cells[3].to_string(),
             }
         })
         .collect()
@@ -173,5 +176,85 @@ fn every_cli_command_is_in_the_matrix() {
     assert!(
         missing.is_empty(),
         "lexi commands missing from docs/surface-matrix.md: {missing:?}"
+    );
+}
+
+/// The wheel's public Python API: top-level `def`s (and `name = other` aliases)
+/// in `lexi-python/python/lexi/` — `lexi.<fn>` from `__init__.py`,
+/// `lexi.<module>.<fn>` from each public module.
+fn python_api() -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    let dir = repo_root().join("lexi-python/python/lexi");
+    for entry in std::fs::read_dir(&dir).unwrap() {
+        let path = entry.unwrap().path();
+        let stem = path.file_stem().unwrap().to_str().unwrap().to_string();
+        if path.extension().and_then(|e| e.to_str()) != Some("py")
+            || (stem.starts_with('_') && stem != "__init__")
+        {
+            continue;
+        }
+        let prefix = if stem == "__init__" {
+            "lexi.".to_string()
+        } else {
+            format!("lexi.{stem}.")
+        };
+        let ident = |s: &str| -> String {
+            s.chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect()
+        };
+        for line in std::fs::read_to_string(&path).unwrap().lines() {
+            let name = if let Some(rest) = line.strip_prefix("def ") {
+                ident(rest)
+            } else if let Some((lhs, rhs)) = line.split_once(" = ") {
+                // `set = add` — an alias of a function.
+                let (lhs, rhs) = (lhs.trim(), rhs.split('#').next().unwrap().trim());
+                if !lhs.is_empty()
+                    && ident(lhs) == lhs
+                    && ident(rhs) == rhs
+                    && !rhs.is_empty()
+                    && lhs.chars().next().unwrap().is_lowercase()
+                {
+                    lhs.to_string()
+                } else {
+                    continue;
+                }
+            } else {
+                continue;
+            };
+            if !name.is_empty() && !name.starts_with('_') {
+                names.insert(format!("{prefix}{name}"));
+            }
+        }
+    }
+    names
+}
+
+#[test]
+fn every_python_cell_names_real_functions_and_every_function_is_listed() {
+    let api = python_api();
+    assert!(api.contains("lexi.respond"), "found no Python API: {api:?}");
+    let mut mentioned = BTreeSet::new();
+    for row in operation_rows(&matrix()) {
+        let fns = backticked(&row.python);
+        assert!(
+            !fns.is_empty(),
+            "operation {:?} has no Python API (cell: {:?})",
+            row.operation,
+            row.python
+        );
+        for f in fns {
+            assert!(
+                api.contains(&f),
+                "operation {:?} names unknown Python function {f:?}",
+                row.operation
+            );
+            mentioned.insert(f);
+        }
+    }
+    let missing: Vec<_> = api.difference(&mentioned).collect();
+    assert!(
+        missing.is_empty(),
+        "lexi wheel functions missing from docs/surface-matrix.md: {missing:?}"
     );
 }
