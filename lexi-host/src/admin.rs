@@ -1,5 +1,5 @@
 //! Admin operations in their machine-interface shapes
-//! (`docs/spec/cli-machine-v0.md` §3), shared by the CLI's `--json` output and
+//! (`docs/spec/cli-machine-v1.md` §3), shared by the CLI's `--json` output and
 //! the Python library. The file-level reads and writes live in [`crate::config`];
 //! this module composes them into the summaries every surface returns.
 

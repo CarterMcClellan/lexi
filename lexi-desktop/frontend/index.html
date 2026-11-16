@@ -884,6 +884,22 @@
     .row-error {
       background: rgba(239, 68, 68, 0.08) !important;
     }
+    /* Model tags (in:image, feature:tools, …), colored by namespace. */
+    .model-tag {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 0.68rem;
+      margin: 1px 2px;
+      border: 1px solid var(--border, rgba(127, 127, 127, 0.35));
+      color: var(--muted, inherit);
+      white-space: nowrap;
+    }
+    .model-tag.ns-in, .model-tag.ns-out { border-color: var(--accent); color: var(--accent); }
+    .model-tag.ns-feature { border-color: var(--success); color: var(--success); }
+    .model-tag.ns-status { border-color: var(--danger); color: var(--danger); }
+    .model-kind { font-size: 0.75rem; }
+    .model-kind .api { opacity: 0.7; }
     .alias-tag.error {
       background: rgba(239, 68, 68, 0.1);
       color: var(--danger);
@@ -2849,6 +2865,23 @@
       el.style.color = tone === 'error' ? 'var(--danger)' : tone === 'success' ? 'var(--success)' : 'var(--muted)';
     }
 
+    // Tag chips; `kind:` is shown in its own column, so it's left out here.
+    function tagChips(tags) {
+      return (tags || [])
+        .filter((t) => !String(t).startsWith('kind:'))
+        .map((t) => {
+          const ns = String(t).split(':')[0];
+          return `<span class="model-tag ns-${escapeHtml(ns)}">${escapeHtml(t)}</span>`;
+        })
+        .join('');
+    }
+
+    function kindCell(m) {
+      if (!m.kind && !m.api) return '';
+      const api = m.api ? ` <span class="api">· ${escapeHtml(m.api)}</span>` : ' <span class="badge-error">no API</span>';
+      return `<span class="model-kind">${escapeHtml(m.kind || '?')}${api}</span>`;
+    }
+
     function renderModelsTable() {
       if (!mtModels.length) {
         modelsTableEl.innerHTML = '<div class="muted">No configured models.</div>';
@@ -2869,7 +2902,7 @@
 
       const table = document.createElement('table');
       table.className = 'data-table';
-      table.innerHTML = `<thead><tr><th>Model ID</th><th>Name</th><th>Max Tokens</th><th>Context</th><th>Aliases</th><th></th></tr></thead>`;
+      table.innerHTML = `<thead><tr><th>Model ID</th><th>Name</th><th>Kind · API</th><th>Tags</th><th>Max Tokens</th><th>Context</th><th>Aliases</th><th></th></tr></thead>`;
       const tbody = document.createElement('tbody');
       mtModels.forEach((m) => {
         const tr = document.createElement('tr');
@@ -2883,6 +2916,8 @@
         tr.innerHTML = `
           <td>${escapeHtml(m.id)}${isDefault ? ' <span class="badge-default">default</span>' : ''}${notHostedBadge}</td>
           <td>${escapeHtml(m.name || '')}</td>
+          <td>${kindCell(m)}</td>
+          <td>${tagChips(m.tags)}</td>
           <td>${m.max_tokens != null ? m.max_tokens : ''}</td>
           <td>${m.context_window != null ? m.context_window : ''}</td>
           <td>${aliasTags}</td>
@@ -3124,11 +3159,14 @@
         const v = sampleModel[k];
         return v === null || v === undefined || typeof v !== 'object';
       });
+      const hasTags = Array.isArray(sampleModel.tags);
 
       const filter = hostedFilterActive ? hostedFilterText.toLowerCase() : '';
       let filtered = filter
         ? hostedAllModels.filter((m) => {
-            return columns.some(k => String(m[k] ?? '').toLowerCase().includes(filter));
+            // Matches any column, or a tag (type e.g. out:image or in:image).
+            return columns.some(k => String(m[k] ?? '').toLowerCase().includes(filter))
+              || (m.tags || []).some(t => String(t).toLowerCase().includes(filter));
           })
         : [...hostedAllModels];
 
@@ -3176,6 +3214,11 @@
         });
         headerRow.appendChild(th);
       });
+      if (hasTags) {
+        const tagsTh = document.createElement('th');
+        tagsTh.textContent = 'tags';
+        headerRow.appendChild(tagsTh);
+      }
       const actionTh = document.createElement('th');
       headerRow.appendChild(actionTh);
       thead.appendChild(headerRow);
@@ -3192,6 +3235,11 @@
           td.textContent = m[col] != null ? String(m[col]) : '';
           tr.appendChild(td);
         });
+        if (hasTags) {
+          const tagsTd = document.createElement('td');
+          tagsTd.innerHTML = tagChips(m.tags);
+          tr.appendChild(tagsTd);
+        }
         const actionTd = document.createElement('td');
         if (exists) {
           actionTd.innerHTML = '<span class="badge-exists">added</span>';

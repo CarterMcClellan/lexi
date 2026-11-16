@@ -2,7 +2,7 @@
 
 use serde_json::{json, Value};
 
-use crate::cli::{ApiKeyCmd, ProvidersCmd};
+use crate::cli::{ApiKeyCmd, ProviderApiCmd, ProvidersCmd};
 use crate::output::{scalar, table, Io};
 
 pub(crate) async fn run(io: &mut Io<'_>, cmd: ProvidersCmd) -> u8 {
@@ -30,6 +30,12 @@ pub(crate) async fn run(io: &mut Io<'_>, cmd: ProvidersCmd) -> u8 {
             ApiKeyCmd::Show { name, reveal } => key_show(io, &name, reveal),
             ApiKeyCmd::Remove { name } => key_remove(io, &name),
         },
+        ProvidersCmd::Api { cmd } => api(io, cmd),
+        ProvidersCmd::Upgrade {
+            names,
+            template,
+            yes,
+        } => upgrade(io, &names, template.as_deref(), yes),
         ProvidersCmd::Rename { old, new } => match lexi_host::config::rename_provider(&old, &new) {
             Ok(()) => io.result(
                 format!("Renamed provider {old} -> {new}."),
@@ -210,4 +216,129 @@ fn list(io: &mut Io<'_>, raw: bool, as_table: bool) -> u8 {
             .join("\n")
     };
     io.result(human, json)
+}
+
+fn api(io: &mut Io<'_>, cmd: ProviderApiCmd) -> u8 {
+    match cmd {
+        ProviderApiCmd::List { name } => match lexi_host::config::provider_apis(&name) {
+            Ok(list) => {
+                let mut lines = vec![format!("APIs for {name}:")];
+                for b in &list {
+                    let serves = match b.get("for").and_then(Value::as_array) {
+                        Some(tags) if !tags.is_empty() => {
+                            let t: Vec<String> = tags.iter().map(|t| scalar(Some(t))).collect();
+                            format!("models tagged {}", t.join(" "))
+                        }
+                        _ => "everything else (catch-all)".into(),
+                    };
+                    let mut line = format!("  {} — {serves}", scalar(b.get("api")));
+                    if let Some(m) = b.get("default_model").filter(|v| !v.is_null()) {
+                        line.push_str(&format!(", default {}", scalar(Some(m))));
+                    }
+                    if let Some(u) = b.get("url").filter(|v| !v.is_null()) {
+                        line.push_str(&format!(", at {}", scalar(Some(u))));
+                    }
+                    line.push_str(&format!(" [{}]", scalar(b.get("source"))));
+                    if b["enabled"] == false {
+                        line.push_str(" (off)");
+                    }
+                    lines.push(line);
+                }
+                io.result(lines.join("\n"), Value::Array(list))
+            }
+            Err(e) => io.fail(e),
+        },
+        ProviderApiCmd::Add {
+            name,
+            api,
+            for_tags,
+            default_model,
+            url,
+        } => {
+            let mut b = serde_json::Map::new();
+            b.insert("api".into(), Value::from(api.as_str()));
+            if !for_tags.is_empty() {
+                b.insert("for".into(), json!(for_tags));
+            }
+            if let Some(m) = default_model {
+                b.insert("default_model".into(), Value::from(m));
+            }
+            if let Some(u) = url {
+                b.insert("url".into(), Value::from(u));
+            }
+            match lexi_host::config::add_provider_api(&name, &b) {
+                Ok(existed) => {
+                    let verb = if existed { "Updated" } else { "Added" };
+                    io.result(
+                        format!("{verb} the {api} API on {name}."),
+                        json!({ "provider": name, "api": api, "existed": existed }),
+                    )
+                }
+                Err(e) => io.fail(e),
+            }
+        }
+        ProviderApiCmd::Rm { name, api } => {
+            match lexi_host::config::remove_provider_api(&name, &api) {
+                Ok(()) => io.result(
+                    format!("Removed the {api} API from {name}."),
+                    json!({ "provider": name, "removed": api }),
+                ),
+                Err(e) => io.fail(e),
+            }
+        }
+    }
+}
+
+fn upgrade(io: &mut Io<'_>, names: &[String], template: Option<&str>, yes: bool) -> u8 {
+    let names: Vec<String> = if names.is_empty() {
+        match lexi_host::config::load_providers() {
+            Ok(cfg) => lexi_host::config::provider_names(&cfg)
+                .into_iter()
+                .filter(|n| lexi_host::config::template_names().contains(&n.as_str()))
+                .collect(),
+            Err(e) => return io.fail(e),
+        }
+    } else {
+        names.to_vec()
+    };
+    let mut results = Vec::new();
+    let mut lines = Vec::new();
+    for n in &names {
+        match lexi_host::config::upgrade_provider(n, template, yes) {
+            Ok(r) => {
+                if r["changed"] == false {
+                    lines.push(format!(
+                        "{n}: already uses template {}",
+                        scalar(r.get("template"))
+                    ));
+                } else {
+                    let yaml = |v: &Value| {
+                        serde_yaml::to_string(v)
+                            .unwrap_or_default()
+                            .lines()
+                            .map(|l| format!("    {l}"))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    };
+                    lines.push(format!(
+                        "{n}: → template {}\n  before:\n{}\n  after:\n{}",
+                        scalar(r.get("template")),
+                        yaml(&r["before"]),
+                        yaml(&r["after"])
+                    ));
+                    if let Some(b) = r.get("backup").and_then(Value::as_str) {
+                        lines.push(format!("  upgraded (backup: {b})"));
+                    }
+                }
+                results.push(r);
+            }
+            Err(e) => return io.fail(e),
+        }
+    }
+    if names.is_empty() {
+        lines.push("No providers with a shipped template.".into());
+    } else if !yes && results.iter().any(|r| r["changed"] == true) {
+        lines.push("Run again with --yes to apply.".into());
+    }
+    io.result(lines.join("\n"), Value::Array(results))
 }

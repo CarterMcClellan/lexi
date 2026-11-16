@@ -26,7 +26,7 @@ your edits are never overwritten.
 ## Core Commands
 
 All main commands use **plural forms** and support subcommands. Use `help <command>` for details,
-and add `--json` to any command for machine-readable output ([spec](docs/spec/cli-machine-v0.md)).
+and add `--json` to any command for machine-readable output ([spec](docs/spec/cli-machine-v1.md)).
 
 | Command | Description |
 |---|---|
@@ -35,7 +35,7 @@ and add `--json` to any command for machine-readable output ([spec](docs/spec/cl
 | `models tag\|tags` · `tags` | Tag models (what they take, produce, support) · the tag vocabulary |
 | `jobs status\|wait` | Background jobs (`respond --background --detach`) |
 | `prompts list\|set\|rm\|activate` | Manage saved prompts |
-| `providers list\|add\|rename\|rm\|status\|api-key` | Manage LLM providers and their keys |
+| `providers list\|add\|rename\|rm\|status\|api-key\|api\|upgrade` | Manage LLM providers, their keys and APIs; move older configs to the shipped templates |
 | `models list\|hosted\|add\|set\|rm\|default\|alias` | Manage models for a provider |
 | `api list\|show\|create\|edit\|save\|rm\|validate\|preview` | Manage API definitions |
 | `alias list\|add\|rm\|reset` | Manage command aliases |
@@ -197,7 +197,7 @@ pip install ./lexi-python pytest pyyaml && pytest lexi-python/tests
 
 - [Getting Started](docs/getting-started.md) — Install, configure, and send your first prompt
 - [CLI Reference](docs/cli-reference.md) — Complete command reference (generated from the CLI)
-- [CLI machine interface](docs/spec/cli-machine-v0.md) — The `--json` contract for scripts and agents
+- [CLI machine interface](docs/spec/cli-machine-v1.md) — The `--json` contract for scripts and agents
 - [API Definitions](docs/api-definitions.md) — How the config-driven API abstraction works
 - [Architecture](docs/architecture.md) — System design and developer internals
 

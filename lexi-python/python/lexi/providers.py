@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from ._admin import call
 
@@ -66,3 +66,37 @@ def show_key(name: str, *, reveal: bool = False) -> Dict[str, Any]:
 def remove_key(name: str) -> Dict[str, Any]:
     """Delete the provider's key file: ``{"removed": bool}``."""
     return call("providers.remove_key", name=name)
+
+
+def upgrade(name: str, *, template: Optional[str] = None, apply: bool = False) -> Dict[str, Any]:
+    """Convert a provider to its shipped template (``lexi providers upgrade``),
+    keeping only the values you changed. Without ``apply``, reports what would
+    change: ``{provider, template, changed, before, after, dropped, kept}``;
+    with it, also backs up and rewrites the config (``backup``)."""
+    return call("providers.upgrade", name=name, template=template, apply=apply)
+
+
+def apis(name: str) -> List[Dict[str, Any]]:
+    """The APIs a provider offers: ``[{api, for?, default_model?, url?,
+    enabled, source}]`` (``source``: ``template``, ``user`` or ``config``)."""
+    return call("providers.apis", name=name)
+
+
+def add_api(
+    name: str,
+    api: str,
+    *,
+    for_tags: Iterable[str] = (),
+    default_model: Optional[str] = None,
+    url: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Add (or update) an API on a provider: models tagged with all of
+    ``for_tags`` use it (none = the catch-all)."""
+    tags = [*for_tags]
+    return call("providers.add_api", name=name, api=api, default_model=default_model, url=url,
+                **({"for": tags} if tags else {}))
+
+
+def remove_api(name: str, api: str) -> Dict[str, Any]:
+    """Remove an API from a provider (a template's API is turned off)."""
+    return call("providers.remove_api", name=name, api=api)

@@ -632,7 +632,7 @@ impl PreparedChat {
     }
 
     /// The machine-interface result of a finished chat
-    /// (`docs/spec/cli-machine-v0.md` §3): `{provider, model, api, text,
+    /// (`docs/spec/cli-machine-v1.md` §3): `{provider, model, api, text,
     /// artifacts, metadata, activity?, sources?, raw?}` — `artifacts` are the
     /// files [`crate::generate::save_artifacts`] wrote, `sources` when `cite`,
     /// `raw` when `raw`.

@@ -65,7 +65,7 @@ This document describes Lexi's internal architecture for developers working on t
 
 - `src/cli.rs` — The clap command tree (`Cli`, with the global `--json` flag). [CLI Reference](cli-reference.md) is generated from it.
 - `src/commands/mod.rs` — `dispatch()` routes each parsed command to its module: `respond.rs`, `chat.rs` (`generate`, `upload`, `version`), `jobs.rs`, `prompts.rs`, `providers.rs`, `models.rs`, `api.rs`, `config.rs`, and `shell_cmds.rs` (`help`, `history`, `alias`, `sh`, `exit`).
-- `src/output.rs` — `Io`: every command writes through it, emitting human text or, with `--json`, the machine envelope from [spec/cli-machine-v0.md](spec/cli-machine-v0.md).
+- `src/output.rs` — `Io`: every command writes through it, emitting human text or, with `--json`, the machine envelope from [spec/cli-machine-v1.md](spec/cli-machine-v1.md).
 - `src/shell.rs` — The rustyline REPL: `?` → `help`, `!cmd` → `sh`, `#N` / `#-1` history replay, alias expansion.
 - `src/aliases.rs` / `src/history.rs` — `aliases.json` and `~/.lexi-cli/history`. Aliases expand in the shell and for one-off commands, and never shadow a real command.
 - `src/coerce.rs` — Parses `--set path=value` arguments into a path and a type-coerced value.

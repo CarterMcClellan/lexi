@@ -18,7 +18,7 @@ Two layers, one Rust core:
   ``lexi.prompts``, ``lexi.config``, ``lexi.apis`` (``lexi.models.list("openai")``,
   ``lexi.prompts.save("review", "Review this code")``, …).
 
-  Results are the CLI's ``--json`` shapes (``docs/spec/cli-machine-v0.md``);
+  Results are the CLI's ``--json`` shapes (``docs/spec/cli-machine-v1.md``);
   failures raise :class:`LexiError`.
 
 * **Engine** — the pure request/response engine over API definitions

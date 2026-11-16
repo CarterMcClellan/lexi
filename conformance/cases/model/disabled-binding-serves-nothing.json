@@ -1,0 +1,46 @@
+{
+  "name": "disabled-binding-serves-nothing",
+  "description": "With the image binding disabled, an image model has no API (rather than falling back to chat).",
+  "provider": {
+    "apis": [
+      {
+        "api": "responses",
+        "default_model": "gpt-4o"
+      },
+      {
+        "api": "image-generations",
+        "for": [
+          "kind:image-generation"
+        ],
+        "enabled": false
+      }
+    ],
+    "tag_rules": {
+      "gpt-image-*": [
+        "kind:image-generation"
+      ]
+    }
+  },
+  "model": "gpt-image-2",
+  "expect": {
+    "model": "gpt-image-2",
+    "kind": "image-generation",
+    "api": null,
+    "binding": null,
+    "tags": [
+      {
+        "tag": "in:text",
+        "source": "kind"
+      },
+      {
+        "tag": "out:image",
+        "source": "kind"
+      },
+      {
+        "tag": "kind:image-generation",
+        "source": "rule:gpt-image-*"
+      }
+    ],
+    "error": "gpt-image-2 is a kind:image-generation model, and this provider has no API configured for it"
+  }
+}

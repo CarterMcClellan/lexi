@@ -6,7 +6,7 @@
 //! - seeds `~/.lexi-cli` (or `$LEXI_HOME`) with missing defaults, like the CLI;
 //! - runs on one shared tokio runtime with the GIL released, checking for
 //!   Ctrl-C while it waits;
-//! - returns the CLI's `--json` shapes (`docs/spec/cli-machine-v0.md`), built by
+//! - returns the CLI's `--json` shapes (`docs/spec/cli-machine-v1.md`), built by
 //!   the same `lexi-host` code, and raises `lexi.LexiError` on failure.
 
 use std::future::Future;
@@ -512,6 +512,32 @@ fn _admin<'py>(py: Python<'py>, op: &str, args: &Bound<'py, PyAny>) -> PyResult<
             json!({ "provider": name })
         }
         "providers.show_key" => admin::api_key_info(a.str("name")?, a.flag("reveal")).map_err(e)?,
+        "providers.upgrade" => {
+            cfg::upgrade_provider(a.str("name")?, a.opt_str("template"), a.flag("apply"))
+                .map_err(e)?
+        }
+        "providers.apis" => json!(cfg::provider_apis(a.str("name")?).map_err(e)?),
+        "providers.add_api" => {
+            let name = a.str("name")?;
+            let mut b = Map::new();
+            b.insert("api".into(), Value::from(a.str("api")?));
+            for (k, key) in [
+                ("for", "for"),
+                ("default_model", "default_model"),
+                ("url", "url"),
+            ] {
+                if let Some(v) = a.0.get(k).filter(|v| !v.is_null()) {
+                    b.insert(key.into(), v.clone());
+                }
+            }
+            let existed = cfg::add_provider_api(name, &b).map_err(e)?;
+            json!({ "provider": name, "api": b["api"], "existed": existed })
+        }
+        "providers.remove_api" => {
+            let (name, api) = (a.str("name")?, a.str("api")?);
+            cfg::remove_provider_api(name, api).map_err(e)?;
+            json!({ "provider": name, "removed": api })
+        }
         "providers.remove_key" => {
             let name = a.str("name")?;
             require_provider(name).map_err(e)?;

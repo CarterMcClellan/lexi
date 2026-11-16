@@ -305,11 +305,58 @@ pub enum ProvidersCmd {
         #[command(subcommand)]
         cmd: ApiKeyCmd,
     },
+    /// Manage the APIs a provider offers (its bindings).
+    Api {
+        #[command(subcommand)]
+        cmd: ProviderApiCmd,
+    },
+    /// Convert providers to the shipped templates, keeping your changes.
+    ///
+    /// Shows what would change; --yes applies it (backing up
+    /// providers-config.yaml). Values still at the old shipped defaults are
+    /// dropped (the template supplies current ones); values you changed stay.
+    Upgrade {
+        /// Providers to upgrade (default: all that have a shipped template).
+        names: Vec<String>,
+        /// The template to use (default: the provider's name).
+        #[arg(long)]
+        template: Option<String>,
+        /// Apply the change (otherwise just show it).
+        #[arg(short, long)]
+        yes: bool,
+    },
     /// Rename a provider.
     Rename { old: String, new: String },
     /// Remove a provider and its models, aliases and key file.
     #[command(visible_aliases = ["del", "delete"])]
     Rm { name: String },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ProviderApiCmd {
+    /// List a provider's APIs: which models each serves, its default model,
+    /// and whether it comes from the template or your config.
+    #[command(visible_alias = "ls")]
+    List { name: String },
+    /// Add an API to a provider (or update one), e.g.
+    /// `providers api add openai embeddings --for kind:embedding --default-model text-embedding-3-small`.
+    Add {
+        name: String,
+        /// API definition name (see `api list`).
+        api: String,
+        /// Tags a model needs to use this API (repeatable); none = the catch-all.
+        #[arg(long = "for", value_name = "TAG")]
+        for_tags: Vec<String>,
+        /// The model used when a request asks for this API's output without naming one.
+        #[arg(long = "default-model", visible_alias = "default_model")]
+        default_model: Option<String>,
+        /// A base URL for this API, if it differs from the provider's.
+        #[arg(long)]
+        url: Option<String>,
+    },
+    /// Remove an API from a provider (a template's API is turned off).
+    #[command(visible_aliases = ["del", "delete"])]
+    Rm { name: String, api: String },
 }
 
 #[derive(Debug, Subcommand)]

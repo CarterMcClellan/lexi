@@ -82,7 +82,7 @@ lexi.apis.preview("mine", prompt="hi", model="m")["body"]
 ## Results and errors
 
 Results are plain dicts in the same shapes as the CLI's `--json` output
-([`docs/spec/cli-machine-v0.md`](../docs/spec/cli-machine-v0.md)), built by the
+([`docs/spec/cli-machine-v1.md`](../docs/spec/cli-machine-v1.md)), built by the
 same code. Failures raise `lexi.LexiError`; bad arguments raise `ValueError`.
 Calls release the GIL while they wait, so threads run concurrently and Ctrl-C
 interrupts a call in progress.

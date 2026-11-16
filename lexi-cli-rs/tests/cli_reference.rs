@@ -89,7 +89,7 @@ fn render() -> String {
          `LEXI_UPDATE_DOCS=1 cargo test -p lexi-cli-rs --test cli_reference`.\n\n\
          Run `lexi` with no command for the interactive shell. Every command accepts\n\
          the global `--json` flag (machine-readable output; see\n\
-         [spec/cli-machine-v0.md](spec/cli-machine-v0.md)).\n\n---\n\n",
+         [spec/cli-machine-v1.md](spec/cli-machine-v1.md)).\n\n---\n\n",
     );
     for top in visible_subs(&root) {
         writeln!(out, "## `{}`\n", top.get_name()).unwrap();

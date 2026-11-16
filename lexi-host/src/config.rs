@@ -1156,6 +1156,319 @@ fn edit_api_def_in(
     write_yaml(&dest, &data)
 }
 
+// ---------------------------------------------------------------------------
+// Templates and bindings: `providers upgrade`, `providers api …`.
+// ---------------------------------------------------------------------------
+
+/// The providers-config.yaml shipped before templates; `upgrade_provider`
+/// drops values still at these defaults.
+const LEGACY_DEFAULTS: &str =
+    include_str!("../../lexi-core/providers/legacy-providers-config.yaml");
+
+fn legacy_entry(template: &str) -> Value {
+    serde_yaml::from_str::<Value>(LEGACY_DEFAULTS)
+        .ok()
+        .and_then(|d| d.get("providers")?.get(template).cloned())
+        .unwrap_or(Value::Null)
+}
+
+fn raw_entry(doc: &mut Map, name: &str) -> Result<Map, HostError> {
+    providers_mut(doc)
+        .get(name)
+        .and_then(Value::as_object)
+        .cloned()
+        .ok_or_else(|| HostError::UnknownProvider(name.to_string()))
+}
+
+/// Copy providers-config.yaml aside (`.bak-<unix secs>[-n]`) before a rewrite.
+fn backup_providers_config(home: &Path) -> Result<PathBuf, HostError> {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let src = providers_config_path(home);
+    // Never reuse a name: several rewrites in one second must each keep theirs
+    // (the first holds the untouched original).
+    let dest = (1..)
+        .map(|n| match n {
+            1 => src.with_file_name(format!("providers-config.yaml.bak-{secs}")),
+            n => src.with_file_name(format!("providers-config.yaml.bak-{secs}-{n}")),
+        })
+        .find(|p| !p.exists())
+        .expect("an unused backup name");
+    std::fs::copy(&src, &dest)?;
+    Ok(dest)
+}
+
+/// Convert a provider entry to the template form: `template: <name>` plus only
+/// the values that differ from both the template and the old shipped
+/// defaults. A custom single `api` / `default_model` become a binding (so the
+/// template's own bindings don't hide them). `template` defaults to the
+/// provider's name. With `apply`, backs up and rewrites providers-config.yaml;
+/// otherwise reports what would change. Returns `{provider, template, changed,
+/// before, after, dropped, kept, backup?}`.
+pub fn upgrade_provider(
+    name: &str,
+    template: Option<&str>,
+    apply: bool,
+) -> Result<Value, HostError> {
+    let home = lexi_home();
+    let mut doc = read_providers_doc(&home)?;
+    let entry = raw_entry(&mut doc, name)?;
+    if let Some(t) = entry.get("template").and_then(Value::as_str) {
+        if template.is_none_or(|want| want == t) {
+            return Ok(serde_json::json!({
+                "provider": name, "template": t, "changed": false,
+                "before": entry, "after": entry, "dropped": [], "kept": [],
+            }));
+        }
+    }
+    let tname = template.unwrap_or(name);
+    let tmpl = provider_template(tname)?;
+    let legacy = legacy_entry(tname);
+    let resolved = lexi_core::merge_provider_template(&tmpl, &serde_json::json!({}));
+    let catch_all_api = lexi_core::provider_bindings(&resolved)
+        .into_iter()
+        .find(|b| b.get("for").is_none())
+        .and_then(|b| b["api"].as_str().map(String::from));
+
+    let mut after = Map::new();
+    after.insert("template".into(), Value::from(tname));
+    let (mut dropped, mut kept) = (Vec::new(), Vec::new());
+    let mut user_bindings: Vec<Value> = Vec::new();
+    let custom_api = entry
+        .get("api")
+        .and_then(Value::as_str)
+        .filter(|a| Some(*a) != legacy.get("api").and_then(Value::as_str))
+        .filter(|a| Some(*a) != catch_all_api.as_deref())
+        .map(String::from);
+    for (k, v) in &entry {
+        if k == "template" {
+            continue;
+        }
+        let at_default = legacy.get(k) == Some(v) || resolved.get(k) == Some(v);
+        match k.as_str() {
+            _ if at_default => dropped.push(k.clone()),
+            "api" => {
+                // A custom API becomes the catch-all binding (listed first).
+                user_bindings.insert(0, serde_json::json!({ "api": v }));
+                kept.push(k.clone());
+            }
+            "default_model" => {
+                let api = custom_api
+                    .clone()
+                    .or(catch_all_api.clone())
+                    .unwrap_or_default();
+                match user_bindings.iter_mut().find(|b| b["api"] == api.as_str()) {
+                    Some(b) => b["default_model"] = v.clone(),
+                    None => {
+                        user_bindings.push(serde_json::json!({ "api": api, "default_model": v }))
+                    }
+                }
+                kept.push(k.clone());
+            }
+            _ => {
+                after.insert(k.clone(), v.clone());
+                kept.push(k.clone());
+            }
+        }
+    }
+    if !user_bindings.is_empty() {
+        after.insert("apis".into(), Value::Array(user_bindings));
+    }
+    let mut out = serde_json::json!({
+        "provider": name, "template": tname, "changed": true,
+        "before": entry, "after": after, "dropped": dropped, "kept": kept,
+    });
+    if apply {
+        out["backup"] = Value::from(backup_providers_config(&home)?.display().to_string());
+        providers_mut(&mut doc).insert(name.to_string(), Value::Object(after));
+        write_yaml(&providers_config_path(&home), &Value::Object(doc))?;
+    }
+    Ok(out)
+}
+
+/// A provider's bindings with where each comes from:
+/// `[{api, for?, default_model?, url?, enabled, source: "template"|"user"|"config"}]`.
+pub fn provider_apis(name: &str) -> Result<Vec<Value>, HostError> {
+    let home = lexi_home();
+    let mut doc = read_providers_doc(&home)?;
+    let entry = Value::Object(raw_entry(&mut doc, name)?);
+    let resolved = resolve_template(&entry)?;
+    let user: Vec<String> = entry
+        .get("apis")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|b| {
+            b.get("api")
+                .or(Some(b))
+                .and_then(Value::as_str)
+                .map(String::from)
+        })
+        .collect();
+    let templated = entry.get("template").is_some();
+    let all: Vec<Value> = resolved
+        .get("apis")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_else(|| lexi_core::provider_bindings(&resolved));
+    Ok(all
+        .into_iter()
+        .map(|b| {
+            let mut b = match b {
+                Value::String(s) => serde_json::json!({ "api": s }),
+                other => other,
+            };
+            let api = b["api"].as_str().unwrap_or("").to_string();
+            let source = if !templated {
+                "config"
+            } else if user.contains(&api) {
+                "user"
+            } else {
+                "template"
+            };
+            let enabled = b.get("enabled") != Some(&Value::Bool(false));
+            if let Some(o) = b.as_object_mut() {
+                o.insert("enabled".into(), Value::Bool(enabled));
+                o.insert("source".into(), Value::from(source));
+            }
+            b
+        })
+        .collect())
+}
+
+/// Add (or update) a binding on a provider: `binding` is `{api, for?,
+/// default_model?, url?}`. An older single-`api` entry is converted to an
+/// `apis` list first. Returns true if the binding already existed.
+pub fn add_provider_api(name: &str, binding: &Map) -> Result<bool, HostError> {
+    let api = binding
+        .get("api")
+        .and_then(Value::as_str)
+        .ok_or_else(|| HostError::Invalid("a binding needs an `api`".into()))?
+        .to_string();
+    load_api_def(&api)?;
+    for t in binding
+        .get("for")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+    {
+        lexi_core::validate_tag(t).map_err(HostError::Invalid)?;
+    }
+    let home = lexi_home();
+    let mut doc = read_providers_doc(&home)?;
+    let mut entry = raw_entry(&mut doc, name)?;
+    let mut list: Vec<Value> = match entry.get("apis").and_then(Value::as_array) {
+        Some(l) => l.clone(),
+        None if entry.get("template").is_none() => {
+            // Older entry: its single `api` becomes the first binding.
+            let b = lexi_core::provider_bindings(&Value::Object(entry.clone()));
+            entry.shift_remove("api");
+            b
+        }
+        None => Vec::new(),
+    };
+    let existed = match list
+        .iter_mut()
+        .find(|b| b.get("api").or(Some(*b)).and_then(Value::as_str) == Some(api.as_str()))
+    {
+        Some(b) => {
+            if b.is_string() {
+                *b = serde_json::json!({ "api": api });
+            }
+            if let Some(o) = b.as_object_mut() {
+                o.shift_remove("enabled");
+                for (k, v) in binding {
+                    o.insert(k.clone(), v.clone());
+                }
+            }
+            true
+        }
+        None => {
+            list.push(Value::Object(binding.clone()));
+            false
+        }
+    };
+    // A binding the template has counts as existing too; and a user entry
+    // that only names it (re-enabling it) is redundant — drop it.
+    let in_template = entry
+        .get("template")
+        .and_then(Value::as_str)
+        .map(provider_template)
+        .transpose()?
+        .is_some_and(|t| {
+            lexi_core::provider_bindings(&t)
+                .iter()
+                .any(|b| b["api"] == api.as_str())
+        });
+    let existed = existed || in_template;
+    if in_template {
+        list.retain(|b| {
+            !(b.get("api").and_then(Value::as_str) == Some(api.as_str())
+                && b.as_object().is_some_and(|o| o.len() == 1))
+        });
+    }
+    if list.is_empty() {
+        entry.shift_remove("apis");
+    } else {
+        entry.insert("apis".into(), Value::Array(list));
+    }
+    providers_mut(&mut doc).insert(name.to_string(), Value::Object(entry));
+    write_yaml(&providers_config_path(&home), &Value::Object(doc))?;
+    Ok(existed)
+}
+
+/// Remove a binding: one you added is deleted; one the template provides is
+/// turned off (`enabled: false`). Refuses to leave the provider with no API.
+pub fn remove_provider_api(name: &str, api: &str) -> Result<(), HostError> {
+    let home = lexi_home();
+    let mut doc = read_providers_doc(&home)?;
+    let mut entry = raw_entry(&mut doc, name)?;
+    let resolved = resolve_template(&Value::Object(entry.clone()))?;
+    let active: Vec<String> = lexi_core::provider_bindings(&resolved)
+        .into_iter()
+        .filter_map(|b| b["api"].as_str().map(String::from))
+        .collect();
+    if !active.iter().any(|a| a == api) {
+        return Err(HostError::Invalid(format!(
+            "provider {name:?} has no {api:?} API (it has: {})",
+            active.join(", ")
+        )));
+    }
+    if active.len() == 1 {
+        return Err(HostError::Invalid(format!(
+            "{api:?} is {name:?}'s only API; add another first, or remove the provider"
+        )));
+    }
+    let in_template = entry
+        .get("template")
+        .and_then(Value::as_str)
+        .map(provider_template)
+        .transpose()?
+        .is_some_and(|t| {
+            lexi_core::provider_bindings(&t)
+                .iter()
+                .any(|b| b["api"] == api)
+        });
+    let mut list: Vec<Value> = match entry.get("apis").and_then(Value::as_array) {
+        Some(l) => l.clone(),
+        None => {
+            let b = lexi_core::provider_bindings(&Value::Object(entry.clone()));
+            entry.shift_remove("api");
+            b
+        }
+    };
+    list.retain(|b| b.get("api").or(Some(b)).and_then(Value::as_str) != Some(api));
+    if in_template {
+        list.push(serde_json::json!({ "api": api, "enabled": false }));
+    }
+    entry.insert("apis".into(), Value::Array(list));
+    providers_mut(&mut doc).insert(name.to_string(), Value::Object(entry));
+    write_yaml(&providers_config_path(&home), &Value::Object(doc))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

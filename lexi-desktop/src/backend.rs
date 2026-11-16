@@ -106,16 +106,22 @@ fn models(path: &str) -> Result<Value, String> {
     let provider = query_param(path, "provider")
         .ok_or_else(|| "provider query param is required".to_string())?;
 
-    let models = config::load_models(&provider).map_err(|e| e.to_string())?;
+    // Configured models with their classification (kind, serving API, tags).
+    let models = lexi_host::models::model_summaries(&provider).map_err(|e| e.to_string())?;
     let models: Vec<Value> = models
         .into_iter()
         .map(|m| {
             json!({
-                "id": m.id,
-                "name": m.name,
-                "description": m.description,
-                "default": m.default,
-                "aliases": m.aliases,
+                "id": m["id"],
+                "name": m["name"],
+                "description": m["description"],
+                "default": m["default"],
+                "aliases": m["aliases"],
+                "max_tokens": m["metadata"].get("max_tokens"),
+                "context_window": m["metadata"].get("context_window"),
+                "kind": m["kind"],
+                "api": m["api"],
+                "tags": m["tags"],
             })
         })
         .collect();
@@ -140,7 +146,8 @@ fn models_aliases_get(path: &str) -> Result<Value, String> {
 /// (a live call to the provider's models endpoint).
 async fn models_hosted(path: &str) -> Result<Value, String> {
     let provider = require_provider(path)?;
-    let models = lexi_host::fetch_hosted_models(&provider)
+    // The catalog, each entry with kind / api / tags (and the cache refreshed).
+    let models = lexi_host::models::hosted_summaries(&provider, false, &[])
         .await
         .map_err(|e| e.to_string())?;
     Ok(json!({ "provider": provider, "models": models }))

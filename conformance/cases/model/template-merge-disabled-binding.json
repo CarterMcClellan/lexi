@@ -1,0 +1,56 @@
+{
+  "name": "template-merge-disabled-binding",
+  "description": "`enabled: false` on a user binding turns off the template's binding of that name; the marker survives the merge.",
+  "template": {
+    "url": "u",
+    "apis": [
+      {
+        "api": "responses",
+        "default_model": "gpt-4o"
+      },
+      {
+        "api": "image-generations",
+        "for": [
+          "kind:image-generation"
+        ],
+        "default_model": "img"
+      }
+    ],
+    "tag_rules": {
+      "gpt-image-*": [
+        "kind:image-generation"
+      ]
+    }
+  },
+  "entry": {
+    "template": "openai",
+    "apis": [
+      {
+        "api": "image-generations",
+        "enabled": false
+      }
+    ]
+  },
+  "expect": {
+    "url": "u",
+    "apis": [
+      {
+        "api": "responses",
+        "default_model": "gpt-4o"
+      },
+      {
+        "api": "image-generations",
+        "for": [
+          "kind:image-generation"
+        ],
+        "default_model": "img",
+        "enabled": false
+      }
+    ],
+    "tag_rules": {
+      "gpt-image-*": [
+        "kind:image-generation"
+      ]
+    }
+  }
+}
