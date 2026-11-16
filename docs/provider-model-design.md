@@ -1,6 +1,6 @@
 # Providers, APIs and Models — Design
 
-**Status:** proposal for review · 2026-11-16 (rev 2: model tags)
+**Status:** accepted · 2026-11-16 (rev 3: decisions recorded, §12)
 **Scope:** how Lexi configures providers that offer several kinds of model
 (text, image, embeddings, …) over several APIs, describes their models with
 **tags**, and exposes one `respond` for every kind of output.
@@ -76,8 +76,8 @@ Each `kind:` implies default `in:`/`out:` tags (`kind:image-generation` →
 `in:text`, `out:image`), so a rule usually needs only one tag. New tags are a
 vocabulary change (a PR), which keeps the set meaningful across providers.
 
-**Labels** (open question Q6): free-form user tags (`label:fast`, `label:cheap`)
-for filtering only — they never affect routing or validation.
+**Labels** (Q6): free-form user tags (`label:fast`, `label:cheap`) for filtering
+only — they never affect routing or validation.
 
 ### 3.2 Where tags come from
 
@@ -233,7 +233,7 @@ the user's file once and never updated. Instead:
 - Lexi embeds **provider templates** (`lexi-core/providers/openai.yaml`, …), as it
   embeds API definitions.
 - An entry with `template: openai` is the template **deep-merged with the user's
-  entry**; `apis` merge by `api` name and `tag_rules` by pattern (Q3).
+  entry**; `apis` merge by `api` name and `tag_rules` by pattern; `replace: true` on either replaces the template's (Q3).
 - Seeding writes `template:` entries, so a Lexi upgrade brings new rules and models
   to existing installs. User tags (`model-tags.yaml`) are never touched.
 - A provider without `template:` is fully user-defined (any OpenAI-compatible
@@ -358,21 +358,16 @@ gets wrong, a user can fix with tags.
 
 Each slice is its own PR with green CI; M1–M3 are P1.
 
-## 12. Open questions
+## 12. Decisions
 
-- **Q1 — `respond` grammar.** Positional **text** (`respond openai "a fox"`), with
-  saved prompts via `--prompt NAME`? Breaking, but early. *Recommend: yes, in M2.*
-- **Q2 — embeddings.** Through `respond`, or a separate `embed` command (many
-  strings in, vectors out, no conversation)? *Recommend: `embed`, same resolution.*
-- **Q3 — template merging.** User `apis:` / `tag_rules:` merge with the
-  template's by key, or replace them? *Recommend: merge; `replace: true` to replace.*
-- **Q4 — catalog refresh.** Only on `models hosted`, or automatically when stale?
-  *Recommend: only on `models hosted`.*
-- **Q5 — shutdowns.** Turn OpenAI's `shutdown_date` into `status:deprecated` and
-  warn in `respond`? *Recommend: yes, in M3.*
-- **Q6 — free-form labels.** Allow user `label:*` tags (filter-only, never
-  routing)? *Recommend: yes — the closed vocabulary keeps routing safe, labels
-  give users their own grouping.*
-- **Q7 — tag scope.** User tags per provider (`nvidia/foo` on NVIDIA only), or
-  also global patterns across providers? *Recommend: per provider; a global
-  `model-tags.yaml` can come later if needed.*
+Resolved 2026-11-16 (the recommendations, accepted):
+
+| # | Question | Decision | Slice |
+|---|---|---|---|
+| Q1 | `respond` grammar | Positional argument is **text** (`respond openai "a fox"`); saved prompts via `--prompt NAME` | M2 |
+| Q2 | Embeddings | A separate **`embed`** command (many strings in, vectors out), same model resolution | M4 |
+| Q3 | Template merging | User `apis:` / `tag_rules:` **merge** with the template's by key (`api` name / pattern); `replace: true` replaces | M1 |
+| Q4 | Catalog refresh | **Only** on `models hosted` (`--refresh`); never automatic | M3 |
+| Q5 | Shutdowns | OpenAI's `shutdown_date` → `status:deprecated`; `respond` warns | M3 |
+| Q6 | Free-form labels | **Yes**: user `label:*` tags, for filtering only, never routing or validation | M1 |
+| Q7 | Tag scope | User tags are **per provider** (`providers/<p>/model-tags.yaml`); global patterns later if needed | M1 |
