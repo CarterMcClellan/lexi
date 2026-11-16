@@ -498,6 +498,20 @@ pub fn load_prompts() -> Result<Vec<(String, Value)>, HostError> {
     load_prompts_in(&lexi_home())
 }
 
+/// The payload of a saved prompt: `name`, or the active prompt (`$$`) when `None`.
+pub fn resolve_prompt(name: Option<&str>) -> Result<Value, HostError> {
+    let name = name.unwrap_or(ACTIVE_PROMPT);
+    match load_prompts()?.into_iter().find(|(n, _)| n == name) {
+        Some((_, body)) => Ok(body),
+        None if name == ACTIVE_PROMPT => Err(HostError::Prompt(
+            "no active prompt; save one with `prompts set <text>`, name a saved prompt, \
+             or pass text directly"
+                .into(),
+        )),
+        None => Err(HostError::Prompt(format!("prompt {name:?} not found"))),
+    }
+}
+
 fn load_prompts_in(home: &Path) -> Result<Vec<(String, Value)>, HostError> {
     let dir = home.join("prompts");
     if !dir.exists() {

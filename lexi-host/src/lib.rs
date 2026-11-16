@@ -28,6 +28,9 @@ pub enum HostError {
     MissingApiKey(String),
     #[error("config error: {0}")]
     Config(String),
+    /// A saved prompt that doesn't exist (the message is the whole error).
+    #[error("{0}")]
+    Prompt(String),
     #[error("request composition failed: {0}")]
     Compose(String),
     #[error("http error: {0}")]
@@ -53,7 +56,7 @@ pub use image::{resolve_image, resolve_images, ResolvedImage};
 pub use respond::{
     compose_chat_body, operation_status, prepare_chat, respond_background_text,
     respond_background_with_effective, respond_stream_text, respond_stream_with_effective,
-    respond_text, respond_with_effective, run_chat, submit_chat, wait_operation, ChatMode,
-    ChatRequest, OperationStatus, PreparedChat, RespondResult, StreamEvent,
+    respond_text, respond_with_effective, run_chat, submit_chat, wait_operation, ChatDetails,
+    ChatMode, ChatRequest, OperationStatus, PreparedChat, RespondResult, StreamEvent,
 };
 pub use upload::{upload_file, upload_file_with_effective};

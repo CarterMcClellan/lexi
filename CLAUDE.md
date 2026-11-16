@@ -10,7 +10,7 @@ Lexi is a CLI-first tool for working with multiple LLM providers side by side, w
 - **lexi-host**: Rust runtime (I/O layer over the engine) — HTTP/SSE transport, config/key loading, auth, streaming, polling, uploads, first-run seeding, and the admin read/write helpers over `~/.lexi-cli/`. Every user-facing operation lives here once.
 - **lexi-cli-rs**: the `lexi` CLI — a library (`lexi_cli`: command tree, parser, dispatcher, shell, output) plus a thin binary. Complete command surface; `--json` machine mode on every command.
 - **lexi-desktop**: native [Tauri](https://tauri.app) app — a thin webview shell whose `/api/*` calls are served in-process by `lexi-host` (see `lexi-desktop/src/backend.rs`). No Node, no Python, no localhost server.
-- **lexi-python**: PyO3 wheel wrapping `lexi-core` (`import lexi`) — the Python library, not an application.
+- **lexi-python**: PyO3 wheel (`import lexi`) — the Python library. `src/lib.rs` wraps the `lexi-core` engine; `src/host.rs` wraps the `lexi-host` runtime (respond / stream / jobs / generate / upload) on a shared tokio runtime with the GIL released; the public API is `python/lexi/` (maturin mixed layout, native module `lexi._lexi`). Results use the CLI's `--json` shapes, built by the same `lexi-host` code (`PreparedChat::result_value`, `OperationStatus::to_value`).
 
 Surface principle (`docs/cli-consolidation-plan.md` §3): library, language bindings, CLI and GUI all sit on the library; every `lexi-host` operation must be reachable from the CLI. `docs/surface-matrix.md` lists them and `lexi-cli-rs/tests/surface_matrix.rs` enforces it — a new `pub fn` in `lexi-host` fails CI until it is listed there.
 
@@ -65,12 +65,13 @@ On every run, `lexi_host::ensure_home` fills in missing defaults (embedded from 
 - CLI: `lexi-cli-rs/tests/` — the binary end to end against a temp `LEXI_HOME` and a wiremock provider, plus the surface-matrix and CLI-reference guards
 - Runtime: `lexi-host/tests/` (wiremock) and unit tests
 - Engine: `lexi-core/tests/conformance.rs` runs `conformance/`; the wheel runs the same fixtures (`lexi-python/tests/`)
+- Python runtime: `lexi-python/tests/test_runtime.py` — the wheel against an in-process mock provider
 
 ## File Locations
 - Rust engine / runtime / CLI / desktop: `lexi-core/`, `lexi-host/`, `lexi-cli-rs/`, `lexi-desktop/`
 - Shipped API definitions: `lexi-core/apis/` (embedded by `lexi-host`)
 - Default provider configs: `providers/` (embedded; seeded into `~/.lexi-cli/providers/`)
-- Python wheel: `lexi-python/` (PyO3 over lexi-core)
+- Python wheel: `lexi-python/` (PyO3 over lexi-core + lexi-host; Python API in `lexi-python/python/lexi/`)
 - Desktop `/api/*` backend: `lexi-desktop/src/backend.rs`; frontend: `lexi-desktop/frontend/index.html`
 - Cross-language conformance oracle: `conformance/`
 - Docs: `docs/cli-reference.md` (generated), `docs/spec/` (API definition, message IR, CLI machine interface), `docs/surface-matrix.md`

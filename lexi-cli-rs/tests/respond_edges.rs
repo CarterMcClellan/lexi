@@ -238,7 +238,8 @@ async fn stream_raw_suppresses_text_and_cite_without_annotations_is_silent() {
     .await;
     assert!(o.status.success(), "{}", stderr(&o));
     let raw: Value = serde_json::from_slice(&o.stdout).expect("only the final JSON, no deltas");
-    assert_eq!(raw["type"], "response.completed");
+    // `final_path` unwraps the event: raw is the Response object itself.
+    assert_eq!(raw, json!({"status": "completed"}));
 
     // The Messages API (non-stream) has no annotations here: no Sources block.
     let server = messages_server().await;

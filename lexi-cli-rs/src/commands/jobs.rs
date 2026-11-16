@@ -1,7 +1,5 @@
 //! `jobs` — detached background operations (`respond --background --detach`).
 
-use serde_json::Value;
-
 use crate::cli::JobsCmd;
 use crate::output::{scalar, Io, EXIT_FAILURE};
 
@@ -40,8 +38,7 @@ pub(crate) async fn run(io: &mut Io<'_>, cmd: JobsCmd) -> u8 {
 /// exits 1.
 fn report(io: &mut Io<'_>, provider: &str, st: &lexi_host::OperationStatus) -> u8 {
     let op = &st.operation;
-    let mut json = op.clone();
-    json["provider"] = Value::from(provider);
+    let json = st.to_value(provider);
     let mut human = format!(
         "{}: {} ({})",
         scalar(op.get("id")),
@@ -49,7 +46,6 @@ fn report(io: &mut Io<'_>, provider: &str, st: &lexi_host::OperationStatus) -> u
         scalar(op.get("status"))
     );
     if let Some(res) = &st.result {
-        json["text"] = Value::from(res.text.clone());
         human = format!("{human}\n{}", res.text);
     }
     let code = io.result(human, json);

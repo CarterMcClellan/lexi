@@ -32,9 +32,9 @@ jobs:
       - name: Test (conformance parity)
         run: cargo test -p lexi-core
 
-  # Python wheel: the lexi-core engine exposed to Python via PyO3 (lexi-python).
-  # Build the wheel and run the SAME conformance fixtures from it — a third
-  # engine behind the one oracle. fmt + clippy gate the bindings crate too.
+  # Python wheel (lexi-python, PyO3): the lexi-core engine + lexi-host runtime.
+  # Build the wheel, run the SAME conformance fixtures from it, and drive the
+  # runtime against an in-process mock provider. fmt + clippy gate the crate.
   wheel:
     name: wheel ${{ matrix.python-version }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -63,7 +63,7 @@ jobs:
         run: cargo clippy -p lexi-python -- -D warnings
       - name: Build & install the wheel
         run: pip install ./lexi-python pytest pyyaml
-      - name: Conformance (from the wheel)
+      - name: Conformance + runtime tests (from the wheel)
         run: python -m pytest lexi-python/tests -q
 
   # Host runtime: the I/O layer (HTTP/auth/config) over lexi-core, plus the thin

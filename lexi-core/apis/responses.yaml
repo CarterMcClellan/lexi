@@ -247,7 +247,9 @@ response:
     delta_path: delta
     done_event: response.completed
     final_event: response.completed
-    # final_event.data carries the full Response object (we use it for metadata when --verbose).
+    # final_event.data is {type, response: <the full Response object>}; that
+    # object is the stream's raw response (metadata, citations, --raw).
+    final_path: response
     # Live status indicators printed to stderr while the request runs.
     activity_events:
       response.web_search_call.searching:        "🔍 searching the web"

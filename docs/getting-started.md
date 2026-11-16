@@ -36,7 +36,7 @@ lexi providers list       # One-off command
 
 The examples below are written as you would type them inside the shell; outside it, prefix them with `lexi`.
 
-> Looking for the Python library? The `lexi` wheel (`import lexi`, built from `lexi-python/`) is attached to GitHub Releases. It is a library binding to the engine, not a CLI.
+> Looking for the Python library? The `lexi` wheel (`import lexi`, built from `lexi-python/`) is attached to GitHub Releases. It uses the same config as the CLI — `lexi.respond("openai", "hi")` — see `lexi-python/README.md`.
 
 ## First Run
 

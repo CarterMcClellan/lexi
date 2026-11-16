@@ -243,10 +243,15 @@ stream:
   done_event: message_stop             # event that terminates the stream
   done_marker: "[DONE]"                # literal data sentinel (Chat Completions)
   final_event: response.completed      # event whose data holds the full final object (optional)
+  final_path: response                 # path within final_event's data to that object (optional; default: the data)
   activity_events:                     # event name -> status line (optional)
     response.web_search_call.searching: "🔍 searching the web"
 ```
 Interpreted by streaming consumers. `activity_events`, if present, must map event names to string labels.
+The final object (`final_path` within `final_event`'s data, falling back to the
+data itself) is the streamed response's raw response: `response.metadata`,
+`response.annotations` and `response.activity` are read from it, as for a
+buffered response.
 
 **Classification (v0.1).** The host splits the SSE byte stream into event blocks;
 `parse_sse_block` reads each into `{ event, data }` (one optional leading space

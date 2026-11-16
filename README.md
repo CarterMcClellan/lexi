@@ -153,13 +153,23 @@ cargo tauri build      # produce a native installer (target/release/bundle/)
 Prebuilt installers (macOS `.dmg`, Linux `.deb`/`.AppImage`, Windows `.msi`) are
 attached to GitHub Releases. See `lexi-desktop/README.md`.
 
-## Python engine (`import lexi`)
+## Python library (`import lexi`)
 
-The engine is also packaged as an `abi3` Python wheel (a PyO3 binding over the
-Rust core — one engine, not a reimplementation). Prebuilt wheels (macOS, Linux,
-Windows) and an sdist are attached to each GitHub Release; download the wheel for
-your platform and `pip install ./lexi-*.whl`, then `import lexi`. See
-`lexi-python/README.md`. (Not on PyPI — the `lexi` name there is taken.)
+Lexi is also an `abi3` Python wheel — a PyO3 binding over the same Rust core
+the CLI uses, reading the same `~/.lexi-cli` config, keys and prompts:
+
+```python
+import lexi
+print(lexi.respond("openai", "Say hello")["text"])
+for ev in lexi.stream("anthropic", "Count to five"):
+    if ev["event"] == "delta":
+        print(ev["text"], end="")
+```
+
+Results are the CLI's `--json` shapes. Prebuilt wheels (macOS, Linux, Windows)
+and an sdist are attached to each GitHub Release; download the wheel for your
+platform and `pip install ./lexi-*.whl`. See `lexi-python/README.md`. (Not on
+PyPI — the `lexi` name there is taken.)
 
 ## Development
 
@@ -170,7 +180,7 @@ cargo clippy --all-targets
 cargo fmt --all
 cargo run -p lexi-cli-rs -- providers list   # run the CLI from source
 
-# Python wheel (engine bindings)
+# Python wheel (bindings)
 pip install ./lexi-python pytest pyyaml && pytest lexi-python/tests
 ```
 

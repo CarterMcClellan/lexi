@@ -269,7 +269,11 @@ async fn responses_api_cite_presets_and_streaming_with_activity() {
     assert!(stderr(&o).contains("searching the web"), "{}", stderr(&o));
     assert_eq!(sent_body(&server, 1).await["stream"], true);
 
-    let o = lexi_run(home.path(), &["--json", "respond", "p", "--stream"]).await;
+    let o = lexi_run(
+        home.path(),
+        &["--json", "respond", "p", "--stream", "--cite"],
+    )
+    .await;
     let events: Vec<Value> = stdout(&o)
         .lines()
         .map(|l| serde_json::from_str(l).unwrap())
@@ -286,6 +290,9 @@ async fn responses_api_cite_presets_and_streaming_with_activity() {
     let done = events.last().unwrap();
     assert_eq!(done["event"], "provider_done");
     assert_eq!(done["text"], "Answer.");
+    // Metadata and citations come from the final event's Response object.
+    assert_eq!(done["metadata"]["total_tokens"], 2);
+    assert_eq!(done["sources"], json!(["[1] https://a.example — A"]));
 }
 
 #[tokio::test]
