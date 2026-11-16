@@ -22,7 +22,7 @@ pub(crate) fn effective_config() -> Result<Map<String, Value>, lexi_host::HostEr
     if let Value::Object(saved) = lexi_host::config::load_config()? {
         merged.extend(saved);
     }
-    merged.remove("version"); // legacy key; the version comes from the binary
+    merged.shift_remove("version"); // legacy key; the version comes from the binary
     Ok(merged)
 }
 

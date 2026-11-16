@@ -39,7 +39,7 @@ pub(crate) fn run(io: &mut Io<'_>, cmd: ApiCmd) -> u8 {
         ApiCmd::Save { name, file } => save(io, &name, &file),
         ApiCmd::Rm { name } => match lexi_host::config::delete_api_def(&name) {
             Ok(()) => io.result(
-                format!("API definition {name:?} removed."),
+                format!("API definition '{name}' removed."),
                 json!({ "removed": name }),
             ),
             Err(e) => io.fail(e),
@@ -243,12 +243,12 @@ fn validate(io: &mut Io<'_>, name: &str) -> u8 {
     };
     let json = json!({ "name": name, "valid": valid, "errors": errors });
     if valid {
-        return io.result(format!("API definition {name:?} is valid."), json);
+        return io.result(format!("API definition '{name}' is valid."), json);
     }
     if io.json {
         io.json_line(&json);
     } else {
-        let mut msg = format!("Validation errors for {name:?}:");
+        let mut msg = format!("Validation errors for '{name}':");
         for e in &errors {
             msg.push_str(&format!("\n  - {e}"));
         }
@@ -271,7 +271,7 @@ fn create(
     }
     match lexi_host::config::create_api_def(name, from, path, text_path) {
         Ok(()) => io.result(
-            format!("API definition {name:?} created."),
+            format!("API definition '{name}' created."),
             json!({ "created": name }),
         ),
         Err(e) => io.fail(e),
@@ -294,7 +294,7 @@ fn edit(
     }
     match lexi_host::config::edit_api_def(name, path, text_path, &meta) {
         Ok(()) => io.result(
-            format!("API definition {name:?} updated."),
+            format!("API definition '{name}' updated."),
             json!({ "updated": name }),
         ),
         Err(e) => io.fail(e),
@@ -331,11 +331,11 @@ fn save(io: &mut Io<'_>, name: &str, file: &std::path::Path) -> u8 {
     };
     match lexi_host::config::save_api_raw(name, &yaml) {
         Ok(errors) if errors.is_empty() => io.result(
-            format!("API definition {name:?} saved."),
+            format!("API definition '{name}' saved."),
             json!({ "saved": name, "valid": true, "errors": [] }),
         ),
         Ok(errors) => {
-            let mut human = format!("API definition {name:?} saved, with validation errors:");
+            let mut human = format!("API definition '{name}' saved, with validation errors:");
             for e in &errors {
                 human.push_str(&format!("\n  - {e}"));
             }

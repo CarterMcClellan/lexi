@@ -367,7 +367,7 @@ fn api_create_edit_rm() {
             h,
             &["api", "create", "mine", "--from", "messages", "--path", "/v9"]
         ),
-        "API definition \"mine\" created.\n"
+        "API definition 'mine' created.\n"
     );
     assert!(fails(h, &["api", "create", "mine"]).contains("already exists"));
     assert!(fails(h, &["api", "create", "messages"]).contains("already exists"));
@@ -384,7 +384,7 @@ fn api_create_edit_rm() {
                 "stop:stop_reason"
             ]
         ),
-        "API definition \"mine\" updated.\n"
+        "API definition 'mine' updated.\n"
     );
     let def: Value = serde_json::from_str(&ok(h, &["--json", "api", "show", "mine"])).unwrap();
     assert_eq!(def["request"]["path"], "/v9");
@@ -398,7 +398,7 @@ fn api_create_edit_rm() {
     assert!(fails(h, &["api", "edit", "mine", "--set-meta", "nocolon"]).contains("KEY:PATH"));
     assert_eq!(
         ok(h, &["api", "rm", "mine"]),
-        "API definition \"mine\" removed.\n"
+        "API definition 'mine' removed.\n"
     );
     fails(h, &["api", "rm", "mine"]);
     fails(h, &["api", "rm", "messages"]);

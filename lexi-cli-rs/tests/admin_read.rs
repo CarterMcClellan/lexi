@@ -275,7 +275,7 @@ fn api_list_show_and_validate() {
 
     assert_eq!(
         stdout(&lexi_out(home.path(), &["api", "validate", "messages"])),
-        "API definition \"messages\" is valid.\n"
+        "API definition 'messages' is valid.\n"
     );
 
     // A custom, broken definition: exit 1, errors listed (stdout JSON in --json).
@@ -286,7 +286,7 @@ fn api_list_show_and_validate() {
     );
     let o = lexi_out(home.path(), &["api", "validate", "broken"]);
     assert_eq!(o.status.code(), Some(1));
-    assert!(stderr(&o).contains("Validation errors for \"broken\":\n  - "));
+    assert!(stderr(&o).contains("Validation errors for 'broken':\n  - "));
     let o = lexi_out(home.path(), &["--json", "api", "validate", "broken"]);
     assert_eq!(o.status.code(), Some(1));
     let v: Value = serde_json::from_slice(&o.stdout).unwrap();
