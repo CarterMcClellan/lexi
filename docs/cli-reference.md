@@ -6,7 +6,7 @@ This file is generated from the command definitions — regenerate with
 
 Run `lexi` with no command for the interactive shell. Every command accepts
 the global `--json` flag (machine-readable output; see
-[spec/cli-machine-v0.md](spec/cli-machine-v0.md)).
+[spec/cli-machine-v1.md](spec/cli-machine-v1.md)).
 
 ---
 
@@ -381,6 +381,59 @@ lexi providers api-key remove <NAME>
 ```
 
 - `<NAME>`
+
+#### `providers api list`
+
+Aliases: `ls`
+
+List a provider's APIs: which models each serves, its default model, and whether it comes from the template or your config
+
+```
+lexi providers api list <NAME>
+```
+
+- `<NAME>`
+
+#### `providers api add`
+
+Add an API to a provider (or update one), e.g. `providers api add openai embeddings --for kind:embedding --default-model text-embedding-3-small`
+
+```
+lexi providers api add [OPTIONS] <NAME> <API>
+```
+
+- `<NAME>`
+- `<API>` — API definition name (see `api list`)
+- `--for` — Tags a model needs to use this API (repeatable); none = the catch-all
+- `--default-model` — The model used when a request asks for this API's output without naming one
+- `--url` — A base URL for this API, if it differs from the provider's
+
+#### `providers api rm`
+
+Aliases: `del`, `delete`
+
+Remove an API from a provider (a template's API is turned off)
+
+```
+lexi providers api rm <NAME> <API>
+```
+
+- `<NAME>`
+- `<API>`
+
+#### `providers upgrade`
+
+Convert providers to the shipped templates, keeping your changes.
+
+Shows what would change; --yes applies it (backing up providers-config.yaml). Values still at the old shipped defaults are dropped (the template supplies current ones); values you changed stay.
+
+```
+lexi providers upgrade [OPTIONS] [NAMES]...
+```
+
+- `<NAMES>` — Providers to upgrade (default: all that have a shipped template)
+- `--template` — The template to use (default: the provider's name)
+- `-y, --yes` — Apply the change (otherwise just show it)
 
 #### `providers rename`
 

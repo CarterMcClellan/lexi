@@ -1,6 +1,6 @@
-# Lexi CLI — Machine Interface v0
+# Lexi CLI — Machine Interface v1
 
-**Status:** v0 · 2026-11-16 · implemented by `lexi-cli-rs` (the Rust `lexi`).
+**Status:** v1 · 2026-11-16 · implemented by `lexi-cli-rs` (the Rust `lexi`). v1 only adds to v0 (see §7): every v0 field is still there with the same meaning.
 **Audience:** programs, scripts and agents that drive `lexi` and read its output.
 The Python library (`import lexi`) returns these same shapes as dicts.
 
@@ -50,6 +50,9 @@ API keys are never included in any result except `providers api-key show`
 | `providers list` | `[{"name", "template", "url", "api", "apis", "default_model", "hosted_models", "hosted_model_fields", "key_source"}]`; `api` is the catch-all binding's API, `apis` every binding's; `key_source` ∈ `"file" \| "env" \| "config" \| null` |
 | `providers status` | `{"provider", "status", "source"}`; `status` ∈ `"ready" \| "no api-key" \| "invalid api-key"` |
 | `providers add` / `rename` / `rm` | `{"added"}` / `{"renamed", "to"}` / `{"removed"}` |
+| `providers upgrade` | `[{"provider", "template", "changed", "before", "after", "dropped", "kept", "backup"?}]` — `backup` (the copy of the old file) only with `--yes` |
+| `providers api list` | `[{"api", "for"?, "default_model"?, "url"?, "enabled", "source"}]`; `source` ∈ `"template" \| "user" \| "config"` |
+| `providers api add` / `rm` | `{"provider", "api", "existed"}` / `{"provider", "removed"}` |
 | `providers api-key set` / `show` / `remove` | `{"provider"}` / `{"provider", "source", "key"}` / `{"removed": bool}` |
 | `models list` | `[{"id", "name", "description", "default", "aliases", "metadata", "kind", "api", "tags"}]` — `api` serves the model; `tags` its effective tags |
 | `models tag` | `{"provider", "model", "tags": ["+tag" \| "-tag", …]}` (your ops on that id/glob) · with `--clear`: `{"provider", "model", "cleared": bool}` |
@@ -124,3 +127,17 @@ Generated media is written to disk and reported by path (`respond --out DIR`,
 default the current directory); file contents never appear on stdout. Each
 artifact is `{"path", "type", "media_type", "revised_prompt"}`; files are named
 `<prompt-words>-<n>.<ext>` with the first unused `n`, so nothing is overwritten.
+
+## 7. Changes from v0
+
+All additive — no v0 field was removed or changed meaning.
+
+- `respond`: `api`, `artifacts` (§6) and `warnings`? in the result; `artifact`
+  stream events; `generate` returns the `respond` result.
+- `embed`: new.
+- `models list`: `kind`, `api`, `tags`. `models hosted`: `kind`, `api`, `tags`
+  on each entry; `--tag`, `--cached`. `models tag`, `models tags`, `tags`: new.
+- `providers list`: `template`, `apis`. `providers upgrade`,
+  `providers api list|add|rm`: new.
+- Errors for unsupported models/outputs and invalid tags use the same
+  `{"error"}` shape (§2).

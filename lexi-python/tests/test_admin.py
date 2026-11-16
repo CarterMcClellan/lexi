@@ -202,3 +202,25 @@ def test_hosted_catalog_tags_and_cache(home):
         assert lexi.models.resolve("anthropic", "claude-b")["api"] == "messages"  # catalog-only model
     finally:
         m.server.shutdown()
+
+
+def test_provider_upgrade_and_apis(home):
+    import pathlib
+    lexi.providers.list()  # seed
+    legacy = (pathlib.Path(__file__).parents[2] / "lexi-core" / "providers" / "legacy-providers-config.yaml").read_text()
+    cfg = home / "providers" / "providers-config.yaml"
+    cfg.write_text(legacy.replace("default_model: gpt-4o", "default_model: gpt-5"))
+    plan = lexi.providers.upgrade("openai")
+    assert plan["changed"] and "backup" not in plan
+    assert plan["after"] == {"template": "openai", "apis": [{"api": "responses", "default_model": "gpt-5"}]}
+    done = lexi.providers.upgrade("openai", apply=True)
+    assert pathlib.Path(done["backup"]).read_text() == legacy.replace("default_model: gpt-4o", "default_model: gpt-5")
+    assert lexi.providers.upgrade("openai")["changed"] is False
+
+    names = [b["api"] for b in lexi.providers.apis("openai")]
+    assert names == ["responses", "image-generations", "embeddings"]
+    lexi.providers.remove_api("openai", "embeddings")
+    assert [b["enabled"] for b in lexi.providers.apis("openai")] == [True, True, False]
+    assert lexi.providers.add_api("openai", "embeddings")["existed"] is True
+    with pytest.raises(lexi.LexiError, match="only API"):
+        lexi.providers.remove_api("anthropic", "messages")

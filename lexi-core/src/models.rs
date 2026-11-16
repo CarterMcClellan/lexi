@@ -190,8 +190,17 @@ pub fn api_tags(api_def: &Value) -> Vec<String> {
 
 /// A provider's bindings, normalized to `[{api, for?, default_model?, …}]`.
 /// Reads `apis:` (entries may be bare API names) or the older single `api:`
-/// (+ `default_model`).
+/// (+ `default_model`). Bindings marked `enabled: false` (how a user turns off
+/// a template's binding) are left out.
 pub fn provider_bindings(provider: &Value) -> Vec<Value> {
+    all_bindings(provider)
+        .into_iter()
+        .filter(|b| b.get("enabled") != Some(&Value::Bool(false)))
+        .collect()
+}
+
+/// [`provider_bindings`] including disabled ones.
+fn all_bindings(provider: &Value) -> Vec<Value> {
     if let Some(list) = provider.get("apis").and_then(Value::as_array) {
         return list
             .iter()
@@ -523,8 +532,8 @@ pub fn merge_provider_template(template: &Value, entry: &Value) -> Value {
         let merged = if replace.contains(&"apis") {
             user.clone()
         } else {
-            let base = provider_bindings(template);
-            let user_b = provider_bindings(&json!({ "apis": user }));
+            let base = all_bindings(template);
+            let user_b = all_bindings(&json!({ "apis": user }));
             let mut result: Vec<Value> = user_b
                 .iter()
                 .filter(|u| !base.iter().any(|b| b["api"] == u["api"]))

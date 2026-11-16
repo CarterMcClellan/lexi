@@ -1,6 +1,6 @@
 # Providers, APIs and Models — Design
 
-**Status:** accepted · 2026-11-16 (rev 3: decisions recorded, §12) · M1–M4 implemented
+**Status:** accepted · 2026-11-16 (rev 3: decisions recorded, §12) · M1–M5 implemented
 **Scope:** how Lexi configures providers that offer several kinds of model
 (text, image, embeddings, …) over several APIs, describes their models with
 **tags**, and exposes one `respond` for every kind of output.
@@ -320,7 +320,7 @@ adds an `artifact` event. `generate` becomes an alias for `respond --output imag
 | CLI | `respond --output KIND --out DIR`; `models hosted [--tag T]… [--refresh]` with `kind`, `api`, tag columns; `models tag <p> <model\|pattern> (+T\|-T)…`; `models tags <p> <model>`; `tags`; `models default <p> [m] --output KIND`; `providers api add/rm`; `providers upgrade` |
 | Python | `lexi.respond(..., output=, out_dir=)` returns `artifacts`; `lexi.models.hosted(p, tags=, refresh=)`; `lexi.models.tag(p, model, add=, remove=)`; `lexi.models.tags(p, model)`; `lexi.models.resolve(p, model=, output=)`; `lexi.tags()` |
 | Desktop | Chat shows saved images inline; Models tab shows tags (with source) and lets you add/remove them |
-| Machine spec | `cli-machine-v0.md` → v1: `artifacts`, `api`, `tags`, `artifact` stream event |
+| Machine spec | `cli-machine-v1.md` → v1: `artifacts`, `api`, `tags`, `artifact` stream event |
 
 ## 9. Where the logic lives
 

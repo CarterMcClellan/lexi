@@ -197,7 +197,9 @@ upload openai ./report.pdf                                 # Files API upload; p
 
 Each provider can offer several APIs, and a model's **tags** decide which one serves it (`models tags openai gpt-image-2.5-flare` shows why). The shipped OpenAI template serves chat models through the Responses API and `gpt-image-*` models through the Images API, so the image-only flags (`--size`, `--quality`, `--n`, …) appear when the request goes there. Images are saved as `<prompt-words>-<n>.png` and never overwrite an existing file. Tag models a provider can't describe with `models tag <provider> <model> +kind:image-generation` (see `tags` for the vocabulary). `upload` works with providers whose API definition has a `files` block (`responses`, `messages`).
 
-> Upgrading from an older config: entries without `template:` keep working as one API per provider. Add `template: openai` (or `anthropic` / `nvidia`) under a provider to get the shipped APIs and tag rules; your own settings still win.
+> Upgrading from an older config: entries without `template:` keep working as one API per provider. `providers upgrade` shows how each would move to its shipped template (keeping only the values you changed); `providers upgrade --yes` applies it, backing up the file first.
+
+A provider's APIs are listed by `providers api list <provider>`; add one with `providers api add <provider> <api> --for <tag> --default-model <model>` (e.g. embeddings on a local OpenAI-compatible server), and `providers api rm` removes one (a template's is turned off).
 
 ## Managing Providers
 
@@ -302,7 +304,7 @@ history --clear              # Clear the history
 
 ## Scripting
 
-Every command accepts the global `--json` flag for machine-readable output, and exits `0` on success, `1` on failure, and `2` on a usage error. See the [machine interface spec](spec/cli-machine-v0.md).
+Every command accepts the global `--json` flag for machine-readable output, and exits `0` on success, `1` on failure, and `2` on a usage error. See the [machine interface spec](spec/cli-machine-v1.md).
 
 ```bash
 lexi --json providers list
