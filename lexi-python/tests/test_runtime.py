@@ -185,3 +185,42 @@ def test_engine_functions_are_still_top_level():
     assert callable(lexi.compose_request_body)
     assert callable(lexi.validate_definition)
     assert "respond" in lexi.__all__ and "compose_request_body" in lexi.__all__
+
+
+def test_one_reply_with_text_and_image(mock, tmp_path):
+    png = base64.b64encode(b"\x89PNG fake").decode()
+    reply = {
+        "output": [
+            {"type": "image_generation_call", "status": "completed", "result": png},
+            {"type": "message", "content": [{"type": "output_text", "text": "Here's your fox."}]},
+        ]
+    }
+    mock.routes[("POST", "/responses")] = ok(reply)
+    r = lexi.respond("p", "draw a fox", tools=["image_generation"], out_dir=tmp_path)
+    assert r["text"] == "Here's your fox." and r["api"] == "responses"
+    [art] = r["artifacts"]
+    assert art["path"].endswith("draw-a-fox-1.png") and art["type"] == "image"
+    with open(art["path"], "rb") as f:
+        assert f.read() == b"\x89PNG fake"
+
+    # Streamed: an `artifact` event arrives before provider_done.
+    done = {"type": "response.completed", "response": reply}
+    sse = (
+        'event: response.output_text.delta\ndata: {"delta":"Here\'s your fox."}\n\n'
+        "event: response.completed\ndata: " + json.dumps(done) + "\n\n"
+    )
+    mock.routes[("POST", "/responses")] = lambda _b: (200, "text/event-stream", sse.encode())
+    events = list(lexi.stream("p", "draw a fox", tools=["image_generation"], out_dir=tmp_path))
+    kinds = [e["event"] for e in events]
+    assert kinds[-2:] == ["artifact", "provider_done"]
+    assert events[-2]["path"].endswith("draw-a-fox-2.png")
+    assert events[-1]["artifacts"][0]["path"] == events[-2]["path"]
+
+
+def test_output_image_picks_the_image_api(mock, tmp_path):
+    mock.routes[("POST", "/images/generations")] = ok(
+        {"data": [{"b64_json": base64.b64encode(b"img").decode()}]}
+    )
+    r = lexi.respond("img", "a fox", output="image", out_dir=tmp_path)
+    assert r["api"] == "image-generations" and r["text"] == ""
+    assert r["artifacts"][0]["path"].endswith("a-fox-1.png")

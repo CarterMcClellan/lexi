@@ -77,7 +77,7 @@ async fn respond_buffered_human_and_json() {
     let v: Value = serde_json::from_slice(&o.stdout).unwrap();
     assert_eq!(
         v,
-        json!({"provider": "mock", "model": "claude-x", "text": "Hello from the mock.", "metadata": {"model": "claude-x"}})
+        json!({"provider": "mock", "model": "claude-x", "api": "messages", "text": "Hello from the mock.", "artifacts": [], "metadata": {"model": "claude-x"}})
     );
 }
 
@@ -120,7 +120,7 @@ async fn respond_stream_emits_ndjson_events() {
             json!({"event": "provider_start", "provider": "mock"}),
             json!({"event": "delta", "provider": "mock", "text": "Hello"}),
             json!({"event": "delta", "provider": "mock", "text": " world"}),
-            json!({"event": "provider_done", "provider": "mock", "model": "claude-x", "text": "Hello world", "metadata": {}}),
+            json!({"event": "provider_done", "provider": "mock", "model": "claude-x", "api": "messages", "text": "Hello world", "artifacts": [], "metadata": {}}),
         ]
     );
 }

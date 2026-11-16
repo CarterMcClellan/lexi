@@ -14,15 +14,13 @@ the global `--json` flag (machine-readable output; see
 
 #### `respond`
 
-Send a saved prompt (the active one by default) or --text to a provider.
+Send a prompt to a provider; get back text, images, or both.
 
-respond <provider> [prompt_name] [--text TEXT|-] [--model M] [--role R]
-[--stream] [--background [--detach]] [--image URL|PATH]... [<schema flags>]
-[--set path=value]... [--unset path]... [--tool preset[,preset]]...
-[--params FILE] [--cite] [--raw|-r] [--verbose|-v] [--no-validate]
+respond <provider> [TEXT…|-] [--prompt NAME] [--model M] [--output KIND] [--out DIR] [--role R] [--stream] [--background [--detach]] [--image URL|PATH]... [<schema flags>] [--set path=value]... [--unset path]... [--tool preset[,preset]]... [--params FILE] [--cite] [--raw|-r] [--verbose|-v] [--no-validate]
 
-Schema flags (e.g. --temperature, --max-tokens) come from the provider's
-API definition: see `lexi api show <api>` (the cli= entries).
+The words are the prompt (`-` reads stdin); with none, the saved prompt --prompt NAME, else the active one. The model's tags pick the API; --output image picks the provider's image API and default image model. Images are saved to --out (default: here), never overwriting a file.
+
+Schema flags (e.g. --temperature, --size) come from the selected API's definition: see `lexi api show <api>` (the cli= entries).
 
 ```
 lexi respond <PROVIDER> [ARGS]...
@@ -35,13 +33,13 @@ lexi respond <PROVIDER> [ARGS]...
 
 #### `generate`
 
-Generate image(s) from a prompt and save them to disk
+Generate image(s) and save them: shortcut for `respond <provider> TEXT --output image`
 
 ```
 lexi generate [OPTIONS] <PROVIDER> <PROMPT>
 ```
 
-- `<PROVIDER>` — Provider name (must reference an image-generations API)
+- `<PROVIDER>` — Provider name
 - `<PROMPT>` — The image prompt
 - `--model` — Override the provider's default model
 - `--out` — Directory to write images into

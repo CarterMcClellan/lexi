@@ -28,8 +28,10 @@ job = lexi.submit("openai", "Write a long report")      # background job, return
 lexi.jobs.status("openai", job["id"])                    # {"state": "running", …}
 done = lexi.jobs.wait("openai", job["id"], timeout=900)  # … {"state": "succeeded", "text": …}
 
-# generate: a provider whose `api` is image-generations; files are saved to art/
-lexi.generate("images", "a watercolor fox", out_dir="art")
+# images: the model's tags (or output="image") pick the provider's image API
+r = lexi.respond("openai", "a watercolor fox", output="image", out_dir="art")
+r["artifacts"]                                  # [{path: "art/a-watercolor-fox-1.png", …}]
+lexi.generate("openai", "a watercolor fox", set={"size": "1536x864"})   # same thing
 up = lexi.upload("openai", "diagram.png")
 lexi.respond("openai", "Describe this", images=[f"file:{up['file_id']}"])
 
@@ -38,11 +40,11 @@ lexi.prepare("openai", "hi", mode="stream")["body"]   # the request body, not se
 
 | Function | CLI equivalent |
 |---|---|
-| `respond(provider, text=None, *, prompt, role, model, images, params, tools, set, unset, validate, background, cite, raw)` | `lexi respond` |
+| `respond(provider, text=None, *, prompt, role, model, images, params, tools, set, unset, validate, background, cite, raw, output, out_dir)` → text **and** `artifacts` (saved files) | `lexi respond` |
 | `stream(...)` (same options) → iterator of events | `lexi respond --stream --json` |
 | `submit(...)` → operation | `lexi respond --background --detach` |
 | `jobs.status(provider, id)` / `jobs.wait(provider, id, interval=1, timeout=600)` | `lexi jobs status` / `lexi jobs wait` |
-| `generate(provider, prompt, *, model, out_dir=".")` | `lexi generate` |
+| `generate(provider, prompt, *, model, out_dir=".")` — `respond(..., output="image")` | `lexi generate` |
 | `upload(provider, path)` | `lexi upload` |
 | `prepare(...)` → `{"provider", "model", "body"}` | — (compose only) |
 

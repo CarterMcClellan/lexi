@@ -144,17 +144,17 @@ prompts set creative --prompt "Write a haiku about recursion" --temperature 1.2 
 
 ## Sending Prompts to Providers
 
-The `respond` command sends the active prompt (or a named prompt, or inline `--text`) to a provider:
+The `respond` command sends a prompt to a provider — the words you give, else a saved prompt (`--prompt NAME`), else the active one — and prints the reply. Images in the reply are saved to disk.
 
 ```bash
+# Send text (`-` reads stdin)
+respond anthropic "What is a monad?"
+
 # Send the active prompt to Anthropic
 respond anthropic
 
-# Send a named prompt to OpenAI
-respond openai myq
-
-# Send inline text instead of a saved prompt (`--text -` reads stdin)
-respond anthropic --text "What is a monad?"
+# Send a saved prompt to OpenAI
+respond openai --prompt myq
 
 # Override the model
 respond anthropic --model claude-sonnet-4-5-20250929
@@ -169,16 +169,25 @@ respond anthropic --stream
 respond anthropic --raw
 ```
 
-Flags like `--temperature` and `--max-tokens` come from the provider's API definition — `api show <api>` lists them (the `cli=` entries). `respond` also takes `--set path=value` / `--unset path` for arbitrary body fields, `--params FILE`, `--tool <preset>`, `--image URL|PATH`, `--cite`, and `--verbose`. Long-running requests can run with `--background`; add `--detach` to return a job id immediately and check it later with `jobs status <provider> <id>` or `jobs wait <provider> <id>`. See the [CLI Reference](cli-reference.md#respond) for the full list.
+Flags like `--temperature` and `--max-tokens` come from the API definition serving the request — `api show <api>` lists them (the `cli=` entries). `respond` also takes `--set path=value` / `--unset path` for arbitrary body fields, `--params FILE`, `--tool <preset>`, `--image URL|PATH`, `--cite`, and `--verbose`. Long-running requests can run with `--background`; add `--detach` to return a job id immediately and check it later with `jobs status <provider> <id>` or `jobs wait <provider> <id>`. See the [CLI Reference](cli-reference.md#respond) for the full list.
 
-Beyond text responses:
+Beyond text:
 
 ```bash
-generate my-images "a lighthouse at dusk" --out ./images   # Image generation, saved to disk
+# Images: --output image picks the provider's image API and default image model
+respond openai "a lighthouse at dusk" --output image --out ./images
+respond openai "a lighthouse at dusk" --model gpt-image-2.5-flare --size 1536x864
+generate openai "a lighthouse at dusk"                     # shortcut for --output image
+
+# Text and an image in one reply
+respond openai "Draw a fox and describe it" --tool image_generation
+
 upload openai ./report.pdf                                 # Files API upload; prints the file id
 ```
 
-`generate` needs a provider whose `api` is `image-generations` (none of the preconfigured providers is; add one with `providers add ... --api image-generations`). `upload` works with providers whose API definition has a `files` block (`responses`, `messages`).
+Each provider can offer several APIs, and a model's **tags** decide which one serves it (`models tags openai gpt-image-2.5-flare` shows why). The shipped OpenAI template serves chat models through the Responses API and `gpt-image-*` models through the Images API, so the image-only flags (`--size`, `--quality`, `--n`, …) appear when the request goes there. Images are saved as `<prompt-words>-<n>.png` and never overwrite an existing file. Tag models a provider can't describe with `models tag <provider> <model> +kind:image-generation` (see `tags` for the vocabulary). `upload` works with providers whose API definition has a `files` block (`responses`, `messages`).
+
+> Upgrading from an older config: entries without `template:` keep working as one API per provider. Add `template: openai` (or `anthropic` / `nvidia`) under a provider to get the shipped APIs and tag rules; your own settings still win.
 
 ## Managing Providers
 

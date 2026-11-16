@@ -102,6 +102,8 @@ struct ChatOpts {
     validate: Option<bool>,
     cite: bool,
     raw: bool,
+    output: Option<String>,
+    out_dir: Option<String>,
 }
 
 /// `set` as `{path: value}` or `[(path, value), …]`.
@@ -152,6 +154,7 @@ fn prepare(provider: &str, opts: &ChatOpts, mode: ChatMode) -> PyResult<Prepared
         set_paths: set_paths(&opts.set)?,
         unset_paths: opts.unset.clone(),
         skip_validation: !opts.validate.unwrap_or(true),
+        output: opts.output.clone(),
     };
     lexi_host::prepare_chat(provider, &req, mode).map_err(lexi_err)
 }
@@ -198,9 +201,11 @@ fn _respond<'py>(
     };
     let chat = prepare(provider, &opts, mode)?;
     let (cite, raw) = (opts.cite, opts.raw);
+    let out_dir = PathBuf::from(opts.out_dir.as_deref().unwrap_or("."));
     let out = block_on(py, async move {
         let res = lexi_host::run_chat(&chat, |_| {}).await?;
-        Ok(chat.result_value(&res, cite, raw))
+        let saved = lexi_host::generate::save_artifacts(&chat, &res, &out_dir).await?;
+        Ok(chat.result_value(&res, cite, raw, &saved))
     })?;
     to_py(py, &out)
 }
@@ -222,6 +227,7 @@ fn _submit<'py>(
 enum Event {
     Delta(String),
     Activity(String),
+    Artifact(Value),
     Done(Value),
     Failed(String),
 }
@@ -282,13 +288,21 @@ impl ChatStream {
         let value = match event {
             Event::Delta(text) => json!({ "event": "delta", "provider": p, "text": text }),
             Event::Activity(msg) => json!({ "event": "activity", "provider": p, "message": msg }),
+            Event::Artifact(mut a) => {
+                a["event"] = Value::from("artifact");
+                a["provider"] = Value::from(p.as_str());
+                a
+            }
             Event::Done(mut done) => {
                 done["event"] = Value::from("provider_done");
                 done
             }
             Event::Failed(e) => return Err(lexi_err(e)),
         };
-        if matches!(value["event"].as_str(), Some("delta" | "activity")) {
+        if matches!(
+            value["event"].as_str(),
+            Some("delta" | "activity" | "artifact")
+        ) {
             *guard = Some(rx); // more to come
         }
         to_py(py, &value).map(Some)
@@ -306,6 +320,7 @@ fn _stream(provider: &str, opts: &Bound<'_, PyAny>) -> PyResult<ChatStream> {
     let opts = parse_opts(opts)?;
     let chat = prepare(provider, &opts, ChatMode::Stream)?;
     let (cite, raw) = (opts.cite, opts.raw);
+    let out_dir = PathBuf::from(opts.out_dir.as_deref().unwrap_or("."));
     let (tx, rx) = mpsc::channel();
     let task = runtime().spawn(async move {
         let res = lexi_host::run_chat(&chat, |ev| {
@@ -316,10 +331,24 @@ fn _stream(provider: &str, opts: &Bound<'_, PyAny>) -> PyResult<ChatStream> {
             });
         })
         .await;
-        let _ = tx.send(match res {
-            Ok(res) => Event::Done(chat.result_value(&res, cite, raw)),
-            Err(e) => Event::Failed(e.to_string()),
-        });
+        let res = match res {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = tx.send(Event::Failed(e.to_string()));
+                return;
+            }
+        };
+        match lexi_host::generate::save_artifacts(&chat, &res, &out_dir).await {
+            Ok(saved) => {
+                for a in &saved {
+                    let _ = tx.send(Event::Artifact(a.to_value()));
+                }
+                let _ = tx.send(Event::Done(chat.result_value(&res, cite, raw, &saved)));
+            }
+            Err(e) => {
+                let _ = tx.send(Event::Failed(e.to_string()));
+            }
+        }
     });
     Ok(ChatStream {
         provider: provider.to_string(),
@@ -366,32 +395,6 @@ fn _job_wait<'py>(
 }
 
 // --- media ------------------------------------------------------------------
-
-#[pyfunction]
-#[pyo3(signature = (provider, prompt, model, out_dir))]
-fn _generate<'py>(
-    py: Python<'py>,
-    provider: String,
-    prompt: String,
-    model: Option<String>,
-    out_dir: PathBuf,
-) -> PyResult<Bound<'py, PyAny>> {
-    ensure_home()?;
-    std::fs::create_dir_all(&out_dir).map_err(lexi_err)?;
-    let saved = block_on(py, {
-        let provider = provider.clone();
-        async move {
-            lexi_host::generate_images_text(&provider, &prompt, model.as_deref(), &out_dir).await
-        }
-    })?;
-    let artifacts: Vec<Value> = saved
-        .iter()
-        .map(
-            |a| json!({ "path": a.path.display().to_string(), "revised_prompt": a.revised_prompt }),
-        )
-        .collect();
-    to_py(py, &json!({ "provider": provider, "artifacts": artifacts }))
-}
 
 #[pyfunction]
 fn _upload<'py>(py: Python<'py>, provider: String, path: PathBuf) -> PyResult<Bound<'py, PyAny>> {
@@ -721,7 +724,6 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(_stream, m)?)?;
     m.add_function(wrap_pyfunction!(_job_status, m)?)?;
     m.add_function(wrap_pyfunction!(_job_wait, m)?)?;
-    m.add_function(wrap_pyfunction!(_generate, m)?)?;
     m.add_function(wrap_pyfunction!(_upload, m)?)?;
     m.add_function(wrap_pyfunction!(_admin, m)?)?;
     Ok(())

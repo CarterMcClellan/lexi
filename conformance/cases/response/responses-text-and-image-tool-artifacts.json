@@ -1,0 +1,35 @@
+{
+  "name": "responses-text-and-image-tool-artifacts",
+  "description": "One Responses reply with text and an image_generation_call: text from the message, the image (base64 `result`) as an artifact; other items are filtered out.",
+  "api": "responses",
+  "response": {
+    "output": [
+      {
+        "type": "image_generation_call",
+        "id": "ig_1",
+        "status": "completed",
+        "result": "iVBORw0KGgo=",
+        "revised_prompt": "a red fox in watercolor"
+      },
+      {
+        "type": "message",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "Here is your fox."
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "text": "Here is your fox.",
+    "artifacts": [
+      {
+        "type": "image",
+        "b64": "iVBORw0KGgo=",
+        "revised_prompt": "a red fox in watercolor"
+      }
+    ]
+  }
+}

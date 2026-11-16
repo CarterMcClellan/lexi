@@ -1,9 +1,11 @@
 //! Media and misc commands: `generate`, `upload`, `version`.
 
-use serde_json::{json, Value};
+use serde_json::json;
 
 use crate::output::Io;
 
+/// `generate` — kept as a shortcut for `respond <provider> TEXT --output image`
+/// (same pipeline, same result).
 pub(crate) async fn generate(
     io: &mut Io<'_>,
     provider: String,
@@ -11,29 +13,18 @@ pub(crate) async fn generate(
     model: Option<String>,
     out: std::path::PathBuf,
 ) -> u8 {
-    match lexi_host::generate_images_text(&provider, &prompt, model.as_deref(), &out).await {
-        Ok(saved) => {
-            let human = saved
-                .iter()
-                .map(|a| a.path.display().to_string())
-                .collect::<Vec<_>>()
-                .join("\n");
-            let artifacts: Vec<Value> = saved
-                .iter()
-                .map(|a| {
-                    json!({
-                        "path": a.path.display().to_string(),
-                        "revised_prompt": a.revised_prompt,
-                    })
-                })
-                .collect();
-            io.result(
-                human,
-                json!({ "provider": provider, "artifacts": artifacts }),
-            )
-        }
-        Err(e) => io.fail(e),
+    let mut args = vec![
+        "--text".to_string(),
+        prompt,
+        "--output".into(),
+        "image".into(),
+        "--out".into(),
+        out.display().to_string(),
+    ];
+    if let Some(m) = model {
+        args.extend(["--model".into(), m]);
     }
+    super::respond::respond(io, &provider, &args).await
 }
 
 pub(crate) async fn upload(io: &mut Io<'_>, provider: String, file: std::path::PathBuf) -> u8 {

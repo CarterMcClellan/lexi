@@ -65,9 +65,9 @@ API keys are never included in any result except `providers api-key show`
 | `api validate` | `{"name", "valid", "errors"}` |
 | `api preview` | `{"name", "description", "valid", "errors", "flags", "presets", "body" \| "body_error"}` |
 | `api create` / `edit` / `save` / `rm` | `{"created"}` / `{"updated"}` / `{"saved", "valid", "errors"}` / `{"removed"}` |
-| `respond` (buffered) | `{"provider", "model", "text", "metadata", "activity"?, "sources"?, "raw"?}` — `sources` with `--cite`, `raw` with `--raw` |
+| `respond` (buffered) | `{"provider", "model", "api", "text", "artifacts", "metadata", "activity"?, "sources"?, "raw"?}` — `api` is the API that served it; `artifacts` the files saved (§6); `sources` with `--cite`, `raw` with `--raw` |
 | `respond --background --detach` | the operation (§5) plus `"provider"` |
-| `generate` | `{"provider", "artifacts": [{"path", "revised_prompt"}]}` — paths of the saved files |
+| `generate` | the `respond` result (it is `respond --output image`) |
 | `upload` | `{"provider", "file_id"}` |
 | `jobs status` / `jobs wait` | the operation (§5) plus `"provider"` and, once succeeded, `"text"` |
 | `alias list` | `{"<expansion>": ["<alias>", …]}` |
@@ -90,10 +90,12 @@ stream uses.
 {"event": "activity", "provider": "openai", "message": "🔍 searching the web"}
 {"event": "delta", "provider": "openai", "text": "Hel"}
 {"event": "delta", "provider": "openai", "text": "lo"}
-{"event": "provider_done", "provider": "openai", "model": "gpt-4o", "text": "Hello", "metadata": {}}
+{"event": "artifact", "provider": "openai", "path": "fox-1.png", "type": "image", "media_type": "image/png", "revised_prompt": null}
+{"event": "provider_done", "provider": "openai", "model": "gpt-4o", "api": "responses", "text": "Hello", "artifacts": [...], "metadata": {}}
 ```
 
 - `activity` events are optional and API-dependent (`response.stream.activity_events`).
+- `artifact` events (one per saved file) come after the last delta, before `provider_done`.
 - `provider_done` carries the same fields as a buffered result (§3) — `text` is
   the concatenated deltas; `metadata`, `sources` and `raw` come from the
   response object in the stream's final event (`response.stream.final_event` /
@@ -117,5 +119,7 @@ then `jobs status <provider> <id>` (one check) or `jobs wait <provider> <id>
 
 ## 6. Files
 
-Generated media is written to disk and reported by path (`generate --out DIR`,
-default the current directory); file contents never appear on stdout.
+Generated media is written to disk and reported by path (`respond --out DIR`,
+default the current directory); file contents never appear on stdout. Each
+artifact is `{"path", "type", "media_type", "revised_prompt"}`; files are named
+`<prompt-words>-<n>.<ext>` with the first unused `n`, so nothing is overwritten.

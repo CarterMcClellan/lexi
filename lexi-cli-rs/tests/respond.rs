@@ -96,14 +96,22 @@ async fn sends_the_active_or_named_prompt_with_the_default_model() {
     );
     assert_eq!(body["messages"][0]["content"][0]["text"], "active text");
 
-    let o = lexi_run(home.path(), &["respond", "p", "named"]).await;
+    let o = lexi_run(home.path(), &["respond", "p", "--prompt", "named"]).await;
     assert!(o.status.success(), "{}", stderr(&o));
     assert_eq!(
         sent_body(&server, 1).await["messages"][0]["content"][0]["text"],
         "named text"
     );
 
-    let o = lexi_run(home.path(), &["respond", "p", "missing"]).await;
+    let o = lexi_run(home.path(), &["respond", "p", "--prompt", "missing"]).await;
+
+    // Bare words are the prompt text.
+    let o2 = lexi_run(home.path(), &["respond", "p", "plain", "words"]).await;
+    assert!(o2.status.success(), "{}", stderr(&o2));
+    assert_eq!(
+        sent_body(&server, 2).await["messages"][0]["content"][0]["text"],
+        "plain words"
+    );
     assert_eq!(o.status.code(), Some(1));
     assert!(stderr(&o).contains("prompt \"missing\" not found"));
 }

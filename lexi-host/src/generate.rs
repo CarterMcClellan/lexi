@@ -1,8 +1,9 @@
-//! Image generation: run a text→image request and materialize the artifacts.
-//!
-//! The engine extracts typed artifacts (`extract_artifacts`); this module turns
-//! each into a file on disk — downloading a `url`, or decoding inline `b64` —
-//! the I/O the engine deliberately omits.
+//! Artifacts: materialize the typed outputs the engine extracts
+//! (`extract_artifacts`) — generated images today — as files on disk,
+//! downloading a `url` or decoding inline `b64` (the I/O the engine omits).
+//! Any response can carry them: an Images API reply, or a chat reply whose
+//! image_generation tool added one. Files never overwrite each other:
+//! `<prompt-slug>-<n>.<ext>`.
 
 use std::path::{Path, PathBuf};
 
@@ -10,13 +11,74 @@ use base64::prelude::*;
 use serde_json::{json, Value};
 
 use crate::respond::{compose_body, endpoint_url};
-use crate::{auth, config, HostError};
+use crate::{auth, HostError};
 
 /// A generated artifact written to disk.
 #[derive(Debug, Clone)]
 pub struct SavedArtifact {
     pub path: PathBuf,
+    /// The artifact type (`image`, …).
+    pub kind: String,
+    pub media_type: String,
     pub revised_prompt: Option<String>,
+}
+
+impl SavedArtifact {
+    /// `{path, type, media_type, revised_prompt}`.
+    pub fn to_value(&self) -> Value {
+        json!({
+            "path": self.path.display().to_string(),
+            "type": self.kind,
+            "media_type": self.media_type,
+            "revised_prompt": self.revised_prompt,
+        })
+    }
+}
+
+/// A filename stem from the prompt: its first words, lowercased, `-`-joined
+/// (`"A watercolor fox!"` → `a-watercolor-fox`); `image` when nothing's left.
+fn slug(prompt: &str) -> String {
+    let mut out = String::new();
+    for word in prompt.split_whitespace() {
+        let w: String = word
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect();
+        if w.is_empty() {
+            continue;
+        }
+        if !out.is_empty() {
+            if out.len() + 1 + w.len() > 40 {
+                break;
+            }
+            out.push('-');
+        }
+        out.push_str(&w.chars().take(40).collect::<String>());
+    }
+    if out.is_empty() {
+        "image".into()
+    } else {
+        out
+    }
+}
+
+/// `dir/<stem>-<n>.<ext>` for the first n ≥ 1 that doesn't exist yet.
+fn unique_path(dir: &Path, stem: &str, ext: &str) -> PathBuf {
+    (1..)
+        .map(|n| dir.join(format!("{stem}-{n}.{ext}")))
+        .find(|p| !p.exists())
+        .expect("an unused file name")
+}
+
+fn media_type_for(ext: &str) -> String {
+    match ext {
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        _ => "image/png",
+    }
+    .to_string()
 }
 
 /// Pick a file extension for an artifact: from a `url`'s suffix, else `png`.
@@ -64,14 +126,24 @@ pub async fn generate_images_with_effective(
     }
     let raw: Value = resp.json().await?;
 
+    materialize(client, effective_cfg, &raw, out_dir, &slug(prompt)).await
+}
+
+/// Write the artifacts in `raw` (per the API's `response.artifacts`) under
+/// `out_dir`, named `<stem>-<n>.<ext>`. Artifacts with no `url`/`b64` are skipped.
+async fn materialize(
+    client: &reqwest::Client,
+    effective_cfg: &Value,
+    raw: &Value,
+    out_dir: &Path,
+    stem: &str,
+) -> Result<Vec<SavedArtifact>, HostError> {
     let artifacts_cfg = effective_cfg
         .get("response")
         .and_then(|r| r.get("artifacts"));
-    let artifacts = lexi_core::extract_artifacts(&raw, artifacts_cfg);
-
-    std::fs::create_dir_all(out_dir)?;
+    let artifacts = lexi_core::extract_artifacts(raw, artifacts_cfg);
     let mut saved = Vec::new();
-    for (i, art) in artifacts.iter().enumerate() {
+    for art in &artifacts {
         let bytes: Vec<u8> = if let Some(url) = art.get("url").and_then(Value::as_str) {
             let r = client.get(url).send().await?;
             if !r.status().is_success() {
@@ -89,11 +161,18 @@ pub async fn generate_images_with_effective(
         } else {
             continue; // no materializable source
         };
-
-        let path = out_dir.join(format!("image_{i}.{}", artifact_ext(art)));
+        std::fs::create_dir_all(out_dir)?;
+        let ext = artifact_ext(art);
+        let path = unique_path(out_dir, stem, &ext);
         std::fs::write(&path, &bytes)?;
         saved.push(SavedArtifact {
             path,
+            kind: art
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or("file")
+                .to_string(),
+            media_type: media_type_for(&ext),
             revised_prompt: art
                 .get("revised_prompt")
                 .and_then(Value::as_str)
@@ -103,6 +182,27 @@ pub async fn generate_images_with_effective(
     Ok(saved)
 }
 
+/// Save the artifacts a finished chat's response carried under `out_dir`
+/// (none for a plain text reply).
+pub async fn save_artifacts(
+    chat: &crate::PreparedChat,
+    res: &crate::RespondResult,
+    out_dir: &Path,
+) -> Result<Vec<SavedArtifact>, HostError> {
+    if res.raw.is_null() || chat.effective.pointer("/response/artifacts").is_none() {
+        return Ok(Vec::new());
+    }
+    let client = reqwest::Client::new();
+    materialize(
+        &client,
+        &chat.effective,
+        &res.raw,
+        out_dir,
+        &slug(&chat.prompt_text),
+    )
+    .await
+}
+
 /// Load config, resolve the provider, and generate images into `out_dir`.
 pub async fn generate_images_text(
     provider: &str,
@@ -110,18 +210,40 @@ pub async fn generate_images_text(
     model_override: Option<&str>,
     out_dir: &Path,
 ) -> Result<Vec<SavedArtifact>, HostError> {
-    // The binding that produces images: by the model's tags when one is given,
-    // else the provider's image API and its default model.
-    let resolved = crate::models::resolve_model(provider, model_override, "image")?;
-    let providers = config::load_providers()?;
-    let provider_cfg = providers
-        .get("providers")
-        .and_then(|p| p.get(provider))
-        .cloned()
-        .ok_or_else(|| HostError::UnknownProvider(provider.to_string()))?;
-    let api_key = config::resolve_api_key(provider, &provider_cfg)?;
-    let (eff, model) = (resolved.effective, resolved.model);
+    // The same pipeline as `respond`, asking for image output: the binding
+    // that produces images (by the model's tags, or the provider's image API
+    // and its default model).
+    let req = crate::ChatRequest {
+        prompt: json!({ "prompt": prompt, "role": "user" }),
+        model: model_override.map(String::from),
+        output: Some("image".into()),
+        ..Default::default()
+    };
+    let chat = crate::prepare_chat(provider, &req, crate::ChatMode::Buffered)?;
+    let res = crate::run_chat(&chat, |_| {}).await?;
+    save_artifacts(&chat, &res, out_dir).await
+}
 
-    let client = reqwest::Client::new();
-    generate_images_with_effective(&client, &eff, &api_key, prompt, &model, out_dir).await
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slugs_from_prompts() {
+        assert_eq!(slug("A watercolor fox!"), "a-watercolor-fox");
+        assert_eq!(slug("  ??  "), "image");
+        assert_eq!(slug("Ünïcode Straße"), "ünïcode-straße");
+        let long = slug("one two three four five six seven eight nine ten eleven");
+        assert!(long.len() <= 40, "{long}");
+        assert!(long.starts_with("one-two-three"));
+    }
+
+    #[test]
+    fn unique_paths_never_reuse_a_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = unique_path(dir.path(), "fox", "png");
+        assert!(first.ends_with("fox-1.png"));
+        std::fs::write(&first, b"x").unwrap();
+        assert!(unique_path(dir.path(), "fox", "png").ends_with("fox-2.png"));
+    }
 }

@@ -150,6 +150,9 @@ tool_presets:
   web_search:
     tools:
       - type: web_search
+  image_generation:
+    tools:
+      - type: image_generation
   json_object:
     text:
       format:
@@ -175,7 +178,11 @@ content_mapping:
           template: { type: input_image, file_id: "{{file_id}}" }
 
 # Input/output modalities this API family can carry (per-model overrides refine).
+# Output is text; the optional image_generation tool can add image artifacts to
+# a reply (response.artifacts), but that doesn't make it an image API — so
+# `--output image` picks a provider's Images binding, not this one.
 capabilities:
+  kind: chat
   input: [text, image]
   output: [text]
 
@@ -212,6 +219,14 @@ response:
     content_path: content
     content_filter: { type: output_text }
     text_field: text
+  # Images from the image_generation tool: base64 in each call's `result`.
+  artifacts:
+    items_path: output
+    item_filter: { type: image_generation_call }
+    type: image
+    fields:
+      b64: result
+      revised_prompt: revised_prompt
   # Tool-use / activity summary surfaced under --verbose.
   activity:
     items_path: output

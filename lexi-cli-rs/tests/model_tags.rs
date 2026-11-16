@@ -78,7 +78,7 @@ async fn one_provider_serves_chat_and_images_by_tags() {
     let body = &sent(&server, "/images/generations").await[0];
     assert_eq!(body["model"], "gpt-image-2.5-flare");
     assert_eq!(body["prompt"], "a fox");
-    assert!(out.path().join("image_0.png").exists());
+    assert!(out.path().join("a-fox-1.png").exists());
 
     // An unconfigured model a tag rule recognizes is accepted, routed by its kind.
     let o = go(

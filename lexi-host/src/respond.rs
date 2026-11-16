@@ -459,18 +459,21 @@ pub async fn respond_background_with_effective(
 /// [`crate::models::resolve_model`]: the effective config of the binding that
 /// serves the model (per-model `auth`/`request`/`response` overrides merged
 /// in), the API key, and the model id.
+fn provider_api_key(provider: &str) -> Result<String, HostError> {
+    let providers = config::load_providers()?;
+    let provider_cfg = providers
+        .get("providers")
+        .and_then(|p| p.get(provider))
+        .ok_or_else(|| HostError::UnknownProvider(provider.to_string()))?;
+    config::resolve_api_key(provider, provider_cfg)
+}
+
 fn resolve_provider_model(
     provider: &str,
     model_override: Option<&str>,
 ) -> Result<(Value, String, String), HostError> {
     let resolved = crate::models::resolve_model(provider, model_override, "text")?;
-    let providers = config::load_providers()?;
-    let provider_cfg = providers
-        .get("providers")
-        .and_then(|p| p.get(provider))
-        .cloned()
-        .ok_or_else(|| HostError::UnknownProvider(provider.to_string()))?;
-    let api_key = config::resolve_api_key(provider, &provider_cfg)?;
+    let api_key = provider_api_key(provider)?;
     Ok((resolved.effective, api_key, resolved.model))
 }
 
@@ -552,6 +555,9 @@ pub struct ChatRequest {
     pub unset_paths: Vec<String>,
     /// Compose without validating the body against the schema.
     pub skip_validation: bool,
+    /// The output kind asked for (`text`, `image`, …; default `text`): with no
+    /// `model`, picks the binding that produces it and its default model.
+    pub output: Option<String>,
 }
 
 /// How to run a chat. The composed body decides in the end: a body with
@@ -568,8 +574,12 @@ pub enum ChatMode {
 pub struct PreparedChat {
     pub provider: String,
     pub model: String,
+    /// The API definition serving the model.
+    pub api: String,
     pub effective: Value,
     pub body: Value,
+    /// The prompt text (names saved artifacts).
+    pub prompt_text: String,
     api_key: String,
 }
 
@@ -619,14 +629,24 @@ impl PreparedChat {
     }
 
     /// The machine-interface result of a finished chat
-    /// (`docs/spec/cli-machine-v0.md` §3): `{provider, model, text, metadata,
-    /// activity?, sources?, raw?}` — `sources` when `cite`, `raw` when `raw`.
-    pub fn result_value(&self, res: &RespondResult, cite: bool, raw: bool) -> Value {
+    /// (`docs/spec/cli-machine-v0.md` §3): `{provider, model, api, text,
+    /// artifacts, metadata, activity?, sources?, raw?}` — `artifacts` are the
+    /// files [`crate::generate::save_artifacts`] wrote, `sources` when `cite`,
+    /// `raw` when `raw`.
+    pub fn result_value(
+        &self,
+        res: &RespondResult,
+        cite: bool,
+        raw: bool,
+        artifacts: &[crate::generate::SavedArtifact],
+    ) -> Value {
         let d = self.details(res);
         let mut out = json!({
             "provider": self.provider,
             "model": self.model,
+            "api": self.api,
             "text": res.text,
+            "artifacts": artifacts.iter().map(|a| a.to_value()).collect::<Vec<_>>(),
             "metadata": d.metadata,
         });
         if !d.activity.is_empty() {
@@ -667,7 +687,26 @@ pub fn prepare_chat(
     if text.trim().is_empty() {
         return Err(HostError::Config("prompt text is empty".into()));
     }
-    let (eff, api_key, model) = resolve_provider_model(provider, req.model.as_deref())?;
+    let output = req.output.as_deref().unwrap_or("text");
+    let resolved = crate::models::resolve_model(provider, req.model.as_deref(), output)?;
+    let (eff, model, api) = (resolved.effective, resolved.model, resolved.api);
+    let api_key = provider_api_key(provider)?;
+    let what = if api.is_empty() {
+        "this provider's API".to_string()
+    } else {
+        format!("the {api} API")
+    };
+    match mode {
+        ChatMode::Stream if eff.pointer("/response/stream").is_none() => {
+            return Err(HostError::Unsupported(format!("{what} doesn't stream")));
+        }
+        ChatMode::Background if eff.get("operation").is_none() => {
+            return Err(HostError::Unsupported(format!(
+                "{what} has no background (async) lifecycle"
+            )));
+        }
+        _ => {}
+    }
     let mut overrides = req.overrides.clone();
     overrides
         .entry("model")
@@ -694,8 +733,10 @@ pub fn prepare_chat(
     Ok(PreparedChat {
         provider: provider.to_string(),
         model,
+        api,
         effective: eff,
         body,
+        prompt_text: text.to_string(),
         api_key,
     })
 }
