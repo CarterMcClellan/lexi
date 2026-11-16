@@ -30,6 +30,10 @@ async fn api_stream(
 }
 
 fn main() {
+    // Seed missing defaults on first launch (never overwrites existing files).
+    if let Err(e) = lexi_host::ensure_home() {
+        eprintln!("warning: could not prepare the Lexi home: {e}");
+    }
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![api, api_stream])
         .run(tauri::generate_context!())

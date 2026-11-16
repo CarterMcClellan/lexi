@@ -1,10 +1,16 @@
 [package]
 name = "lexi-cli-rs"
-version = "0.0.0"
+version = "0.1.0"
 edition = "2021"
 description = "Lexi CLI — a thin Rust shell over lexi-host / lexi-core."
 license = "MIT"
 publish = false
+
+# The command tree, parser, dispatcher and output live in the library so other
+# hosts (the desktop app's CLI console) can run `lexi` commands in-process.
+[lib]
+name = "lexi_cli"
+path = "src/lib.rs"
 
 [[bin]]
 name = "lexi"
@@ -14,3 +20,9 @@ path = "src/main.rs"
 lexi-host = { path = "../lexi-host" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 clap = { version = "4", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[dev-dependencies]
+assert_cmd = "2"
+tempfile = "3"
+wiremock = "0.6"
