@@ -2,17 +2,24 @@
 name = "lexi-python"
 version = "0.1.0"
 edition = "2021"
-description = "Python bindings (PyO3) for the Lexi provider-agnostic engine (lexi-core)."
+description = "Python bindings (PyO3) for Lexi: the engine (lexi-core) and the runtime (lexi-host)."
 license = "MIT"
 repository = "https://github.com/badscooter23/lexi"
 publish = false
 
 [lib]
-name = "lexi"
+name = "_lexi"
 crate-type = ["cdylib"]
 
 [dependencies]
 lexi-core = { path = "../lexi-core" }
+lexi-host = { path = "../lexi-host" }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 pyo3 = { version = "0.22", features = ["extension-module", "abi3-py39"] }
 pythonize = "0.22"
+
+[lints.rust]
+# pyo3 0.22's create_exception! checks a `gil-refs` feature this crate doesn't declare.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("gil-refs"))'] }

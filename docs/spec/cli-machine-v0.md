@@ -2,6 +2,7 @@
 
 **Status:** v0 · 2026-11-16 · implemented by `lexi-cli-rs` (the Rust `lexi`).
 **Audience:** programs, scripts and agents that drive `lexi` and read its output.
+The Python library (`import lexi`) returns these same shapes as dicts.
 
 Every `lexi` command has a human form and a machine form. The machine form is
 selected with `--json` and is the stable contract described here. Human output
@@ -92,7 +93,8 @@ stream uses.
 - `activity` events are optional and API-dependent (`response.stream.activity_events`).
 - `provider_done` carries the same fields as a buffered result (§3) — `text` is
   the concatenated deltas; `metadata`, `sources` and `raw` come from the
-  stream's final response event when the API sends one.
+  response object in the stream's final event (`response.stream.final_event` /
+  `final_path`) when the API sends one.
 - On failure the last event is `{"event": "provider_done", "provider", "error"}`
   and the exit code is `1`.
 

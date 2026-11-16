@@ -1,10 +1,11 @@
-//! Python bindings for `lexi-core` (PyO3).
+//! Python bindings (PyO3) — the native `lexi._lexi` module.
 //!
-//! A thin, dict-in/dict-out wrapper over the pure Rust engine: Python objects
-//! are converted to/from `serde_json::Value` via `pythonize`, then handed to
-//! `lexi-core`. This is the Python surface of the one engine — proven identical
-//! to the Rust and Python-`lexi_cli` engines by the shared conformance suite
-//! (`lexi-python/tests/`).
+//! Two layers, both dict-in/dict-out (Python objects convert to/from
+//! `serde_json::Value` via `pythonize`):
+//! - this file: the pure `lexi-core` engine (compose request bodies, extract
+//!   responses, validate definitions), pinned by the shared conformance suite;
+//! - [`host`]: the `lexi-host` runtime (send prompts, stream, jobs, media),
+//!   wrapped by the public functions in `python/lexi/`.
 
 // PyO3 0.22's #[pyfunction] expansion converts the error return with `.into()`,
 // which clippy flags as a useless PyErr->PyErr conversion on every function.
@@ -15,6 +16,8 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pythonize::{depythonize, pythonize};
 use serde_json::Value;
+
+mod host;
 
 // --- conversions ----------------------------------------------------------
 
@@ -346,7 +349,8 @@ fn classify_event<'py>(
 // --- module ---------------------------------------------------------------
 
 #[pymodule]
-fn lexi(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _lexi(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    host::register(m)?;
     m.add_function(wrap_pyfunction!(compose_request_body, m)?)?;
     m.add_function(wrap_pyfunction!(message_from_dict, m)?)?;
     m.add_function(wrap_pyfunction!(normalize_prompt_payload, m)?)?;

@@ -196,7 +196,15 @@ async fn post_stream<F: FnMut(StreamEvent)>(
             let data = parsed["data"].as_str().unwrap_or("");
             if final_event.is_some() && event == final_event.as_deref() {
                 if let Ok(v @ Value::Object(_)) = serde_json::from_str::<Value>(data) {
-                    final_response = v;
+                    // `final_path` points at the response object inside the
+                    // event (OpenAI wraps it: `{type, response: {...}}`).
+                    final_response = stream_cfg
+                        .get("final_path")
+                        .and_then(Value::as_str)
+                        .and_then(|p| lexi_core::get_path(&v, p))
+                        .filter(|r| r.is_object())
+                        .cloned()
+                        .unwrap_or(v);
                 }
             }
             let cls = lexi_core::classify_event(event, data, &stream_cfg);
@@ -237,6 +245,17 @@ impl OperationStatus {
     }
     pub fn failed(&self) -> bool {
         self.operation["state"].as_str() == Some("failed")
+    }
+
+    /// The machine-interface form: the operation plus `provider` and, once it
+    /// succeeded, `text`.
+    pub fn to_value(&self, provider: &str) -> Value {
+        let mut out = self.operation.clone();
+        out["provider"] = Value::from(provider);
+        if let Some(res) = &self.result {
+            out["text"] = Value::from(res.text.clone());
+        }
+        out
     }
 }
 
@@ -613,6 +632,79 @@ impl PreparedChat {
     pub fn streams(&self) -> bool {
         self.body.get("stream") == Some(&Value::Bool(true))
     }
+
+    /// What a finished chat reports beyond its text, read from the raw
+    /// response through the API definition's `response` block.
+    pub fn details(&self, res: &RespondResult) -> ChatDetails {
+        let resp = self.effective.get("response");
+        let mut metadata = Map::new();
+        if let Some(paths) = resp
+            .and_then(|r| r.get("metadata"))
+            .and_then(Value::as_object)
+        {
+            for (k, p) in paths {
+                if let Some(v) = p.as_str().and_then(|p| lexi_core::get_path(&res.raw, p)) {
+                    if !v.is_null() {
+                        metadata.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+        }
+        let activity =
+            lexi_core::summarize_activity(&res.raw, resp.and_then(|r| r.get("activity")));
+        let sources = match resp.and_then(|r| r.get("annotations")) {
+            Some(ann_cfg) => {
+                let items =
+                    lexi_core::find_text_items(&res.raw, resp.and_then(|r| r.get("text_extract")));
+                let anns = lexi_core::extract_annotations(&res.raw, Some(ann_cfg), &items);
+                lexi_core::render_annotations(&anns, Some(ann_cfg))
+                    .lines()
+                    .filter(|l| !l.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            }
+            None => Vec::new(),
+        };
+        ChatDetails {
+            metadata,
+            activity,
+            sources,
+        }
+    }
+
+    /// The machine-interface result of a finished chat
+    /// (`docs/spec/cli-machine-v0.md` §3): `{provider, model, text, metadata,
+    /// activity?, sources?, raw?}` — `sources` when `cite`, `raw` when `raw`.
+    pub fn result_value(&self, res: &RespondResult, cite: bool, raw: bool) -> Value {
+        let d = self.details(res);
+        let mut out = json!({
+            "provider": self.provider,
+            "model": self.model,
+            "text": res.text,
+            "metadata": d.metadata,
+        });
+        if !d.activity.is_empty() {
+            out["activity"] = Value::from(d.activity);
+        }
+        if cite {
+            out["sources"] = json!(d.sources);
+        }
+        if raw {
+            out["raw"] = res.raw.clone();
+        }
+        out
+    }
+}
+
+/// See [`PreparedChat::details`].
+#[derive(Debug, Clone, Default)]
+pub struct ChatDetails {
+    /// `response.metadata` fields the response carried (model, token counts, …).
+    pub metadata: Map<String, Value>,
+    /// A one-line summary of provider-side work (`response.activity`), or "".
+    pub activity: String,
+    /// Rendered citations (`response.annotations`), one per entry.
+    pub sources: Vec<String>,
 }
 
 /// Resolve the provider and model and compose the request body. No network I/O.

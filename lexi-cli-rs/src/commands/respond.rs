@@ -19,7 +19,6 @@ use std::io::Read;
 use serde_json::{json, Map, Value};
 
 use crate::coerce::{coerce_typed, parse_set_arg};
-use crate::commands::prompts::ACTIVE_PROMPT;
 use crate::output::{pretty, Io, EXIT_FAILURE, EXIT_OK};
 
 #[derive(Debug, Default)]
@@ -163,19 +162,8 @@ fn prompt_payload(plan: &Plan) -> Result<Value, String> {
             json!({ "prompt": text.trim_end(), "role": "user" })
         }
         Some(t) => json!({ "prompt": t, "role": "user" }),
-        None => {
-            let name = plan.prompt_name.as_deref().unwrap_or(ACTIVE_PROMPT);
-            let prompts = lexi_host::config::load_prompts().map_err(|e| e.to_string())?;
-            match prompts.into_iter().find(|(n, _)| n == name) {
-                Some((_, body)) => body,
-                None if name == ACTIVE_PROMPT => {
-                    return Err("no active prompt; save one with `prompts set <text>`, \
-                                name a saved prompt, or pass --text"
-                        .into())
-                }
-                None => return Err(format!("prompt {name:?} not found")),
-            }
-        }
+        None => lexi_host::config::resolve_prompt(plan.prompt_name.as_deref())
+            .map_err(|e| e.to_string())?,
     };
     if let Some(role) = &plan.role {
         payload["role"] = Value::from(role.as_str());
@@ -197,21 +185,6 @@ fn load_params(path: &str) -> Result<Map<String, Value>, String> {
         Value::Object(m) => Ok(m),
         _ => Err(format!("--params: {path:?} must contain a mapping")),
     }
-}
-
-/// `response.metadata` (key → path) resolved against the raw response.
-fn metadata(raw: &Value, eff: &Value) -> Map<String, Value> {
-    let mut out = Map::new();
-    if let Some(paths) = eff.pointer("/response/metadata").and_then(Value::as_object) {
-        for (k, p) in paths {
-            if let Some(v) = p.as_str().and_then(|p| lexi_core::get_path(raw, p)) {
-                if !v.is_null() {
-                    out.insert(k.clone(), v.clone());
-                }
-            }
-        }
-    }
-    out
 }
 
 /// The `[model | N in + M out = T tokens | stop]` and `[activity]` lines.
@@ -240,23 +213,6 @@ fn metadata_lines(meta: &Map<String, Value>, activity: &str) -> Vec<String> {
         lines.push(format!("[{activity}]"));
     }
     lines
-}
-
-/// Rendered citations (`response.annotations`), one per line.
-fn sources(raw: &Value, eff: &Value) -> Vec<String> {
-    let resp = eff.get("response");
-    let Some(ann_cfg) = resp.and_then(|r| r.get("annotations")) else {
-        return Vec::new();
-    };
-    let te = resp.and_then(|r| r.get("text_extract"));
-    let items = lexi_core::find_text_items(raw, te);
-    let anns = lexi_core::extract_annotations(raw, Some(ann_cfg), &items);
-    let rendered = lexi_core::render_annotations(&anns, Some(ann_cfg));
-    rendered
-        .lines()
-        .filter(|l| !l.is_empty())
-        .map(str::to_string)
-        .collect()
 }
 
 pub(crate) async fn respond(io: &mut Io<'_>, provider: &str, args: &[String]) -> u8 {
@@ -331,9 +287,7 @@ pub(crate) async fn respond(io: &mut Io<'_>, provider: &str, args: &[String]) ->
                     "Submitted job {id} ({state}).\nCheck it with: lexi jobs status {provider} {id}\n\
                      Wait for it with: lexi jobs wait {provider} {id}"
                 );
-                let mut json = st.operation.clone();
-                json["provider"] = Value::from(provider);
-                io.result(human, json)
+                io.result(human, st.to_value(provider))
             }
             Err(e) => io.fail(e),
         };
@@ -389,39 +343,15 @@ pub(crate) async fn respond(io: &mut Io<'_>, provider: &str, args: &[String]) ->
         Err(e) => return io.fail(e),
     };
 
-    let meta = metadata(&res.raw, &chat.effective);
-    let activity_cfg = chat.effective.pointer("/response/activity");
-    let activity = lexi_core::summarize_activity(&res.raw, activity_cfg);
-    let cites = if plan.cite {
-        sources(&res.raw, &chat.effective)
-    } else {
-        Vec::new()
-    };
-
     if json_mode {
-        let mut done = json!({
-            "provider": provider,
-            "model": chat.model,
-            "text": res.text,
-            "metadata": meta,
-        });
-        if !activity.is_empty() {
-            done["activity"] = Value::from(activity);
-        }
-        if plan.cite {
-            done["sources"] = json!(cites);
-        }
-        if plan.raw {
-            done["raw"] = res.raw.clone();
-        }
+        let mut done = chat.result_value(&res, plan.cite, plan.raw);
         if streaming {
             done["event"] = Value::from("provider_done");
-            io.json_line(&done);
-        } else {
-            io.json_line(&done);
         }
+        io.json_line(&done);
         return EXIT_OK;
     }
+    let details = chat.details(&res);
 
     if plan.raw {
         if res.raw.is_null() {
@@ -438,14 +368,14 @@ pub(crate) async fn respond(io: &mut Io<'_>, provider: &str, args: &[String]) ->
         };
         let _ = writeln!(io.out, "{text}");
     }
-    if !cites.is_empty() {
+    if plan.cite && !details.sources.is_empty() {
         let _ = writeln!(io.out, "\nSources:");
-        for line in &cites {
+        for line in &details.sources {
             let _ = writeln!(io.out, "  {line}");
         }
     }
     if plan.verbose {
-        for line in metadata_lines(&meta, &activity) {
+        for line in metadata_lines(&details.metadata, &details.activity) {
             let _ = writeln!(io.err, "{}", crate::output::dim(&line, color));
         }
     }

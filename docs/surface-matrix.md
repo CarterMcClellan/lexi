@@ -12,22 +12,22 @@ file is the checklist — and it is **checked by CI**
   in backticks), or `planned (Cn)` for a consolidation slice not yet landed;
 - every `lexi` command must appear in an Operations row or under **CLI-only**.
 
-Cells: `—` = not exposed on that surface. The **Python API** column is tracked,
-not yet enforced (the wheel wraps `lexi-core` only; wrapping `lexi-host` is the
-next plan). **GUI** names the desktop tab.
+Cells: `—` = not exposed on that surface. The **Python API** column names the
+`lexi` wheel's functions; it is tracked, not yet enforced (the runtime calls are
+wrapped; the admin calls are the next slice). **GUI** names the desktop tab.
 
 ## Operations
 
 | Operation | lexi-host | CLI | Python API | GUI |
 |---|---|---|---|---|
-| Send a saved / inline prompt with full options (model aliases, schema flags, presets, `--set`, params) | `prepare_chat`, `run_chat`, `compose_chat_body` | `respond` | — | — |
-| Send a prompt (buffered) | `respond_text`, `respond_with_effective` | `respond` | — | Chat |
-| Send a prompt (streaming) | `respond_stream_text`, `respond_stream_with_effective` | `respond` | — | Chat |
-| Send a prompt (background job) | `respond_background_text`, `respond_background_with_effective` | `respond` | — | — |
-| Detached background jobs: submit, check, wait | `submit_chat`, `operation_status`, `wait_operation` | `respond`, `jobs status`, `jobs wait` | — | — |
-| Attach images to a prompt | `resolve_image`, `resolve_images` | `respond` | — | — |
-| Generate images to disk | `generate_images_text`, `generate_images_with_effective` | `generate` | — | — |
-| Upload a file | `upload_file`, `upload_file_with_effective` | `upload` | — | — |
+| Send a saved / inline prompt with full options (model aliases, schema flags, presets, `--set`, params) | `prepare_chat`, `run_chat`, `compose_chat_body`, `resolve_prompt` | `respond` | `lexi.respond`, `lexi.prepare` | — |
+| Send a prompt (buffered) | `respond_text`, `respond_with_effective` | `respond` | `lexi.respond` | Chat |
+| Send a prompt (streaming) | `respond_stream_text`, `respond_stream_with_effective` | `respond` | `lexi.stream` | Chat |
+| Send a prompt (background job) | `respond_background_text`, `respond_background_with_effective` | `respond` | `lexi.respond` | — |
+| Detached background jobs: submit, check, wait | `submit_chat`, `operation_status`, `wait_operation` | `respond`, `jobs status`, `jobs wait` | `lexi.submit`, `lexi.jobs.status`, `lexi.jobs.wait` | — |
+| Attach images to a prompt | `resolve_image`, `resolve_images` | `respond` | `lexi.respond` | — |
+| Generate images to disk | `generate_images_text`, `generate_images_with_effective` | `generate` | `lexi.generate` | — |
+| Upload a file | `upload_file`, `upload_file_with_effective` | `upload` | `lexi.upload` | — |
 | List providers | `provider_names`, `list_providers`, `load_providers`, `api_key_source` | `providers list` | — | Providers |
 | Add / rename / remove a provider | `add_provider`, `rename_provider`, `remove_provider` | `providers add`, `providers rename`, `providers rm` | — | — |
 | Store / show / remove an API key | `set_api_key`, `remove_api_key` | `providers api-key set`, `providers api-key show`, `providers api-key remove` | — | — |
