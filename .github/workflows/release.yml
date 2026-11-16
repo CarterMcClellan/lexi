@@ -11,8 +11,30 @@ permissions:
   contents: write
 
 jobs:
+  # One draft release per tag, created before anything uploads; every job and
+  # workflow attaches to it by id (see .github/scripts/ensure-release.sh).
+  release:
+    name: Create draft release
+    runs-on: ubuntu-latest
+    outputs:
+      id: ${{ steps.ensure.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: ensure
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_BODY: |
+            Lexi ${{ github.ref_name }}: the `lexi` CLI, desktop installers and Python wheels.
+
+            Unless signed, these builds are **unsigned**:
+            - macOS: right-click the app → Open (to bypass Gatekeeper the first time).
+            - Windows: SmartScreen → More info → Run anyway.
+        run: echo "id=$(.github/scripts/ensure-release.sh "$GITHUB_REF_NAME")" >> "$GITHUB_OUTPUT"
+
   bundle:
     name: bundle (${{ matrix.os }})
+    needs: release
     strategy:
       fail-fast: false
       matrix:
@@ -45,13 +67,6 @@ jobs:
       # passed (even empty) to a build that isn't signing — an empty
       # APPLE_CERTIFICATE still makes Tauri attempt (and fail) macOS codesigning.
       APPLE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' }}
-      RELEASE_BODY: |
-        Lexi desktop app — a thin shell over the Rust lexi-core engine.
-        Python wheels for the engine (`import lexi`) are attached too.
-
-        Unless signed, these builds are **unsigned**:
-        - macOS: right-click the app → Open (to bypass Gatekeeper the first time).
-        - Windows: SmartScreen → More info → Run anyway.
     steps:
       - uses: actions/checkout@v4
 
@@ -108,11 +123,7 @@ jobs:
         with:
           projectPath: lexi-desktop
           args: ${{ matrix.args }}
-          tagName: ${{ github.ref_name }}
-          releaseName: "Lexi ${{ github.ref_name }}"
-          releaseBody: ${{ env.RELEASE_BODY }}
-          releaseDraft: true
-          prerelease: false
+          releaseId: ${{ needs.release.outputs.id }}
 
       # Default build: Linux, Windows (signs via the tauri.conf thumbprint set
       # above when a Windows cert exists), and macOS without an Apple cert. No
@@ -125,8 +136,4 @@ jobs:
         with:
           projectPath: lexi-desktop
           args: ${{ matrix.args }}
-          tagName: ${{ github.ref_name }}
-          releaseName: "Lexi ${{ github.ref_name }}"
-          releaseBody: ${{ env.RELEASE_BODY }}
-          releaseDraft: true
-          prerelease: false
+          releaseId: ${{ needs.release.outputs.id }}
