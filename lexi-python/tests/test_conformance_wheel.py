@@ -189,6 +189,10 @@ def test_preview_binding() -> None:
 @pytest.mark.parametrize("path", MODEL, ids=[_id(p) for p in MODEL])
 def test_model(path: Path) -> None:
     case = _load_json(path)
+    if "catalog" in case:
+        assert lexi.catalog_tags(case["entry"], case["catalog"]) == case["expect_tags"], case["name"]
+        assert lexi.catalog_facts(case["entry"], case["catalog"]) == case["expect_facts"], case["name"]
+        return
     if "template" in case:
         got = lexi.merge_provider_template(case["template"], case["entry"])
     else:

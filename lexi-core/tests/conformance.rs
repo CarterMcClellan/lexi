@@ -398,6 +398,20 @@ fn models() {
     for path in files {
         let case = load_json(&path);
         let nm = name_of(&path);
+        if let Some(catalog) = case.get("catalog") {
+            let tags: Vec<Value> = core::catalog_tags(&case["entry"], catalog)
+                .into_iter()
+                .map(Value::from)
+                .collect();
+            if Value::Array(tags.clone()) != case["expect_tags"] {
+                failures.push(format!("{nm}: catalog tags {tags:?}"));
+            }
+            let facts = core::catalog_facts(&case["entry"], catalog);
+            if facts != case["expect_facts"] {
+                failures.push(format!("{nm}: catalog facts {facts}"));
+            }
+            continue;
+        }
         let got = if let Some(template) = case.get("template") {
             core::merge_provider_template(template, &case["entry"])
         } else {

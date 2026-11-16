@@ -63,8 +63,8 @@ pub fn provider_summaries() -> Result<Vec<Value>, HostError> {
                 "default_model": catch_all
                     .and_then(|b| b.get("default_model"))
                     .or(pcfg.get("default_model")),
-                "hosted_models": pcfg.get("hosted_models"),
-                "hosted_model_fields": pcfg.get("hosted_model_fields"),
+                "hosted_models": crate::hosted::catalog_cfg(pcfg).get("path").cloned(),
+                "hosted_model_fields": crate::hosted::catalog_cfg(pcfg).get("fields").cloned(),
                 "key_source": config::api_key_source(name, pcfg)?,
             }))
         })

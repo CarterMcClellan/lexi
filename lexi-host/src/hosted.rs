@@ -1,8 +1,11 @@
-//! Hosted-model discovery: a live GET to a provider's models endpoint.
+//! Hosted-model discovery: the provider's model catalog (`GET /models`).
 //!
-//! Mirrors the Python CLI's `fetch_hosted_models` + the Node server's response
-//! normalization: resolve the endpoint from the effective config, send an
-//! authenticated request, and flatten the JSON to a list of model entries.
+//! The provider's `catalog:` config (or the older `hosted_models` /
+//! `hosted_model_fields`) says where the listing is, how it pages, and how its
+//! fields map to tags and limits (`lexi_core::catalog_tags` / `catalog_facts`).
+//! `models hosted` fetches it live and caches it in
+//! `providers/<p>/catalog.json`; classification reads only the cache, so
+//! resolving a model never makes a hidden network call.
 
 use std::time::Duration;
 
@@ -32,9 +35,25 @@ fn normalize_hosted_items(data: &Value) -> Vec<Value> {
     Vec::new()
 }
 
+/// A provider's catalog config: `catalog:`, else one built from the older
+/// `hosted_models` / `hosted_model_fields`.
+pub(crate) fn catalog_cfg(cfg: &Value) -> Value {
+    if let Some(c) = cfg.get("catalog").filter(|c| c.is_object()) {
+        return c.clone();
+    }
+    let mut c = serde_json::Map::new();
+    if let Some(p) = cfg.get("hosted_models") {
+        c.insert("path".into(), p.clone());
+    }
+    if let Some(f) = cfg.get("hosted_model_fields") {
+        c.insert("fields".into(), f.clone());
+    }
+    Value::Object(c)
+}
+
 /// Compute the models endpoint from an effective config: the base URL —
-/// normalized to a `/v1` root if it embeds `/v1/...` — plus the `hosted_models`
-/// path (default `/models`).
+/// normalized to a `/v1` root if it embeds `/v1/...` — plus the catalog path
+/// (default `/models`).
 fn hosted_endpoint(effective_cfg: &Value) -> String {
     let mut base = effective_cfg
         .get("url")
@@ -47,17 +66,22 @@ fn hosted_endpoint(effective_cfg: &Value) -> String {
     } else if let Some(stripped) = base.strip_suffix("/v1/messages") {
         base = format!("{stripped}/v1");
     }
-    let path = effective_cfg
-        .get("hosted_models")
+    let catalog = catalog_cfg(effective_cfg);
+    let path = catalog
+        .get("path")
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
-        .unwrap_or("/models");
+        .unwrap_or("/models")
+        .to_string();
     if path.starts_with('/') {
         format!("{base}{path}")
     } else {
         format!("{base}/{path}")
     }
 }
+
+/// At most this many pages per listing.
+const MAX_PAGES: usize = 50;
 
 /// Fetch and normalize a provider's hosted models over an already-resolved
 /// effective config. No file/config I/O, so it is testable against a mock server.
@@ -67,23 +91,98 @@ pub async fn fetch_hosted_models_with(
     api_key: &str,
 ) -> Result<Vec<Value>, HostError> {
     let endpoint = hosted_endpoint(effective_cfg);
-    let headers = auth::build_headers(effective_cfg, api_key);
-    let resp = client
-        .get(&endpoint)
-        .headers(headers)
-        .timeout(HOSTED_TIMEOUT)
-        .send()
-        .await?;
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        return Err(HostError::HttpStatus {
-            status: status.as_u16(),
-            body,
-        });
+    let catalog = catalog_cfg(effective_cfg);
+    let paginate = catalog.get("paginate").filter(|p| p.is_object());
+    let items_path = catalog.get("items_path").and_then(Value::as_str);
+    let mut all = Vec::new();
+    let mut after: Option<Value> = None;
+    for _ in 0..MAX_PAGES {
+        let mut query: Vec<(String, String)> = Vec::new();
+        if let Some(p) = paginate {
+            if let (Some(param), Some(limit)) =
+                (p.get("limit_param").and_then(Value::as_str), p.get("limit"))
+            {
+                query.push((param.into(), crate::config_scalar(limit)));
+            }
+            if let (Some(param), Some(a)) = (p.get("after_param").and_then(Value::as_str), &after) {
+                query.push((param.into(), crate::config_scalar(a)));
+            }
+        }
+        let resp = client
+            .get(&endpoint)
+            .query(&query)
+            .headers(auth::build_headers(effective_cfg, api_key))
+            .timeout(HOSTED_TIMEOUT)
+            .send()
+            .await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(HostError::HttpStatus {
+                status: status.as_u16(),
+                body,
+            });
+        }
+        let data: Value = resp.json().await?;
+        let page = match items_path.and_then(|p| lexi_core::get_path(&data, p)) {
+            Some(Value::Array(a)) => a.clone(),
+            _ => normalize_hosted_items(&data),
+        };
+        all.extend(page);
+        let Some(p) = paginate else { break };
+        let more = p
+            .get("has_more")
+            .and_then(Value::as_str)
+            .and_then(|k| data.get(k))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let last = p
+            .get("last_id")
+            .and_then(Value::as_str)
+            .and_then(|k| data.get(k))
+            .filter(|v| !v.is_null())
+            .cloned();
+        match (more, last) {
+            (true, Some(l)) => after = Some(l),
+            _ => break,
+        }
     }
-    let data: Value = resp.json().await?;
-    Ok(normalize_hosted_items(&data))
+    Ok(all)
+}
+
+fn cache_path(provider: &str) -> std::path::PathBuf {
+    config::lexi_home()
+        .join("providers")
+        .join(provider)
+        .join("catalog.json")
+}
+
+/// The provider's cached catalog, written by [`fetch_hosted_models`]:
+/// `{fetched_at, models}` (`fetched_at` in Unix seconds), or `None` if it has
+/// never been fetched.
+pub fn cached_catalog(provider: &str) -> Result<Option<Value>, HostError> {
+    let path = cache_path(provider);
+    if !path.exists() {
+        return Ok(None);
+    }
+    Ok(Some(serde_json::from_str(&std::fs::read_to_string(path)?)?))
+}
+
+/// The cached listing entry for `model` (matched on the catalog's `id_path`,
+/// default `id`).
+pub(crate) fn cached_entry(provider: &str, cfg: &Value, model: &str) -> Option<Value> {
+    let cache = cached_catalog(provider).ok().flatten()?;
+    let id_path = catalog_cfg(cfg)
+        .get("id_path")
+        .and_then(Value::as_str)
+        .unwrap_or("id")
+        .to_string();
+    cache
+        .get("models")?
+        .as_array()?
+        .iter()
+        .find(|e| lexi_core::get_path(e, &id_path).and_then(Value::as_str) == Some(model))
+        .cloned()
 }
 
 /// Load config, resolve the provider, and fetch its hosted models.
@@ -97,7 +196,21 @@ pub async fn fetch_hosted_models(provider: &str) -> Result<Vec<Value>, HostError
     let eff = config::effective_config(provider, &provider_cfg)?;
     let api_key = config::resolve_api_key(provider, &provider_cfg)?;
     let client = reqwest::Client::new();
-    fetch_hosted_models_with(&client, &eff, &api_key).await
+    let models = fetch_hosted_models_with(&client, &eff, &api_key).await?;
+    // Cache it: classification reads models' catalog data from here.
+    let fetched_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let path = cache_path(provider);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(
+        &path,
+        serde_json::to_string(&serde_json::json!({ "fetched_at": fetched_at, "models": models }))?,
+    )?;
+    Ok(models)
 }
 
 #[cfg(test)]

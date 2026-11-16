@@ -1,0 +1,45 @@
+{
+  "name": "catalog-nvidia-partial-data",
+  "description": "NVIDIA lists most models with no metadata (observed: 1 of 33 had it): missing fields derive nothing; present ones do.",
+  "catalog": {
+    "tags": {
+      "in:image": {
+        "path": "model_type",
+        "in": [
+          "vlm"
+        ]
+      },
+      "feature:tools": {
+        "path": "supports_tools"
+      },
+      "feature:thinking": {
+        "path": "supports_thinking"
+      }
+    },
+    "limits": {
+      "context_window": {
+        "path": "context_window"
+      }
+    }
+  },
+  "entry": {
+    "id": "deepseek-ai/deepseek-v4.1-flash",
+    "object": "model",
+    "created": 735790403,
+    "owned_by": "deepseek-ai",
+    "context_window": 1048576,
+    "model_type": "vlm",
+    "supports_thinking": true,
+    "supports_tools": true
+  },
+  "expect_tags": [
+    "+in:image",
+    "+feature:tools",
+    "+feature:thinking"
+  ],
+  "expect_facts": {
+    "limits": {
+      "context_window": 1048576
+    }
+  }
+}

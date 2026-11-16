@@ -234,7 +234,8 @@ async fn models_hosted_lists_the_live_endpoint() {
     assert!(o.status.success(), "{}", stderr(&o));
     assert_eq!(
         stdout(&o),
-        "Hosted models for p:\n  id=m1, owned_by=x\n  id=m2, owned_by=y\n"
+        "Hosted models for p:\n  id=m1, owned_by=x, kind=chat, api=chat-completions\n  \
+         id=m2, owned_by=y, kind=chat, api=chat-completions\n"
     );
 
     let mut cmd = lexi(home.path());

@@ -398,6 +398,26 @@ fn provider_bindings<'py>(
 }
 
 #[pyfunction]
+fn catalog_tags(entry: &Bound<'_, PyAny>, catalog: &Bound<'_, PyAny>) -> PyResult<Vec<String>> {
+    Ok(lexi_core::catalog_tags(
+        &from_py(entry)?,
+        &from_py(catalog)?,
+    ))
+}
+
+#[pyfunction]
+fn catalog_facts<'py>(
+    py: Python<'py>,
+    entry: &Bound<'py, PyAny>,
+    catalog: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    to_py(
+        py,
+        &lexi_core::catalog_facts(&from_py(entry)?, &from_py(catalog)?),
+    )
+}
+
+#[pyfunction]
 fn validate_tag(tag: &str) -> PyResult<()> {
     lexi_core::validate_tag(tag).map_err(PyValueError::new_err)
 }
@@ -443,6 +463,8 @@ fn _lexi(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(merge_provider_template, m)?)?;
     m.add_function(wrap_pyfunction!(provider_bindings, m)?)?;
     m.add_function(wrap_pyfunction!(validate_tag, m)?)?;
+    m.add_function(wrap_pyfunction!(catalog_tags, m)?)?;
+    m.add_function(wrap_pyfunction!(catalog_facts, m)?)?;
     m.add_function(wrap_pyfunction!(glob_match, m)?)?;
     Ok(())
 }

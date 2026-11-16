@@ -580,6 +580,9 @@ pub struct PreparedChat {
     pub body: Value,
     /// The prompt text (names saved artifacts).
     pub prompt_text: String,
+    /// Things worth telling the user that don't stop the request (e.g. the
+    /// model is deprecated).
+    pub warnings: Vec<String>,
     api_key: String,
 }
 
@@ -658,6 +661,9 @@ impl PreparedChat {
         if raw {
             out["raw"] = res.raw.clone();
         }
+        if !self.warnings.is_empty() {
+            out["warnings"] = json!(self.warnings);
+        }
         out
     }
 }
@@ -689,7 +695,11 @@ pub fn prepare_chat(
     }
     let output = req.output.as_deref().unwrap_or("text");
     let resolved = crate::models::resolve_model(provider, req.model.as_deref(), output)?;
-    let (eff, model, api) = (resolved.effective, resolved.model, resolved.api);
+    let (eff, model, api) = (
+        resolved.effective.clone(),
+        resolved.model.clone(),
+        resolved.api.clone(),
+    );
     let api_key = provider_api_key(provider)?;
     let what = if api.is_empty() {
         "this provider's API".to_string()
@@ -730,6 +740,32 @@ pub fn prepare_chat(
         &req.unset_paths,
         req.skip_validation,
     )?;
+    // A default output-token count (from the schema or a saved prompt) above
+    // the model's limit is lowered to it; one the caller set explicitly
+    // (flag, --set, --params) is checked — and refused — below.
+    let mut body = body;
+    if let Some(limit) = resolved
+        .limits
+        .get("max_output_tokens")
+        .and_then(Value::as_u64)
+    {
+        for key in crate::models::OUTPUT_TOKEN_KEYS {
+            let explicit =
+                req.overrides.contains_key(*key) || req.set_paths.iter().any(|(p, _)| p == key);
+            let over = body
+                .get(*key)
+                .and_then(Value::as_u64)
+                .is_some_and(|n| n > limit);
+            if over && !explicit {
+                body[*key] = Value::from(limit);
+            }
+        }
+    }
+    // Check the request against the model's tags and limits.
+    let (errors, warnings) = resolved.check_request(&body, !req.images.is_empty());
+    if !req.skip_validation && !errors.is_empty() {
+        return Err(HostError::Unsupported(errors.join("\n")));
+    }
     Ok(PreparedChat {
         provider: provider.to_string(),
         model,
@@ -737,6 +773,7 @@ pub fn prepare_chat(
         effective: eff,
         body,
         prompt_text: text.to_string(),
+        warnings,
         api_key,
     })
 }

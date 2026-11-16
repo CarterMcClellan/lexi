@@ -30,5 +30,11 @@ tag_rules:
   "o3*": [feature:tools, feature:thinking]
   "o4*": [feature:tools, feature:thinking]
 
-hosted_models: /models
-hosted_model_fields: [id, created, owned_by]
+# The model listing (`lexi models hosted`). OpenAI's entries carry no type
+# data (the tag rules above classify by name), but a shutdown_date marks a
+# model deprecated.
+catalog:
+  path: /models
+  fields: [id, created, owned_by]
+  tags:
+    status:deprecated: { path: shutdown_date, present: true }

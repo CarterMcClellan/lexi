@@ -33,8 +33,9 @@ pub use message_ir::{
     Message,
 };
 pub use models::{
-    api_kind, api_tags, binding_for_output, classify_model, glob_match, merge_provider_template,
-    parse_tag_op, provider_bindings, tag_vocabulary, validate_tag,
+    api_kind, api_tags, binding_for_output, catalog_facts, catalog_tags, classify_model,
+    glob_match, merge_provider_template, parse_tag_op, provider_bindings, tag_vocabulary,
+    validate_tag,
 };
 pub use operations::{classify_status, is_terminal, poll_path, read_operation};
 pub use path::{get_path, set_path, unset_path};

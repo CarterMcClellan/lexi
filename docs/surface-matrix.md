@@ -36,7 +36,7 @@ not enforced). The wheel's engine functions (`lexi.compose_request_body`, …) w
 | Store / show / remove an API key | `set_api_key`, `remove_api_key`, `api_key_info` | `providers api-key set`, `providers api-key show`, `providers api-key remove` | `lexi.providers.set_key`, `lexi.providers.show_key`, `lexi.providers.remove_key` | — |
 | Check an API key | `check_api_key` | `providers status` | `lexi.providers.status` | Providers |
 | List configured models | `load_models`, `model_summaries` | `models list` | `lexi.models.list` | Models |
-| List hosted models | `fetch_hosted_models`, `fetch_hosted_models_with` | `models hosted` | `lexi.models.hosted` | Models |
+| List hosted models (the catalog; classified, filterable by tag, cached) | `fetch_hosted_models`, `fetch_hosted_models_with`, `hosted_summaries`, `cached_catalog` | `models hosted` | `lexi.models.hosted` | Models |
 | Get / set default model | `default_model`, `set_default_model` | `models default` | `lexi.models.default`, `lexi.models.set_default` | Models |
 | List model aliases | `model_aliases` | `models alias list` | `lexi.models.aliases` | Models |
 | Set / remove model aliases | `set_model_alias`, `delete_model_alias` | `models alias set`, `models alias rm` | `lexi.models.set_alias`, `lexi.models.remove_alias` | Models |

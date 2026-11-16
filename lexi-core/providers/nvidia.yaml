@@ -23,5 +23,14 @@ tag_rules:
   "*vision*": [in:image]
   "*omni*": [in:image, in:audio]
 
-hosted_models: /models
-hosted_model_fields: [id, owned_by]
+# The model listing: most entries are bare (id, owned_by), but some carry
+# model_type / supports_* / context_window — read when present, ignored when not.
+catalog:
+  path: /models
+  fields: [id, owned_by]
+  tags:
+    in:image: { path: model_type, in: [vlm] }
+    feature:tools: { path: supports_tools }
+    feature:thinking: { path: supports_thinking }
+  limits:
+    context_window: { path: context_window }

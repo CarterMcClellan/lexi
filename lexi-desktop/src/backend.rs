@@ -87,8 +87,8 @@ fn providers() -> Result<Value, String> {
         out.push(json!({
             "name": name,
             "url": url,
-            "hosted_models": meta.get("hosted_models").cloned().unwrap_or(json!("")),
-            "hosted_model_fields": meta.get("hosted_model_fields").cloned().unwrap_or(json!([])),
+            "hosted_models": summary.and_then(|s| s.get("hosted_models")).filter(|v| !v.is_null()).cloned().unwrap_or(json!("")),
+            "hosted_model_fields": summary.and_then(|s| s.get("hosted_model_fields")).filter(|v| !v.is_null()).cloned().unwrap_or(json!([])),
             "default_model": default_model,
             "api": api,
             "api_key": if has_key { "[set]" } else { "[missing]" },

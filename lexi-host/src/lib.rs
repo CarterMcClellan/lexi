@@ -59,7 +59,17 @@ pub enum HostError {
 
 pub use bootstrap::{ensure_home, ensure_home_in};
 pub use generate::{generate_images_text, generate_images_with_effective, SavedArtifact};
-pub use hosted::{check_api_key, fetch_hosted_models, fetch_hosted_models_with, KeyStatus};
+pub use hosted::{
+    cached_catalog, check_api_key, fetch_hosted_models, fetch_hosted_models_with, KeyStatus,
+};
+
+/// A config scalar as query-string text (`1000`, `"abc"` → `abc`).
+pub(crate) fn config_scalar(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
 pub use image::{resolve_image, resolve_images, ResolvedImage};
 pub use models::{resolve_model, ResolvedModel};
 pub use respond::{

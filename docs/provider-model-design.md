@@ -1,6 +1,6 @@
 # Providers, APIs and Models — Design
 
-**Status:** accepted · 2026-11-16 (rev 3: decisions recorded, §12) · M1–M2 implemented
+**Status:** accepted · 2026-11-16 (rev 3: decisions recorded, §12) · M1–M3 implemented
 **Scope:** how Lexi configures providers that offer several kinds of model
 (text, image, embeddings, …) over several APIs, describes their models with
 **tags**, and exposes one `respond` for every kind of output.

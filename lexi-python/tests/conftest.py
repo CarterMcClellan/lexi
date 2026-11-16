@@ -27,7 +27,7 @@ class Mock:
                 except ValueError:
                     body = None  # multipart upload
                 mock.requests.append((self.command, self.path, body))
-                route = mock.routes.get((self.command, self.path))
+                route = mock.routes.get((self.command, self.path.split("?")[0]))
                 if route is None:
                     status, ctype, data = 404, "application/json", b'{"error":"no route"}'
                 else:

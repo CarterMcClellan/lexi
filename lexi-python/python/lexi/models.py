@@ -14,9 +14,14 @@ def list(provider: str) -> List[Dict[str, Any]]:
     return call("models.list", provider=provider)
 
 
-def hosted(provider: str) -> List[Dict[str, Any]]:
-    """The models the provider's API reports (a network call)."""
-    return call("models.hosted", provider=provider)
+def hosted(
+    provider: str, *, tags: Iterable[str] = (), cached: bool = False
+) -> List[Dict[str, Any]]:
+    """The models the provider's API lists, each with Lexi's ``kind``, ``api``
+    and ``tags`` added. A network call that also refreshes the local catalog
+    cache (which classification reads); ``cached=True`` reads the cache
+    instead. ``tags=["out:image"]`` keeps models having all of them."""
+    return call("models.hosted", provider=provider, tags=[*tags], cached=cached)
 
 
 def default(provider: str) -> Dict[str, Any]:

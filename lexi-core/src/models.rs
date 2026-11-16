@@ -396,6 +396,73 @@ pub fn classify_model(
     })
 }
 
+/// Evaluate one catalog value rule against a listing entry:
+/// `Some(true)` = the fact holds, `Some(false)` = it doesn't, `None` = unknown
+/// (the field is missing). Rules: `{path}` (a boolean field), `{path, equals}`,
+/// `{path, in: [...]}`, `{path, present: true}` (non-null = holds, else
+/// unknown — never "doesn't"), `{const: bool}`.
+fn eval_rule(entry: &Value, rule: &Value) -> Option<bool> {
+    if let Some(c) = rule.get("const") {
+        return c.as_bool();
+    }
+    let path = rule.get("path").and_then(Value::as_str)?;
+    let v = crate::get_path(entry, path).filter(|v| !v.is_null());
+    if rule.get("present").and_then(Value::as_bool) == Some(true) {
+        return v.map(|_| true);
+    }
+    let v = v?;
+    if let Some(want) = rule.get("equals") {
+        return Some(v == want);
+    }
+    if let Some(list) = rule.get("in").and_then(Value::as_array) {
+        return Some(list.contains(v));
+    }
+    v.as_bool()
+}
+
+/// Tag ops derived from a provider's model-listing entry by the catalog's
+/// `tags` mapping (`{tag: rule}`): a rule that holds adds the tag, one that
+/// doesn't removes it, an unknown one does nothing.
+pub fn catalog_tags(entry: &Value, catalog: &Value) -> Vec<String> {
+    let Some(rules) = catalog.get("tags").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+    rules
+        .iter()
+        .filter(|(tag, _)| validate_tag(tag).is_ok())
+        .filter_map(|(tag, rule)| match eval_rule(entry, rule) {
+            Some(true) => Some(format!("+{tag}")),
+            Some(false) => Some(format!("-{tag}")),
+            None => None,
+        })
+        .collect()
+}
+
+/// Limits and a display name from a listing entry, by the catalog's `limits`
+/// (`{name: {path}}`) and `name` (`{path}`) mappings: `{name?, limits: {…}}`.
+pub fn catalog_facts(entry: &Value, catalog: &Value) -> Value {
+    let read = |rule: &Value| {
+        rule.get("path")
+            .and_then(Value::as_str)
+            .and_then(|p| crate::get_path(entry, p))
+            .filter(|v| !v.is_null())
+            .cloned()
+    };
+    let mut limits = Map::new();
+    if let Some(m) = catalog.get("limits").and_then(Value::as_object) {
+        for (k, rule) in m {
+            if let Some(v) = read(rule) {
+                limits.insert(k.clone(), v);
+            }
+        }
+    }
+    let mut out = json!({ "limits": limits });
+    if let Some(name) = catalog.get("name").and_then(read) {
+        out["name"] = name;
+    }
+    out
+}
+
 /// The first binding whose API produces `output` (`text`, `image`, …).
 pub fn binding_for_output(
     provider: &Value,

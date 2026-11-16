@@ -303,6 +303,9 @@ pub(crate) async fn respond(io: &mut Io<'_>, provider: &str, args: &[String]) ->
         Ok(c) => c,
         Err(e) => return io.fail(e),
     };
+    for w in &chat.warnings {
+        let _ = writeln!(io.err, "warning: {w}");
+    }
 
     if plan.detach {
         return match lexi_host::submit_chat(&chat).await {

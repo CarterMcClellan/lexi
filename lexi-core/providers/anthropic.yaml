@@ -11,5 +11,18 @@ apis:
 tag_rules:
   "claude-*": [feature:tools]
 
-hosted_models: /models
-hosted_model_fields: [id, display_name, max_input_tokens, max_tokens]
+# The model listing carries per-model capabilities and limits; each rule maps
+# a field to a tag (true adds it, false removes it, a missing field is ignored).
+catalog:
+  path: /models
+  fields: [id, display_name, max_input_tokens, max_tokens]
+  paginate: { limit_param: limit, limit: 1000, after_param: after_id, has_more: has_more, last_id: last_id }
+  tags:
+    in:image: { path: capabilities.image_input.supported }
+    in:document: { path: capabilities.pdf_input.supported }
+    feature:thinking: { path: capabilities.thinking.supported }
+    feature:structured-output: { path: capabilities.structured_outputs.supported }
+  limits:
+    context_window: { path: max_input_tokens }
+    max_output_tokens: { path: max_tokens }
+  name: { path: display_name }
