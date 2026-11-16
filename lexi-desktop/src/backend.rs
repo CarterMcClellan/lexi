@@ -105,6 +105,7 @@ fn models(path: &str) -> Result<Value, String> {
         .map(|m| {
             json!({
                 "id": m.id,
+                "name": m.name,
                 "description": m.description,
                 "default": m.default,
                 "aliases": m.aliases,
