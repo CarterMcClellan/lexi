@@ -27,19 +27,23 @@ next plan). **GUI** names the desktop tab.
 | Generate images to disk | `generate_images_text`, `generate_images_with_effective` | `generate` | — | — |
 | Upload a file | `upload_file`, `upload_file_with_effective` | `upload` | — | — |
 | List providers | `provider_names`, `list_providers`, `load_providers`, `api_key_source` | `providers list` | — | Providers |
+| Add / rename / remove a provider | `add_provider`, `rename_provider`, `remove_provider` | `providers add`, `providers rename`, `providers rm` | — | — |
+| Store / show / remove an API key | `set_api_key`, `remove_api_key` | `providers api-key set`, `providers api-key show`, `providers api-key remove` | — | — |
+| Check an API key | `check_api_key` | `providers status` | — | Providers |
 | List configured models | `load_models` | `models list` | — | Models |
 | List hosted models | `fetch_hosted_models`, `fetch_hosted_models_with` | `models hosted` | — | Models |
 | Get / set default model | `default_model`, `set_default_model` | `models default` | — | Models |
 | List model aliases | `model_aliases` | `models alias list` | — | Models |
-| Set / remove model aliases | `set_model_alias`, `delete_model_alias` | planned (C3) | — | Models |
-| Add / update / remove a model | `upsert_model`, `delete_model` | planned (C3) | — | Models |
+| Set / remove model aliases | `set_model_alias`, `delete_model_alias` | `models alias set`, `models alias rm` | — | Models |
+| Add / update / remove a model | `upsert_model`, `delete_model` | `models add`, `models set`, `models rm` | — | Models |
 | Read config | `load_config` | `config list` | — | Config |
-| Write config | `set_config` | planned (C3) | — | Config |
+| Write config | `set_config`, `delete_config` | `config set`, `config rm` | — | Config |
 | List prompts | `load_prompts` | `prompts list` | — | Prompts |
-| Save / remove / activate prompts | `save_prompt`, `delete_prompt`, `set_active_prompt` | planned (C3) | — | Prompts |
+| Save / remove / activate prompts | `save_prompt`, `delete_prompt`, `set_active_prompt` | `prompts set`, `prompts rm`, `prompts activate` | — | Prompts |
 | List / show API definitions | `list_api_defs`, `load_api_raw`, `embedded_api_names` | `api list`, `api show` | — | API definitions |
 | Validate an API definition | `validate_api_def` | `api validate` | — | API definitions |
-| Create / save / remove an API definition | `create_api_def`, `save_api_raw`, `delete_api_def` | planned (C3) | — | API definitions |
+| Create / edit / remove an API definition | `create_api_def`, `edit_api_def`, `delete_api_def` | `api create`, `api edit`, `api rm` | — | API definitions |
+| Save an API definition's raw YAML | `save_api_raw` | planned (C5) | — | API definitions |
 | Preview an API definition | `preview_api_def` | planned (C5) | — | API definitions |
 
 ## Internal

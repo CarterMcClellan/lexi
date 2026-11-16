@@ -29,6 +29,8 @@ pub(crate) fn effective_config() -> Result<Map<String, Value>, lexi_host::HostEr
 pub(crate) fn run(io: &mut Io<'_>, cmd: ConfigCmd) -> u8 {
     match cmd {
         ConfigCmd::List { key, raw, value } => list(io, key, raw, value),
+        ConfigCmd::Set { key, value } => set(io, &key, &value.join(" ")),
+        ConfigCmd::Rm { key } => rm(io, &key),
     }
 }
 
@@ -65,4 +67,24 @@ fn list(io: &mut Io<'_>, key: Option<String>, raw: bool, value_only: bool) -> u8
             .join("\n")
     };
     io.result(human, Value::Object(config))
+}
+
+fn set(io: &mut Io<'_>, key: &str, value: &str) -> u8 {
+    let mut update = Map::new();
+    update.insert(key.to_string(), Value::from(value));
+    match lexi_host::config::set_config(&update) {
+        Ok(_) => io.result(
+            format!("Set {key} = {value}"),
+            json!({ "key": key, "value": value }),
+        ),
+        Err(e) => io.fail(e),
+    }
+}
+
+fn rm(io: &mut Io<'_>, key: &str) -> u8 {
+    match lexi_host::config::delete_config(key) {
+        Ok(true) => io.result(format!("Removed {key}"), json!({ "removed": key })),
+        Ok(false) => io.fail(format_args!("config key {key:?} not found")),
+        Err(e) => io.fail(e),
+    }
 }

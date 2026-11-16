@@ -2,7 +2,7 @@
 
 use serde_json::{json, Value};
 
-use crate::cli::{ModelAliasCmd, ModelsCmd};
+use crate::cli::{ModelAliasCmd, ModelMeta, ModelsCmd};
 use crate::output::{pretty, scalar, table, Io};
 
 pub(crate) async fn run(io: &mut Io<'_>, cmd: ModelsCmd) -> u8 {
@@ -22,7 +22,35 @@ pub(crate) async fn run(io: &mut Io<'_>, cmd: ModelsCmd) -> u8 {
         ModelsCmd::Default { provider, model } => default(io, &provider, model.as_deref()),
         ModelsCmd::Alias { cmd } => match cmd {
             ModelAliasCmd::List { provider, raw } => alias_list(io, &provider, raw),
+            ModelAliasCmd::Set {
+                provider,
+                alias,
+                model,
+            } => alias_set(io, &provider, &alias, &model),
+            ModelAliasCmd::Rm { provider, alias } => alias_rm(io, &provider, &alias),
         },
+        ModelsCmd::Add {
+            provider,
+            model,
+            meta,
+        } => upsert(io, &provider, &model, meta, false),
+        ModelsCmd::Set {
+            provider,
+            model,
+            meta,
+        } => upsert(io, &provider, &model, meta, true),
+        ModelsCmd::Rm { provider, model } => {
+            if let Err(code) = require_provider(io, &provider) {
+                return code;
+            }
+            match lexi_host::config::delete_model(&provider, &model) {
+                Ok(()) => io.result(
+                    format!("Removed model {model} from {provider}."),
+                    json!({ "provider": provider, "removed": model }),
+                ),
+                Err(e) => io.fail(e),
+            }
+        }
     }
 }
 
@@ -279,4 +307,63 @@ fn alias_list(io: &mut Io<'_>, provider: &str, raw: bool) -> u8 {
             .join("\n")
     };
     io.result(human, json)
+}
+
+fn upsert(io: &mut Io<'_>, provider: &str, model: &str, meta: ModelMeta, is_set: bool) -> u8 {
+    if let Err(code) = require_provider(io, provider) {
+        return code;
+    }
+    let mut fields = serde_json::Map::new();
+    if let Some(n) = meta.name {
+        fields.insert("name".into(), Value::from(n));
+    }
+    if let Some(d) = meta.description {
+        fields.insert("description".into(), Value::from(d));
+    }
+    if let Some(m) = meta.max_tokens {
+        fields.insert("max_tokens".into(), Value::from(m));
+    }
+    if let Some(c) = meta.context_window {
+        fields.insert("context_window".into(), Value::from(c));
+    }
+    match lexi_host::config::upsert_model(provider, model, &fields, meta.default) {
+        Ok(existed) => {
+            let action = if is_set && existed {
+                "Updated"
+            } else {
+                "Added"
+            };
+            io.result(
+                format!("{action} model {model} for {provider}."),
+                json!({ "provider": provider, "model": model, "existed": existed }),
+            )
+        }
+        Err(e) => io.fail(e),
+    }
+}
+
+fn alias_set(io: &mut Io<'_>, provider: &str, alias: &str, model: &str) -> u8 {
+    if let Err(code) = require_provider(io, provider) {
+        return code;
+    }
+    match lexi_host::config::set_model_alias(provider, alias, model) {
+        Ok(()) => io.result(
+            format!("Set alias '{alias}' -> '{model}' for {provider}."),
+            json!({ "provider": provider, "alias": alias, "model": model }),
+        ),
+        Err(e) => io.fail(e),
+    }
+}
+
+fn alias_rm(io: &mut Io<'_>, provider: &str, alias: &str) -> u8 {
+    if let Err(code) = require_provider(io, provider) {
+        return code;
+    }
+    match lexi_host::config::delete_model_alias(provider, alias) {
+        Ok(()) => io.result(
+            format!("Removed alias '{alias}' from {provider}."),
+            json!({ "provider": provider, "removed": alias }),
+        ),
+        Err(e) => io.fail(e),
+    }
 }
