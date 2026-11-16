@@ -20,7 +20,7 @@ use thiserror::Error;
 pub enum HostError {
     #[error("unknown provider {0:?}")]
     UnknownProvider(String),
-    #[error("provider {0:?} has no `api` reference")]
+    #[error("provider {0:?} has no `api` reference (or inline `request` block)")]
     MissingApi(String),
     #[error("unknown API definition {0:?}")]
     UnknownApi(String),

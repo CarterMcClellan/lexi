@@ -1,0 +1,105 @@
+name: CLI binaries
+
+# Build the `lexi` CLI (lexi-cli-rs) for each platform on a version tag and
+# attach the archives to that tag's GitHub Release (created as a draft if the
+# desktop/wheel workflows haven't made it yet). workflow_dispatch builds the
+# archives as workflow artifacts only — a way to test without cutting a release.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: lexi (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # One universal binary for both Apple silicon and Intel Macs.
+          - { name: macos-universal, os: macos-latest, targets: "aarch64-apple-darwin x86_64-apple-darwin" }
+          # 22.04 for an older glibc, so the binary runs on more distros.
+          - { name: linux-x86_64, os: ubuntu-22.04, targets: x86_64-unknown-linux-gnu }
+          - { name: linux-aarch64, os: ubuntu-22.04-arm, targets: aarch64-unknown-linux-gnu }
+          - { name: windows-x86_64, os: windows-latest, targets: x86_64-pc-windows-msvc }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        shell: bash
+        run: |
+          for t in ${{ matrix.targets }}; do
+            cargo build --release -p lexi-cli-rs --target "$t"
+          done
+
+      - name: Package
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          [ "$GITHUB_REF_TYPE" = "tag" ] || version="dev"
+          name="lexi-${version}-${{ matrix.name }}"
+          mkdir -p "dist/$name"
+          targets=(${{ matrix.targets }})
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            lipo -create -output "dist/$name/lexi" \
+              "target/${targets[0]}/release/lexi" "target/${targets[1]}/release/lexi"
+          elif [ "${{ runner.os }}" = "Windows" ]; then
+            cp "target/${targets[0]}/release/lexi.exe" "dist/$name/"
+          else
+            cp "target/${targets[0]}/release/lexi" "dist/$name/"
+          fi
+          cp LICENSE* "dist/$name/" 2>/dev/null || true
+          cd dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "$name.zip" "$name" > /dev/null
+          else
+            tar czf "$name.tar.gz" "$name"
+          fi
+          rm -rf "$name"
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          cd dist
+          if [ "${{ runner.os }}" = "Windows" ]; then 7z x -y *.zip > /dev/null; else tar xzf *.tar.gz; fi
+          bin=$(ls -d lexi-*/)lexi
+          [ "${{ runner.os }}" = "Windows" ] && bin="$bin.exe"
+          LEXI_HOME="$RUNNER_TEMP/lexi-home" "$bin" --json version
+          rm -rf lexi-*/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.name }}
+          path: dist/*
+
+  attach:
+    name: Attach to release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cli-*
+          merge-multiple: true
+          path: dist
+      - name: Upload CLI archives to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --title "Lexi $GITHUB_REF_NAME" \
+            --notes "Automated build — CLI, desktop installers and Python wheels." \
+            2>/dev/null || true
+          gh release upload "$GITHUB_REF_NAME" dist/* --clobber

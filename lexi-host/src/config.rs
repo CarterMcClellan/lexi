@@ -100,10 +100,13 @@ pub fn deep_merge(base: &Value, overlay: &Value) -> Value {
 /// Effective config = the referenced API definition with the provider entry
 /// merged over it (provider wins).
 pub fn effective_config(provider_name: &str, provider_cfg: &Value) -> Result<Value, HostError> {
-    let api_name = provider_cfg
-        .get("api")
-        .and_then(Value::as_str)
-        .ok_or_else(|| HostError::MissingApi(provider_name.to_string()))?;
+    let Some(api_name) = provider_cfg.get("api").and_then(Value::as_str) else {
+        // No `api:` reference: the provider may define its API inline.
+        if provider_cfg.get("request").is_some_and(Value::is_object) {
+            return Ok(provider_cfg.clone());
+        }
+        return Err(HostError::MissingApi(provider_name.to_string()));
+    };
     let api_def = load_api_def(api_name)?;
     Ok(deep_merge(&api_def, provider_cfg))
 }

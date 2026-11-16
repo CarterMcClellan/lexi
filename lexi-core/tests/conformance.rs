@@ -376,6 +376,15 @@ fn definitions() {
                 failures.push(format!("{nm}: tool_preset_names mismatch (got {got:?})"));
             }
         }
+        if let Some(exp) = case.get("expect_preview") {
+            let s = |k: &str| exp[k].as_str().unwrap_or_default().to_string();
+            let got = core::preview_definition(def, &s("prompt"), &s("model"), &s("role"));
+            if got.get("body") != exp.get("body") {
+                failures.push(format!(
+                    "{nm}: preview_definition body mismatch (got {got})"
+                ));
+            }
+        }
     }
     finish("definition", failures);
 }

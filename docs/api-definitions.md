@@ -4,15 +4,18 @@ Lexi uses a config-driven API abstraction that separates **how to call an LLM AP
 
 ## Overview
 
-Three API definitions are bundled by default:
+Four API definitions ship with Lexi:
 
 | Name | Description | Used by |
 |---|---|---|
 | `chat-completions` | OpenAI-compatible Chat Completions (`/chat/completions`) | NVIDIA |
 | `messages` | Anthropic Messages API (`/messages`) | Anthropic |
 | `responses` | OpenAI Responses API (`/responses`) | OpenAI |
+| `image-generations` | Image generation (used by `generate`) | — |
 
-API definitions live in `~/.lexi-cli/apis/` and are seeded from the bundled defaults on first run.
+The shipped definitions (source: `lexi-core/apis/`) are embedded in the `lexi` binary and always load from there — they are not copied to disk, so upgrading Lexi upgrades them. Custom definitions you create live in `~/.lexi-cli/apis/` (or `$LEXI_HOME/apis/`). Shipped definitions can't be edited in place; copy one first with `api create <new> --from <shipped>`.
+
+The full format is specified in [spec/api-definition-v0.md](spec/api-definition-v0.md); this guide covers the essentials.
 
 Providers reference an API definition by name in `providers-config.yaml`:
 
@@ -31,11 +34,11 @@ providers:
 
 ## Anatomy of an API Definition
 
-Here's the complete `chat-completions.yaml` as an example:
+Here's an abridged `chat-completions.yaml` as an example (see `api show chat-completions` for the full definition):
 
 ```yaml
 name: chat-completions
-description: "OpenAI-compatible Chat Completions API"
+description: "OpenAI-compatible Chat Completions API (/v1/chat/completions)"
 
 auth:
   header: Authorization
@@ -44,35 +47,62 @@ auth:
 request:
   method: POST
   path: /chat/completions
-  body:
-    model: "{{model}}"
-    messages:
-      - role: "{{role}}"
-        content: "{{prompt}}"
-  parameters:
-    temperature:
-      body_field: temperature
-      type: float
-      range: [0.0, 2.0]
-      default: 0.7
-      description: "Sampling temperature"
-    max_tokens:
-      body_field: max_tokens
-      type: int
-      range: [1, 131072]
-      default: 4096
-      description: "Maximum tokens to generate"
-  tools:
-    key: tools
+  body_schema:
+    type: object
+    required: [model, messages]
+    properties:
+      model:
+        type: string
+        x-bind: { from: model }
+      messages:
+        type: array
+        x-render:
+          template:
+            - role: "{{role}}"
+              content: "{{content}}"
+      temperature:
+        type: number
+        minimum: 0
+        maximum: 2
+        description: "Sampling temperature."
+        x-cli: { flag: --temperature, alias: -t }
+      max_tokens:
+        type: integer
+        minimum: 1
+        x-cli: { flag: --max-tokens, alias: -m }
+      stream:
+        type: boolean
+        default: false
+        x-cli: { flag: --stream }
+        x-include: if_truthy
+      tools:
+        type: array
+        items: { type: object }
+        x-include: if_non_empty
+
+tool_presets:
+  json_object:
+    response_format:
+      type: json_object
+
+content_mapping:
+  text_only_as_string: true
+  parts:
+    text:
+      template: { type: text, text: "{{text}}" }
 
 response:
-  text_path: "choices[0].message.content"
+  text_extract:
+    text_path: "choices[0].message.content"
   metadata:
-    model: "model"
-    input_tokens: "usage.prompt_tokens"
-    output_tokens: "usage.completion_tokens"
-    total_tokens: "usage.total_tokens"
-    stop_reason: "choices[0].finish_reason"
+    model: model
+    input_tokens: usage.prompt_tokens
+    output_tokens: usage.completion_tokens
+    total_tokens: usage.total_tokens
+    stop_reason: choices[0].finish_reason
+  stream:
+    delta_path: choices[0].delta.content
+    done_marker: "[DONE]"
 ```
 
 ### `auth` Block
@@ -93,48 +123,49 @@ Defines how to build the HTTP request.
 
 **`path`** — URL path appended to the provider's base URL (e.g., `/chat/completions`).
 
-**`body`** — Template for the JSON request body. Uses `{{variable}}` placeholders:
+**`body_schema`** — A JSON Schema (`type: object`) describing the request body. Lexi composes the body by walking its `properties` in order; standard keywords (`type`, `minimum`/`maximum`, `enum`, `required`, …) validate the result, and `x-*` extensions say where each value comes from:
 
-| Variable | Description |
+| Extension | Meaning |
 |---|---|
-| `{{model}}` | The model ID to use |
-| `{{role}}` | The message role (e.g., `system`, `user`) |
-| `{{prompt}}` | The prompt text |
+| `x-bind: { from: <var> }` | Value comes from a binding variable, e.g. `model` |
+| `x-render: { template: ... }` | Value is a template with `{{var}}` placeholders (e.g. `{{role}}`, `{{content}}`, `{{prompt}}`) |
+| `x-cli: { flag, alias, repeat, ... }` | Exposes the property as a `respond` flag |
+| `x-include: <mode>` | When to emit the field: `always`, `if_set`, `if_truthy`, `if_non_empty`, `if_any_child_set` |
 
-The body template can be any nested structure — Lexi recursively substitutes variables in strings, dicts, and lists.
+Templates are rendered recursively through strings, maps, and lists. A string that is exactly `"{{var}}"` keeps the binding's type (so a list or number survives intact).
 
-**`parameters`** — Typed parameters that map to fields in the request body:
+When you pass `--temperature 0.5` to `respond`, Lexi finds the property whose `x-cli.flag` is `--temperature` and sets it in the body. Run `api show <name>` to see a definition's flags (the `cli=` entries). Anything without a flag can still be set with `respond --set path=value` (or removed with `--unset path`).
 
-```yaml
-parameters:
-  temperature:
-    body_field: temperature    # Key name in the JSON body
-    type: float                # float, int, str, bool
-    range: [0.0, 2.0]         # Optional min/max for validation
-    default: 0.7              # Default value
-    description: "..."        # Human-readable description
-```
+**`tool_presets`** (top level) — Named body fragments selected with `respond --tool <preset>`. Presets are deep-merged into the body; lists are concatenated.
 
-When you pass `--temperature 0.5` to `respond`, Lexi looks up the `temperature` parameter, finds its `body_field`, and sets that key in the request body. The `range` is used for validation warnings.
-
-**`tools`** — Optional tools/function-calling config:
-
-```yaml
-tools:
-  key: tools                   # Key name for the tools array in the body
-```
+**`content_mapping`** (top level) — How the prompt's message content (text, images) is lowered into the API's wire shape; the result is available to templates as `{{content}}`.
 
 ### `response` Block
 
 Defines how to extract data from the API response.
 
-**`text_path`** — Dot/bracket path to the response text. Lexi walks this path through the JSON response to extract the generated text:
+**`text_extract`** — How to pull the response text. Either a simple path:
 
-| API | text_path |
+```yaml
+text_extract: { text_path: "choices[0].message.content" }
+```
+
+or a walk over a list of items (as `responses` does):
+
+```yaml
+text_extract:
+  items_path: output
+  item_filter: { type: message }
+  content_path: content
+  content_filter: { type: output_text }
+  text_field: text
+```
+
+| API | Text extraction |
 |---|---|
-| Chat Completions | `choices[0].message.content` |
-| Messages | `content[0].text` |
-| Responses | `output[0].content[0].text` |
+| Chat Completions | `text_path: choices[0].message.content` |
+| Messages | `items_path: content`, filtered to `type: text` |
+| Responses | `items_path: output`, filtered to `message` / `output_text` |
 
 **`metadata`** — Paths to extract additional response metadata:
 
@@ -146,6 +177,8 @@ metadata:
   total_tokens: "usage.total_tokens"
   stop_reason: "choices[0].finish_reason"
 ```
+
+Optional blocks: `stream` (SSE delta/done handling for `--stream`), `activity` (the tool-use summary shown with `--verbose`), and `annotations` (citations, shown with `--cite`). A definition can also declare `files` (Files API uploads, used by `upload`), `operation` (background jobs), and `artifacts` (binary output, used by `generate`). See the [spec](spec/api-definition-v0.md).
 
 ## Provider Overrides
 
@@ -170,50 +203,57 @@ The merge is recursive — nested dicts are merged, other values are replaced.
 ### List Definitions
 
 ```bash
-api list                    # Formatted list
-api list --raw              # Raw JSON output
+api list                    # Shipped and custom definitions
+api list --raw              # Every definition as JSON
 ```
 
 ### View a Definition
 
 ```bash
-api show chat-completions          # Formatted view
-api show messages --raw            # Raw YAML
+api show chat-completions          # Formatted view, including CLI flags
+api show messages --raw            # The definition as JSON
 ```
 
 ### Create a New Definition
 
-Create from scratch (starts with a chat-completions-style template):
+Create from scratch (starts with a chat-completions-style scaffold):
 
 ```bash
 api create my-api --path /v1/generate --text-path "result.text"
 ```
 
-Clone an existing definition:
+Copy an existing definition (shipped or custom):
 
 ```bash
 api create my-api --from messages
 ```
 
+Or write the YAML yourself and save it as a custom definition (validation errors are printed):
+
+```bash
+api save my-api ./my-api.yaml
+```
+
 ### Edit a Definition
+
+`api edit` works on custom definitions only; shipped ones are read-only (copy one with `api create <new> --from <shipped>` first).
 
 ```bash
 # Change the request path
 api edit my-api --path /v2/generate
 
-# Change the response text extraction path
+# Change the response text extraction path (switches to simple text_path extraction)
 api edit my-api --text-path "output.text"
 
-# Add or modify a parameter (NAME:FIELD:TYPE:DEFAULT)
-api edit my-api --set-param temperature:temperature:float:0.7
-
-# Add or modify a metadata extraction path (KEY:PATH)
+# Add a metadata extraction path (KEY:PATH, repeatable)
 api edit my-api --set-meta total_tokens:usage.total_tokens
 ```
 
+For other changes, edit `~/.lexi-cli/apis/my-api.yaml` directly, or edit a copy and `api save` it.
+
 ### Validate a Definition
 
-Check that a definition has all required fields and valid structure:
+Check that a definition has all required fields and valid structure (exits 1 if invalid):
 
 ```bash
 api validate my-api
@@ -221,15 +261,25 @@ api validate my-api
 
 Validation checks:
 - `name` field is present and non-empty
-- `request` block exists with `path` and `body`
-- Parameters have valid types (`float`, `int`, `str`, `bool`) and ranges
-- `response` block exists with `text_path`
-- Metadata paths are well-formed
+- `request` block exists with a non-empty `path` and a `body_schema` mapping (`type: object`)
+- `x-include` modes are valid
+- `response` block defines `text_extract` (exactly one of `text_path` / `items_path`) or `artifacts`
+- Optional blocks (`tool_presets`, `metadata`, `stream`, `activity`, `annotations`, `operation`, `files`) are well-formed
+- Legacy keys (`request.body`, `request.parameters`, `request.tools`, `response.text_path`, …) are rejected
+
+### Preview a Definition
+
+Show validation results, CLI flags, tool presets, and a sample composed request body (always JSON):
+
+```bash
+api preview my-api
+api preview --file ./my-api.yaml --prompt "Hello" --model my-model
+```
 
 ### Delete a Definition
 
 ```bash
-api rm my-api
+api rm my-api               # Custom definitions only
 ```
 
 ## Tutorial: Adding a New Provider
@@ -239,26 +289,29 @@ Let's say you want to add a provider that uses the standard OpenAI Chat Completi
 ### Step 1: Add the Provider
 
 ```bash
-providers add my-llm --url https://api.my-llm.com/v1 --api_key '${MY_LLM_API_KEY}' --default_model my-model-v1
+providers add my-llm --url https://api.my-llm.com/v1 --default_model my-model-v1 --api chat-completions
 ```
 
-Then set the API binding by editing `~/.lexi-cli/providers/providers-config.yaml`:
+This writes the entry to `~/.lexi-cli/providers/providers-config.yaml`:
 
 ```yaml
 providers:
   my-llm:
     url: https://api.my-llm.com/v1
-    api_key: ${MY_LLM_API_KEY}
-    api: chat-completions        # Uses the existing chat-completions definition
+    hosted_models: /models
+    api: chat-completions        # Uses the shipped chat-completions definition
+    default_model: my-model-v1
 ```
+
+(`--api` defaults to `chat-completions`.)
 
 ### Step 2: Set Your API Key
 
 ```bash
-export MY_LLM_API_KEY="your-key-here"
-# Or:
 providers api-key set my-llm --value your-key-here
 ```
+
+Or, to read the key from an environment variable, add `api_key: ${MY_LLM_API_KEY}` to the provider's entry in `providers-config.yaml` and export the variable. A stored key file takes precedence.
 
 ### Step 3: Test It
 
@@ -283,22 +336,18 @@ api edit my-custom-api --path /api/generate --text-path "response.content"
 api validate my-custom-api
 ```
 
-Then reference it in your provider config:
+Then reference it when adding the provider:
 
-```yaml
-providers:
-  my-provider:
-    url: https://api.example.com
-    api_key: ${MY_API_KEY}
-    api: my-custom-api
+```bash
+providers add my-provider --url https://api.example.com --default_model my-model --api my-custom-api
 ```
 
 ## Config Resolution Pipeline
 
 When Lexi sends a request, it resolves the effective configuration in this order:
 
-1. **Load API definition** — If the provider has `api: <name>`, load that YAML file
-2. **Deep-merge provider overrides** — Any inline `auth`/`request`/`response` blocks in the provider config are merged on top
-3. **Legacy fallback** — If no `api` key and no `request` block, fall back to the legacy `respond_kind`/`respond_path` migration
+1. **Load API definition** — If the provider has `api: <name>`, load that definition: the embedded copy for a shipped name, else `~/.lexi-cli/apis/<name>.yaml`
+2. **Deep-merge provider overrides** — The provider's entry (including any inline `auth`/`request`/`response` blocks) is merged on top
+3. **Inline definition** — With no `api` key, a provider that has its own `request` block is used as-is; otherwise it is an error
 
-This means the API definition provides the base configuration, the provider can customize it, and old-format configs continue to work.
+This means the API definition provides the base configuration and the provider can customize it. The old `respond_kind`/`respond_path` format is no longer supported.

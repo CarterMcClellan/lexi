@@ -8,21 +8,23 @@ This document describes Lexi's internal architecture for developers working on t
 ┌──────────────────────────────────────────────────────────────┐
 │                          User                                │
 │                                                              │
-│  Python CLI (cli.py) ──► lexi wheel (PyO3) ┐                 │
-│                                            │                 │
-│  Rust CLI (lexi-cli-rs) ──► lexi-host ─────┤                 │
+│  CLI (lexi, lexi-cli-rs) ──► lexi-host ────┐                 │
 │                                            ├──► lexi-core    │
 │  Desktop app (lexi-desktop, Tauri)         │    (pure engine)│
 │    webview → invoke → backend.rs → lexi-host                 │
+│                                            │                 │
+│  Python library (lexi wheel, PyO3) ────────┘                 │
 └──────────────────────────────────────────────────────────────┘
                               │
                     ┌─────────┴──────────┐
                     │  ~/.lexi-cli/      │
-                    │  ├── apis/          │
-                    │  ├── providers/     │
-                    │  ├── prompts/       │
-                    │  ├── aliases.json   │
-                    │  └── config.json    │
+                    │  ($LEXI_HOME)      │
+                    │  ├── apis/ (custom)│
+                    │  ├── providers/    │
+                    │  ├── prompts/      │
+                    │  ├── aliases.json  │
+                    │  ├── config.json   │
+                    │  └── history       │
                     └────────────────────┘
                               │
                     ┌─────────┴──────────┐
@@ -36,39 +38,37 @@ This document describes Lexi's internal architecture for developers working on t
 
 ### Components
 
-**lexi-core** (`lexi-core/`) — The Rust engine: pure (no-I/O) schema-driven request composition, response extraction, the message IR, and API-definition validation/preview. Behavioral parity is pinned by the `conformance/` oracle (run from Rust and the wheel).
+**lexi-core** (`lexi-core/`) — The Rust engine: pure (no-I/O) schema-driven request composition, response extraction, the message IR, and API-definition validation/preview. The shipped API definitions live in `lexi-core/apis/`. Behavioral parity is pinned by the `conformance/` oracle (run from Rust and the wheel).
 
-**lexi-host** (`lexi-host/`) — The Rust runtime (I/O layer): HTTP/SSE transport, config/key loading, auth, streaming, polling, uploads, hosted-model discovery, and the admin read/write helpers over `~/.lexi-cli/`.
+**lexi-host** (`lexi-host/`) — The Rust runtime (I/O layer): HTTP/SSE transport, config/key loading, auth, streaming, polling, uploads, hosted-model discovery, first-run seeding, and the admin read/write helpers over `~/.lexi-cli/`.
 
-**lexi-python** (`lexi-python/`) — A PyO3 wheel wrapping `lexi-core` (`import lexi`); the single engine the Python CLI uses.
-
-**lexi-cli** (`lexi-cli/src/lexi_cli/cli.py`) — The Python CLI, an application on the `lexi` wheel. **lexi-cli-rs** (`lexi-cli-rs/`) is the thin Rust CLI (`lexi`) over `lexi-host`.
+**lexi-cli-rs** (`lexi-cli-rs/`) — The `lexi` CLI: a thin command layer (clap) over `lexi-host`, plus the interactive shell, command aliases, and history.
 
 **lexi-desktop** (`lexi-desktop/`) — A native Tauri app: a thin webview shell whose reused frontend's `/api/*` calls route (via a `fetch`-shim → Tauri `invoke`) to `src/backend.rs`, which dispatches to `lexi-host` in-process. No Node, no Python, no localhost server. Replaced the old Node/Electron `lexi-gui`.
 
-**~/.lexi-cli/** — All persistent state (YAML/JSON). Every surface reads and writes the same files, so the CLI and desktop app share one configuration.
+**lexi-python** (`lexi-python/`) — A PyO3 wheel wrapping `lexi-core` (`import lexi`): the engine as a Python library. It is not a CLI.
+
+**~/.lexi-cli/** — All persistent state (YAML/JSON), overridable with `$LEXI_HOME`. Every surface reads and writes the same files, so the CLI and desktop app share one configuration.
 
 ## CLI Internals
 
 ### Entry Point
 
-The CLI entry point is the `main()` function, which:
-1. Loads config from `~/.lexi-cli/config.json`
-2. Calls `seed_default_providers()` to populate defaults on first run
-3. Enters the interactive shell loop or processes a single command
+`lexi-cli-rs/src/main.rs` wires argv and stdio to `lexi_cli::run_with()` (`src/lib.rs`), which:
+1. Calls `lexi_host::ensure_home()` to seed missing defaults (see [Seeding and First Run](#seeding-and-first-run))
+2. Expands command aliases from `aliases.json` (`shell::expand_aliases`)
+3. Enters the interactive shell (`shell::repl`) when no command is given, or parses the argv with clap and dispatches the command
 
-`main()` returns an int exit code — it does **not** raise `SystemExit`.
+`run_with()` takes output writers instead of touching process stdio and returns the exit code as a `u8`: `EXIT_OK` (0), `EXIT_FAILURE` (1), or `EXIT_USAGE` (2). `execute_line()` runs one shell line the same way, so tests and in-process hosts run exactly what a terminal user types.
 
 ### Command Dispatch
 
-Commands are defined in two dicts:
-
-- `LEXI_COMMANDS` — Top-level command names and descriptions
-- `COMMAND_SUBCOMMANDS` — Subcommand definitions with `summary` and `usage` strings
-
-Each top-level command has a `handle_<command>()` function (e.g., `handle_providers()`, `handle_api()`). The main loop tokenizes input, resolves aliases, and dispatches to the appropriate handler.
-
-General commands (`help`, `history`, `config`, `alias`, `sh`, `version`, `exit`) are handled alongside the Lexi-specific commands.
+- `src/cli.rs` — The clap command tree (`Cli`, with the global `--json` flag). [CLI Reference](cli-reference.md) is generated from it.
+- `src/commands/mod.rs` — `dispatch()` routes each parsed command to its module: `respond.rs`, `chat.rs` (`generate`, `upload`, `version`), `jobs.rs`, `prompts.rs`, `providers.rs`, `models.rs`, `api.rs`, `config.rs`, and `shell_cmds.rs` (`help`, `history`, `alias`, `sh`, `exit`).
+- `src/output.rs` — `Io`: every command writes through it, emitting human text or, with `--json`, the machine envelope from [spec/cli-machine-v0.md](spec/cli-machine-v0.md).
+- `src/shell.rs` — The rustyline REPL: `?` → `help`, `!cmd` → `sh`, `#N` / `#-1` history replay, alias expansion.
+- `src/aliases.rs` / `src/history.rs` — `aliases.json` and `~/.lexi-cli/history`. Aliases expand in the shell and for one-off commands, and never shadow a real command.
+- `src/coerce.rs` — Parses `--set path=value` arguments into a path and a type-coerced value.
 
 ### Configuration System
 
@@ -81,7 +81,7 @@ Default config values:
 | `prompt_delimiter` | `>` |
 | `edit_mode` | `vi` |
 
-Config is loaded from `~/.lexi-cli/config.json` at startup and merged with `CONFIG_DEFAULT`. The `config list|set|rm` commands modify this file.
+Config is read from `~/.lexi-cli/config.json` and layered over these defaults (`commands/config.rs`). The `config list|set|rm` commands modify this file.
 
 ## Config-Driven API Abstraction
 
@@ -90,18 +90,23 @@ This is the core architectural pattern. Instead of hardcoding how to call each p
 ### File Layout
 
 ```
+lexi-core/apis/                  # Shipped definitions, embedded in the binary
+├── chat-completions.yaml        # OpenAI-compatible Chat Completions
+├── messages.yaml                # Anthropic Messages
+├── responses.yaml               # OpenAI Responses
+└── image-generations.yaml       # Image generation
+
 ~/.lexi-cli/
-├── apis/
-│   ├── chat-completions.yaml    # Defines the Chat Completions protocol
-│   ├── messages.yaml            # Defines the Anthropic Messages protocol
-│   └── responses.yaml           # Defines the OpenAI Responses protocol
+├── apis/                        # Custom definitions only (`api create`, `api save`)
 └── providers/
     └── providers-config.yaml    # Each provider references an API by name
 ```
 
+Shipped definitions always load from the embedded copy, so a stale file on disk can never mask them; `~/.lexi-cli/apis/` only adds custom ones (`lexi_host::config::load_api_def`).
+
 ### Config Resolution Pipeline
 
-The `resolve_effective_config()` function builds the effective config for a provider:
+`lexi_host::config::effective_config()` builds the effective config for a provider:
 
 ```
 Provider Config ──► Has `api: <name>`?
@@ -109,87 +114,70 @@ Provider Config ──► Has `api: <name>`?
               ┌────────┴────────┐
               Yes               No
               │                 │
-    Load API definition    Has `request` block?
-              │                 │
-    Deep-merge provider    ┌────┴────┐
-    overrides on top       Yes       No
-              │            │         │
-              ▼        Use as-is   Legacy migration
-         Effective                (migrate_respond_config)
-          Config                      │
-                                      ▼
-                                 Effective Config
+    Load API definition    Has inline `request` block?
+    (embedded, else             │
+     ~/.lexi-cli/apis/)    ┌────┴────┐
+              │            Yes       No
+    Deep-merge provider    │         │
+    entry on top       Use as-is   Error: provider
+              │            │       has no API
+              ▼            ▼
+          Effective Config
 ```
 
-**Deep merge** (`deep_merge()`) is recursive: nested dicts are merged key-by-key, lists and scalars are replaced.
+**Deep merge** (`config::deep_merge()`) is recursive: nested maps are merged key-by-key, lists and scalars are replaced.
 
 ### Request Flow
 
-When `respond <provider> [prompt]` runs:
+When `respond <provider> [prompt_name]` runs (`lexi-cli-rs/src/commands/respond.rs` → `lexi-host/src/respond.rs`):
 
-1. **`respond_with_provider()`** — Orchestrates the full request/response cycle
-2. **`resolve_effective_config()`** — Loads API def + merges provider overrides
-3. **`load_api_key()`** — Reads key from env var or `api-key` file
-4. **`build_auth_headers()`** — Constructs HTTP headers from `auth` config
-5. **`build_request_body()`** — Assembles JSON body:
-   - **`render_body_template()`** — Recursively substitutes `{{model}}`, `{{role}}`, `{{prompt}}` in the body template
-   - Maps parameters (temperature, max_tokens) to their `body_field` names
-   - Adds tools payload if requested
-6. HTTP POST to `provider_url + request_path`
-7. **`render_response_output()`** — Extracts text via `response.text_path` using `resolve_path()`
-8. **`extract_response_metadata()`** — Pulls token counts, model, stop reason via metadata paths
+1. **Parse flags** — Schema flags are discovered from the definition's `x-cli` entries (`lexi_core::cli_flags`) and converted to their schema types
+2. **`prepare_chat()`** — Loads the provider and its effective config, resolves the model (aliases included), the API key, images, `--params`, tool presets, and `--set`/`--unset` paths. No network I/O, so the composed body is inspectable
+3. **`compose_chat_body()`** — Builds a canonical message from the prompt (plus images), lowers it through the definition's `content_mapping`, and calls **`lexi_core::compose_request_body()`**, which walks `request.body_schema` (`x-bind`, `x-render`, `x-include`, defaults), applies tool presets and set/unset paths, and validates the result
+4. **`config::resolve_api_key()`** — Key file first, then the config's `api_key` (`${ENV_VAR}` or literal)
+5. **`auth::build_headers()`** — Constructs HTTP headers from the `auth` block
+6. **`run_chat()`** — HTTP POST to `provider url + request.path`, buffered or streamed (SSE); `--background` submits and polls via `submit_chat()` / `wait_operation()`
+7. **Extraction** — `lexi_core::extract_text()` (per `response.text_extract`), plus annotations, activity, and metadata paths
 
 ### Key Functions
 
 | Function | Location | Purpose |
 |---|---|---|
-| `resolve_path(data, path)` | ~line 380 | Walks dot/bracket paths like `content[0].text` through nested JSON |
-| `build_auth_headers(cfg, api_key)` | ~line 400 | Constructs auth headers from config |
-| `render_body_template(template, vars)` | ~line 420 | Recursive `{{var}}` substitution in nested structures |
-| `build_request_body(...)` | ~line 547 | Assembles the full request JSON body |
-| `resolve_effective_config(provider, cfg)` | ~line 633 | API def + provider overrides + legacy fallback |
-| `validate_request_params(cfg, ...)` | ~line 660 | Warns if params are outside API-defined ranges |
-| `extract_response_metadata(data, cfg)` | ~line 688 | Extracts metadata fields from response JSON |
-| `respond_with_provider(...)` | ~line 761 | Full request/response cycle |
-| `validate_api_definition(data)` | ~line 300 | Schema validation for API definition files |
-| `deep_merge(base, override)` | ~line 624 | Recursive dict merge |
-| `migrate_respond_config(provider, cfg)` | ~line 600 | Runtime migration from old config format |
+| `compose_request_body(...)` | `lexi-core/src/compose.rs` | Schema-driven request-body composition |
+| `validate_definition(def)` | `lexi-core/src/definition.rs` | Schema validation for API definition files |
+| `cli_flags(def)` / `preview_definition(...)` | `lexi-core/src/definition.rs` | CLI flag discovery; `api preview` |
+| `get_path` / `set_path` / `unset_path` | `lexi-core/src/path.rs` | Walk dot/bracket paths like `content[0].text` |
+| `render_template(template, vars)` | `lexi-core/src/template.rs` | Recursive `{{var}}` substitution |
+| `extract_text(...)` | `lexi-core/src/extract.rs` | Response text extraction |
+| `load_api_def(name)` | `lexi-host/src/config.rs` | Embedded definition, else custom file |
+| `effective_config(provider, cfg)` | `lexi-host/src/config.rs` | API def + provider overrides |
+| `resolve_api_key(provider, cfg)` | `lexi-host/src/config.rs` | Key file, then config `api_key` |
+| `build_headers(cfg, api_key)` | `lexi-host/src/auth.rs` | Auth headers from config |
+| `prepare_chat(...)` / `run_chat(...)` | `lexi-host/src/respond.rs` | Full request/response cycle |
+| `ensure_home()` | `lexi-host/src/bootstrap.rs` | First-run seeding |
 
 ## Seeding and First Run
 
-`seed_default_providers()` runs on every startup and populates `~/.lexi-cli/` from bundled defaults:
+`lexi_host::ensure_home()` (`lexi-host/src/bootstrap.rs`) runs on every startup and writes the defaults embedded in the binary into `$LEXI_HOME` (default `~/.lexi-cli/`):
 
-1. Copies `providers-config.yaml` if it doesn't exist
-2. For each bundled provider directory (openai, anthropic, nvidia):
-   - Seeds `configured-models.yaml`, `model-aliases.yaml`, `default-model.yaml`
-   - Seeds `api-key` file if present (with chmod 600)
-3. Seeds default command aliases from `default-aliases.json`
-4. Calls `seed_default_apis()` to copy bundled API definitions to `~/.lexi-cli/apis/`
+1. `providers/providers-config.yaml`
+2. For each shipped provider (openai, anthropic, nvidia): `configured-models.yaml`, `model-aliases.yaml`, `default-model.yaml`
+3. `aliases.json` from `default-aliases.json` (also reseeded if the file exists but is empty)
+
+API definitions are **not** seeded: the shipped ones resolve from the binary, and `~/.lexi-cli/apis/` holds custom definitions only.
 
 **Key principle:** Existing files are never overwritten. If `~/.lexi-cli/` already has a file, the seeder skips it. This means user customizations are preserved across upgrades.
 
-## Legacy Migration
+## Legacy Formats
 
-The `migrate_respond_config()` function provides runtime backward compatibility for the old provider config format:
+The old provider config format (`respond_kind` / `respond_path`) and the old API-definition keys (`request.body`, `request.parameters`, `response.text_path`, …) are no longer supported. There is no runtime migration: `api validate` reports legacy keys as errors, and a provider needs an `api: <name>` reference (or an inline `request` block):
 
-**Old format:**
-```yaml
-providers:
-  openai:
-    url: https://api.openai.com/v1
-    respond_kind: responses
-    respond_path: /responses
-```
-
-**New format** (API definition reference):
 ```yaml
 providers:
   openai:
     url: https://api.openai.com/v1
     api: responses
 ```
-
-The migration maps old `respond_kind` values (`responses`, `messages`, `chat-completions`) to their equivalent `auth`, `request`, and `response` blocks at runtime. The on-disk config is not modified — migration happens in memory each time.
 
 ## Desktop App Architecture
 
@@ -209,26 +197,21 @@ The `api` / `api_stream` Tauri commands dispatch here. `handle(method, path, bod
 
 ## Testing
 
-Tests live in `lexi-cli/tests/`:
-
-- `test_cli.py` — Core CLI tests
-- `test_api.py` — API abstraction tests
-
-Key testing patterns:
-- `main()` returns an int, does **not** raise `SystemExit` — tests check the return code
-- Tests use temp directories to avoid touching `~/.lexi-cli/`
-- `print_version()` uses `CONFIG["cli_name"]` which may differ by environment
-- Mock subprocess calls for shell command tests
-
-Run tests:
 ```bash
-cd lexi-cli
-pytest                  # Run all tests
-pytest --cov=lexi_cli   # With coverage
+cargo test                  # All crates
+cargo test -p lexi-cli-rs   # Just the CLI
 ```
+
+- **CLI** — Integration tests in `lexi-cli-rs/tests/` run the real `lexi` binary against a temporary `LEXI_HOME` and a wiremock provider (respond, jobs, admin reads/writes, shell, the surface matrix). `cli_reference.rs` checks that [cli-reference.md](cli-reference.md) matches the command tree; regenerate with `LEXI_UPDATE_DOCS=1 cargo test -p lexi-cli-rs --test cli_reference`.
+- **Runtime** — `lexi-host` tests exercise the HTTP pipeline against a mock server.
+- **Conformance** — The cross-language oracle in `conformance/` is run by `lexi-core/tests/conformance.rs` and, from the wheel, by `lexi-python/tests/`.
+
+Commands return exit codes rather than exiting the process, so tests assert on the code and captured output.
 
 ## CI/CD
 
-GitHub Actions workflow (`ci.yml`):
-- **cli-lint** job — Runs `ruff check` and `ruff format --check`
-- **cli-tests** matrix — Runs `pytest` across Python 3.9, 3.11, and 3.12
+GitHub Actions:
+- **`ci.yml`** — `cargo fmt --check`, `cargo clippy -D warnings`, and tests for the engine (conformance), the wheel (conformance from Python), the host (mock-server pipeline), the CLI (binary end-to-end + surface matrix), and a desktop build
+- **`cli.yml`** — Builds the `lexi` binary archives (macOS universal, Linux x86_64/aarch64, Windows x86_64) and attaches them to releases
+- **`release.yml`** — Desktop installers via `tauri-action` on a `v*` tag
+- **`wheels.yml`** — The `lexi` Python wheels (library) attached to the release
