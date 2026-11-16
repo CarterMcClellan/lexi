@@ -3,16 +3,17 @@
 
 mod api;
 mod chat;
-mod config;
+pub(crate) mod config;
 mod models;
 mod prompts;
 mod providers;
 mod respond;
+pub(crate) mod shell_cmds;
 
 use crate::cli::Cmd;
-use crate::output::Io;
+use crate::output::{Io, RunOptions};
 
-pub(crate) async fn dispatch(cmd: Cmd, io: &mut Io<'_>) -> u8 {
+pub(crate) async fn dispatch(cmd: Cmd, io: &mut Io<'_>, opts: RunOptions) -> u8 {
     match cmd {
         Cmd::Respond { provider, args } => respond::respond(io, &provider, &args).await,
         Cmd::Generate {
@@ -23,6 +24,11 @@ pub(crate) async fn dispatch(cmd: Cmd, io: &mut Io<'_>) -> u8 {
         } => chat::generate(io, provider, prompt, model, out).await,
         Cmd::Upload { provider, file } => chat::upload(io, provider, file).await,
         Cmd::Version => chat::version(io),
+        Cmd::Help { topic } => shell_cmds::help(io, topic, opts).await,
+        Cmd::Alias { cmd } => shell_cmds::alias(io, cmd),
+        Cmd::History { count, clear } => shell_cmds::history(io, count, clear),
+        Cmd::Sh { command } => shell_cmds::sh(io, &command.join(" "), opts),
+        Cmd::Exit => crate::output::EXIT_OK,
         Cmd::Config { cmd } => config::run(io, cmd),
         Cmd::Prompts { cmd } => prompts::run(io, cmd),
         Cmd::Providers { cmd } => providers::run(io, cmd).await,

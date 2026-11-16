@@ -19,6 +19,24 @@ pub const EXIT_USAGE: u8 = 2;
 /// A writer that can be handed across threads (needed for `Send` futures).
 pub type Writer<'a> = &'a mut (dyn Write + Send);
 
+/// How a host runs commands.
+#[derive(Debug, Clone, Copy)]
+pub struct RunOptions {
+    /// ANSI styling of stderr notes.
+    pub color: bool,
+    /// Allow `sh` / `!cmd` (off for in-process hosts like the desktop console).
+    pub allow_shell: bool,
+}
+
+impl Default for RunOptions {
+    fn default() -> Self {
+        Self {
+            color: false,
+            allow_shell: true,
+        }
+    }
+}
+
 pub struct Io<'a> {
     pub out: Writer<'a>,
     pub err: Writer<'a>,

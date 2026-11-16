@@ -25,6 +25,8 @@ serde_json = { version = "1", features = ["preserve_order"] }
 comfy-table = "7"
 rpassword = "7"
 serde_yaml = "0.9"
+rustyline = "14"
+shlex = "1"
 
 [dev-dependencies]
 assert_cmd = "2"
