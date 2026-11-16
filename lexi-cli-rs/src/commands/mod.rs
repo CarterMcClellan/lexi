@@ -7,26 +7,14 @@ mod config;
 mod models;
 mod prompts;
 mod providers;
+mod respond;
 
 use crate::cli::Cmd;
 use crate::output::Io;
 
 pub(crate) async fn dispatch(cmd: Cmd, io: &mut Io<'_>) -> u8 {
     match cmd {
-        Cmd::Respond {
-            provider,
-            prompt,
-            role,
-            model,
-            stream,
-            background,
-            images,
-        } => {
-            chat::respond(
-                io, provider, prompt, role, model, stream, background, images,
-            )
-            .await
-        }
+        Cmd::Respond { provider, args } => respond::respond(io, &provider, &args).await,
         Cmd::Generate {
             provider,
             prompt,

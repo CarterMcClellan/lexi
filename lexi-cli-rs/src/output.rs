@@ -24,11 +24,18 @@ pub struct Io<'a> {
     pub err: Writer<'a>,
     /// Machine mode: emit JSON instead of human text.
     pub json: bool,
+    /// ANSI styling on stderr notes (a terminal that allows color).
+    pub color: bool,
 }
 
 impl<'a> Io<'a> {
     pub fn new(out: Writer<'a>, err: Writer<'a>, json: bool) -> Self {
-        Self { out, err, json }
+        Self {
+            out,
+            err,
+            json,
+            color: false,
+        }
     }
 
     /// Emit a command result: `json` in machine mode, else the `human` text
@@ -101,5 +108,14 @@ pub fn scalar(value: Option<&Value>) -> String {
         None | Some(Value::Null) => String::new(),
         Some(Value::String(s)) => s.clone(),
         Some(v) => v.to_string(),
+    }
+}
+
+/// Dim (de-emphasized) text: ANSI faint when `color`, plain otherwise.
+pub fn dim(text: &str, color: bool) -> String {
+    if color {
+        format!("\x1b[2m{text}\x1b[0m")
+    } else {
+        text.to_string()
     }
 }

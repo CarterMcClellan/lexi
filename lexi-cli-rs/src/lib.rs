@@ -26,6 +26,15 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
+    run_with_color(args, out, err, false).await
+}
+
+/// [`run`], with ANSI styling of stderr notes enabled when `color`.
+pub async fn run_with_color<I, T>(args: I, out: Writer<'_>, err: Writer<'_>, color: bool) -> u8
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
     let cli = match Cli::try_parse_from(args) {
         Ok(cli) => cli,
         Err(e) => {
@@ -43,6 +52,7 @@ where
         }
     };
     let mut io = Io::new(out, err, cli.json);
+    io.color = color;
     if let Err(e) = lexi_host::ensure_home() {
         io.warn(format_args!("could not prepare the Lexi home: {e}"));
     }
