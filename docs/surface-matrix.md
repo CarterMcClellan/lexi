@@ -52,11 +52,12 @@ next plan). **GUI** names the desktop tab.
 Building blocks used by the operations above, or run implicitly by every surface
 (home seeding fills in missing defaults at CLI/GUI startup); not surfaced on their own.
 
-`ensure_home`, `ensure_home_in`, `lexi_home`, `load_api_def`, `deep_merge`, `effective_config`, `resolve_api_key`, `build_headers`
+`ensure_home`, `ensure_home_in`, `default_aliases`, `lexi_home`, `load_api_def`, `deep_merge`, `effective_config`, `resolve_api_key`, `build_headers`
 
 ## CLI-only
 
 Commands with no `lexi-host` operation behind them (CLI mechanics, not Lexi
-functionality).
+functionality). Command aliases and history live in `~/.lexi-cli/` and are
+shared with the desktop CLI console.
 
-`version`
+`version`, `help`, `exit`, `history`, `sh`, `alias list`, `alias add`, `alias rm`, `alias reset`

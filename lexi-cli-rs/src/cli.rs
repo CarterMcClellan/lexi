@@ -14,7 +14,10 @@ use clap::{Parser, Subcommand};
     name = "lexi",
     version,
     about = "Lexi — work with multiple LLM providers side by side",
-    propagate_version = true
+    propagate_version = true,
+    disable_help_subcommand = true,
+    after_help = "Run `lexi` with no command for the interactive shell. \
+                  Topics: `lexi help general | ai | shortcuts`."
 )]
 pub struct Cli {
     /// Machine-readable output: one JSON value per result (NDJSON events when
@@ -22,8 +25,9 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub json: bool,
 
+    /// The command; none starts the interactive shell.
     #[command(subcommand)]
-    pub cmd: Cmd,
+    pub cmd: Option<Cmd>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -71,7 +75,32 @@ pub enum Cmd {
     },
     /// Show the CLI version.
     Version,
-    /// View CLI settings (config.json).
+    /// Show help for a command (`help models alias`) or a topic
+    /// (`general`, `ai`, `shortcuts`).
+    Help { topic: Vec<String> },
+    /// Manage command aliases (`aliases.json`).
+    Alias {
+        #[command(subcommand)]
+        cmd: Option<AliasCmd>,
+    },
+    /// Show or clear command history.
+    History {
+        /// Show the last N entries (negative: the first N).
+        #[arg(short = 'n', long = "number", allow_negative_numbers = true)]
+        count: Option<i64>,
+        /// Clear the history.
+        #[arg(long, visible_alias = "reset")]
+        clear: bool,
+    },
+    /// Run a shell command (also `!command` in the interactive shell).
+    Sh {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
+        command: Vec<String>,
+    },
+    /// Leave the interactive shell.
+    #[command(visible_alias = "quit")]
+    Exit,
+    /// View or update CLI settings (config.json).
     Config {
         #[command(subcommand)]
         cmd: ConfigCmd,
@@ -96,6 +125,25 @@ pub enum Cmd {
         #[command(subcommand)]
         cmd: ApiCmd,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AliasCmd {
+    /// List aliases (optionally only those for the given commands/aliases).
+    #[command(visible_alias = "ls")]
+    List { names: Vec<String> },
+    /// Create or update an alias: `alias add pl providers list`.
+    #[command(visible_alias = "set")]
+    Add {
+        name: String,
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
+        expansion: Vec<String>,
+    },
+    /// Remove an alias.
+    #[command(visible_aliases = ["del", "delete"])]
+    Rm { name: String },
+    /// Reset aliases to the shipped defaults.
+    Reset,
 }
 
 #[derive(Debug, Subcommand)]

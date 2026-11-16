@@ -61,6 +61,11 @@ const DEFAULTS: &[(&str, &str)] = &[
 /// The default command aliases (`aliases.json`).
 const DEFAULT_ALIASES: &str = include_str!("../../providers/default-aliases.json");
 
+/// The shipped default command aliases (`aliases.json` contents).
+pub fn default_aliases() -> &'static str {
+    DEFAULT_ALIASES
+}
+
 /// Seed the Lexi home (`$LEXI_HOME` or `~/.lexi-cli`). See [`ensure_home_in`].
 pub fn ensure_home() -> Result<Vec<PathBuf>, HostError> {
     ensure_home_in(&lexi_home())
