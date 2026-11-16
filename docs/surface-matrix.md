@@ -20,6 +20,7 @@ next plan). **GUI** names the desktop tab.
 
 | Operation | lexi-host | CLI | Python API | GUI |
 |---|---|---|---|---|
+| Send a saved / inline prompt with full options (model aliases, schema flags, presets, `--set`, params) | `prepare_chat`, `run_chat`, `compose_chat_body` | `respond` | — | — |
 | Send a prompt (buffered) | `respond_text`, `respond_with_effective` | `respond` | — | Chat |
 | Send a prompt (streaming) | `respond_stream_text`, `respond_stream_with_effective` | `respond` | — | Chat |
 | Send a prompt (background job) | `respond_background_text`, `respond_background_with_effective` | `respond` | — | — |
@@ -43,8 +44,8 @@ next plan). **GUI** names the desktop tab.
 | List / show API definitions | `list_api_defs`, `load_api_raw`, `embedded_api_names` | `api list`, `api show` | — | API definitions |
 | Validate an API definition | `validate_api_def` | `api validate` | — | API definitions |
 | Create / edit / remove an API definition | `create_api_def`, `edit_api_def`, `delete_api_def` | `api create`, `api edit`, `api rm` | — | API definitions |
-| Save an API definition's raw YAML | `save_api_raw` | planned (C5) | — | API definitions |
-| Preview an API definition | `preview_api_def` | planned (C5) | — | API definitions |
+| Save an API definition's raw YAML | `save_api_raw` | `api save` | — | API definitions |
+| Preview an API definition | `preview_api_def` | `api preview` | — | API definitions |
 
 ## Internal
 

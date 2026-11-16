@@ -4,8 +4,10 @@ use std::process::ExitCode;
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    use std::io::IsTerminal;
     let mut out = std::io::stdout();
     let mut err = std::io::stderr();
-    let code = lexi_cli::run(std::env::args_os(), &mut out, &mut err).await;
+    let color = err.is_terminal() && std::env::var_os("NO_COLOR").is_none();
+    let code = lexi_cli::run_with_color(std::env::args_os(), &mut out, &mut err, color).await;
     ExitCode::from(code)
 }

@@ -66,18 +66,18 @@ async fn respond_buffered_human_and_json() {
     let home = home_with_mock_provider(&server.uri());
 
     let mut cmd = lexi(home.path());
-    cmd.args(["respond", "mock", "hi"]);
+    cmd.args(["respond", "mock", "--text", "hi"]);
     let o = run(cmd).await;
     assert!(o.status.success(), "{o:?}");
     assert_eq!(stdout(&o), "Hello from the mock.\n");
 
     let mut cmd = lexi(home.path());
-    cmd.args(["respond", "mock", "hi", "--json"]);
+    cmd.args(["respond", "mock", "--text", "hi", "--json"]);
     let o = run(cmd).await;
     let v: Value = serde_json::from_slice(&o.stdout).unwrap();
     assert_eq!(
         v,
-        json!({"provider": "mock", "model": "claude-x", "text": "Hello from the mock."})
+        json!({"provider": "mock", "model": "claude-x", "text": "Hello from the mock.", "metadata": {"model": "claude-x"}})
     );
 }
 
@@ -102,13 +102,13 @@ async fn respond_stream_emits_ndjson_events() {
     let home = home_with_mock_provider(&server.uri());
 
     let mut cmd = lexi(home.path());
-    cmd.args(["respond", "mock", "hi", "--stream"]);
+    cmd.args(["respond", "mock", "--text", "hi", "--stream"]);
     let o = run(cmd).await;
     assert!(o.status.success(), "{o:?}");
     assert_eq!(stdout(&o), "Hello world\n");
 
     let mut cmd = lexi(home.path());
-    cmd.args(["--json", "respond", "mock", "hi", "--stream"]);
+    cmd.args(["--json", "respond", "mock", "--text", "hi", "--stream"]);
     let o = run(cmd).await;
     let events: Vec<Value> = stdout(&o)
         .lines()
@@ -120,7 +120,7 @@ async fn respond_stream_emits_ndjson_events() {
             json!({"event": "provider_start", "provider": "mock"}),
             json!({"event": "delta", "provider": "mock", "text": "Hello"}),
             json!({"event": "delta", "provider": "mock", "text": " world"}),
-            json!({"event": "provider_done", "provider": "mock"}),
+            json!({"event": "provider_done", "provider": "mock", "model": "claude-x", "text": "Hello world", "metadata": {}}),
         ]
     );
 }
@@ -135,7 +135,7 @@ async fn provider_errors_exit_1_with_json_error() {
     let home = home_with_mock_provider(&server.uri());
 
     let mut cmd = lexi(home.path());
-    cmd.args(["--json", "respond", "mock", "hi"]);
+    cmd.args(["--json", "respond", "mock", "--text", "hi"]);
     let o = run(cmd).await;
     assert_eq!(o.status.code(), Some(1));
     assert!(o.stdout.is_empty());
@@ -143,7 +143,7 @@ async fn provider_errors_exit_1_with_json_error() {
     assert!(err["error"].as_str().unwrap().contains("401"), "{err}");
 
     let mut cmd = lexi(home.path());
-    cmd.args(["respond", "nope", "hi"]);
+    cmd.args(["respond", "nope", "--text", "hi"]);
     let o = run(cmd).await;
     assert_eq!(o.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&o.stderr).starts_with("error: unknown provider"));

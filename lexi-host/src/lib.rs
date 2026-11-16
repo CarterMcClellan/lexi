@@ -51,7 +51,8 @@ pub use generate::{generate_images_text, generate_images_with_effective, SavedAr
 pub use hosted::{check_api_key, fetch_hosted_models, fetch_hosted_models_with, KeyStatus};
 pub use image::{resolve_image, resolve_images, ResolvedImage};
 pub use respond::{
-    respond_background_text, respond_background_with_effective, respond_stream_text,
-    respond_stream_with_effective, respond_text, respond_with_effective, RespondResult,
+    compose_chat_body, prepare_chat, respond_background_text, respond_background_with_effective,
+    respond_stream_text, respond_stream_with_effective, respond_text, respond_with_effective,
+    run_chat, ChatMode, ChatRequest, PreparedChat, RespondResult, StreamEvent,
 };
 pub use upload::{upload_file, upload_file_with_effective};

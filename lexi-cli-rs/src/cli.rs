@@ -28,27 +28,26 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Cmd {
-    /// Send a text prompt to a provider and print the response.
+    /// Send a saved prompt (the active one by default) or --text to a provider.
+    ///
+    /// respond <provider> [prompt_name] [--text TEXT|-] [--model M] [--role R]
+    /// [--stream] [--background] [--image URL|PATH]... [<schema flags>]
+    /// [--set path=value]... [--unset path]... [--tool preset[,preset]]...
+    /// [--params FILE] [--cite] [--raw|-r] [--verbose|-v] [--no-validate]
+    ///
+    /// Schema flags (e.g. --temperature, --max-tokens) come from the provider's
+    /// API definition: see `lexi api show <api>` (the cli= entries).
+    #[command(verbatim_doc_comment)]
     Respond {
-        /// Provider name, as in providers-config.yaml (e.g. anthropic, openai).
+        /// Provider name, as in providers-config.yaml.
         provider: String,
-        /// The prompt text.
-        prompt: String,
-        /// Message role.
-        #[arg(long, default_value = "user")]
-        role: String,
-        /// Override the provider's default model.
-        #[arg(long)]
-        model: Option<String>,
-        /// Stream the response token-by-token (SSE).
-        #[arg(long, conflicts_with = "background")]
-        stream: bool,
-        /// Submit as a background operation and poll until it completes.
-        #[arg(long)]
-        background: bool,
-        /// Attach an image (URL or local file path). Repeatable.
-        #[arg(long = "image")]
-        images: Vec<String>,
+        /// Prompt name and options (see above).
+        #[arg(
+            trailing_var_arg = true,
+            allow_hyphen_values = true,
+            value_name = "ARGS"
+        )]
+        args: Vec<String>,
     },
     /// Generate image(s) from a prompt and save them to disk.
     Generate {
@@ -376,4 +375,22 @@ pub enum ApiCmd {
     /// Remove a custom API definition.
     #[command(visible_aliases = ["del", "delete"])]
     Rm { name: String },
+    /// Preview a definition: validation, CLI flags, tool presets, and a sample
+    /// composed request body (always JSON).
+    Preview {
+        /// A definition by name (or use --file).
+        #[arg(required_unless_present = "file", conflicts_with = "file")]
+        name: Option<String>,
+        /// Preview a YAML file instead of a saved definition.
+        #[arg(long)]
+        file: Option<PathBuf>,
+        #[arg(long, default_value = "Sample prompt")]
+        prompt: String,
+        #[arg(long, default_value = "sample-model")]
+        model: String,
+        #[arg(long, default_value = "user")]
+        role: String,
+    },
+    /// Save a YAML file as a custom definition (prints validation errors).
+    Save { name: String, file: PathBuf },
 }

@@ -29,6 +29,14 @@ pub(crate) fn run(io: &mut Io<'_>, cmd: ApiCmd) -> u8 {
             text_path,
             set_meta,
         } => edit(io, &name, path.as_deref(), text_path.as_deref(), &set_meta),
+        ApiCmd::Preview {
+            name,
+            file,
+            prompt,
+            model,
+            role,
+        } => preview(io, name.as_deref(), file.as_deref(), &prompt, &model, &role),
+        ApiCmd::Save { name, file } => save(io, &name, &file),
         ApiCmd::Rm { name } => match lexi_host::config::delete_api_def(&name) {
             Ok(()) => io.result(
                 format!("API definition {name:?} removed."),
@@ -289,6 +297,53 @@ fn edit(
             format!("API definition {name:?} updated."),
             json!({ "updated": name }),
         ),
+        Err(e) => io.fail(e),
+    }
+}
+
+fn preview(
+    io: &mut Io<'_>,
+    name: Option<&str>,
+    file: Option<&std::path::Path>,
+    prompt: &str,
+    model: &str,
+    role: &str,
+) -> u8 {
+    let yaml = match file.map(std::fs::read_to_string).transpose() {
+        Ok(y) => y,
+        Err(e) => return io.fail(format_args!("could not read file: {e}")),
+    };
+    match lexi_host::config::preview_api_def(name, yaml.as_deref(), prompt, model, role) {
+        Ok(result) => io.result(pretty(&result), result),
+        Err(e) => io.fail(e),
+    }
+}
+
+fn save(io: &mut Io<'_>, name: &str, file: &std::path::Path) -> u8 {
+    if lexi_host::config::embedded_api_names().contains(&name) {
+        return io.fail(format_args!(
+            "{name:?} is a shipped definition and can't be replaced; save under another name"
+        ));
+    }
+    let yaml = match std::fs::read_to_string(file) {
+        Ok(y) => y,
+        Err(e) => return io.fail(format_args!("could not read file: {e}")),
+    };
+    match lexi_host::config::save_api_raw(name, &yaml) {
+        Ok(errors) if errors.is_empty() => io.result(
+            format!("API definition {name:?} saved."),
+            json!({ "saved": name, "valid": true, "errors": [] }),
+        ),
+        Ok(errors) => {
+            let mut human = format!("API definition {name:?} saved, with validation errors:");
+            for e in &errors {
+                human.push_str(&format!("\n  - {e}"));
+            }
+            io.result(
+                human,
+                json!({ "saved": name, "valid": false, "errors": errors }),
+            )
+        }
         Err(e) => io.fail(e),
     }
 }
