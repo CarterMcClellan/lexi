@@ -1,18 +1,19 @@
 # Shipped template for Anthropic (see openai.yaml for how templates merge).
 # Every Claude model speaks the Messages API and returns text; the /models
-# listing carries real capability data (read by the catalog in a later slice).
+# listing carries real capability data (see `catalog:` below).
 url: https://api.anthropic.com/v1
 api_key: ${ANTHROPIC_API_KEY}
 
 apis:
   - api: messages
-    default_model: claude-3-5-sonnet-20241022
+    default_model: claude-sonnet-5-5
 
 tag_rules:
   "claude-*": [feature:tools]
 
-# The model listing carries per-model capabilities and limits; each rule maps
-# a field to a tag (true adds it, false removes it, a missing field is ignored).
+# The model listing carries per-model capabilities, limits and lifecycle
+# (field paths checked against the live API, 2026-11-16); each rule maps a
+# field to a tag (true adds it, false removes it, a missing field is ignored).
 catalog:
   path: /models
   fields: [id, display_name, max_input_tokens, max_tokens]
@@ -22,6 +23,8 @@ catalog:
     in:document: { path: capabilities.pdf_input.supported }
     feature:thinking: { path: capabilities.thinking.supported }
     feature:structured-output: { path: capabilities.structured_outputs.supported }
+    feature:web-search: { path: capabilities.server_tools.web_search.supported }
+    status:deprecated: { path: deprecated_at, present: true }
   limits:
     context_window: { path: max_input_tokens }
     max_output_tokens: { path: max_tokens }
