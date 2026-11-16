@@ -1,0 +1,58 @@
+name: nvidia-genai-image
+description: "NVIDIA visual GenAI (ai.api.nvidia.com/v1/genai/<model>) — text to image, e.g. FLUX. The model is part of the path, not the body."
+
+auth:
+  header: Authorization
+  value_prefix: "Bearer "
+
+request:
+  method: POST
+  # `{model}` is replaced by the resolved model id.
+  path: /genai/{model}
+  body_schema:
+    type: object
+    required: [prompt]
+    properties:
+      prompt:
+        type: string
+        description: "Text prompt describing the image."
+        x-bind: { from: prompt }
+      width:
+        type: integer
+        description: "Image width in pixels."
+        x-cli: { flag: --width }
+      height:
+        type: integer
+        description: "Image height in pixels."
+        x-cli: { flag: --height }
+      steps:
+        type: integer
+        minimum: 1
+        description: "Diffusion steps."
+        x-cli: { flag: --steps }
+      cfg_scale:
+        type: number
+        description: "Prompt guidance strength."
+        x-cli: { flag: --cfg-scale }
+      seed:
+        type: integer
+        description: "Random seed (fixed seed = repeatable output)."
+        x-cli: { flag: --seed }
+      mode:
+        type: string
+        description: "Generation mode (model-specific, e.g. base)."
+        x-cli: { flag: --mode }
+
+capabilities:
+  kind: image-generation
+  input: [text]
+  output: [image]
+
+response:
+  artifacts:
+    items_path: artifacts
+    type: image
+    fields:
+      b64: base64
+      seed: seed
+      finish_reason: finishReason

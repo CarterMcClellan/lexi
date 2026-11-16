@@ -31,7 +31,7 @@ and add `--json` to any command for machine-readable output ([spec](docs/spec/cl
 | Command | Description |
 |---|---|
 | `respond <provider> [TEXT] [--prompt NAME] [--model M] [--output image] [--stream] …` | Send a prompt; get back text, images (saved to disk), or both |
-| `generate <provider> <prompt>` · `upload <provider> <file>` | Shortcut for `respond --output image` · upload to a Files API |
+| `embed <provider> TEXT…` · `generate <provider> <prompt>` · `upload <provider> <file>` | Texts → vectors · shortcut for `respond --output image` · upload to a Files API |
 | `models tag\|tags` · `tags` | Tag models (what they take, produce, support) · the tag vocabulary |
 | `jobs status\|wait` | Background jobs (`respond --background --detach`) |
 | `prompts list\|set\|rm\|activate` | Manage saved prompts |

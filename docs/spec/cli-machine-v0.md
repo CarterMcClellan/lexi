@@ -68,6 +68,7 @@ API keys are never included in any result except `providers api-key show`
 | `respond` (buffered) | `{"provider", "model", "api", "text", "artifacts", "metadata", "activity"?, "sources"?, "raw"?, "warnings"?}` — `api` is the API that served it; `artifacts` the files saved (§6); `sources` with `--cite`, `raw` with `--raw` |
 | `respond --background --detach` | the operation (§5) plus `"provider"` |
 | `generate` | the `respond` result (it is `respond --output image`) |
+| `embed` | `{"provider", "model", "api", "count", "dimensions", "embeddings": [[number, …], …], "metadata"}` — one vector per input, in input order |
 | `upload` | `{"provider", "file_id"}` |
 | `jobs status` / `jobs wait` | the operation (§5) plus `"provider"` and, once succeeded, `"text"` |
 | `alias list` | `{"<expansion>": ["<alias>", …]}` |

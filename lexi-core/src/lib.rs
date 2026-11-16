@@ -25,8 +25,8 @@ pub use capabilities::{resolve_capabilities, supports_input, supports_output, va
 pub use compose::compose_request_body;
 pub use definition::{cli_flags, preview_definition, tool_preset_names, validate_definition};
 pub use extract::{
-    extract_annotations, extract_artifacts, extract_text, find_text_items, render_annotations,
-    summarize_activity,
+    extract_annotations, extract_artifacts, extract_embeddings, extract_text, find_text_items,
+    render_annotations, summarize_activity,
 };
 pub use message_ir::{
     lower_message, message_from_dict, normalize_prompt_payload, to_prompt_bindings, ContentPart,

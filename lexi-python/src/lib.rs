@@ -201,6 +201,18 @@ fn extract_artifacts<'py>(
 }
 
 #[pyfunction]
+#[pyo3(signature = (response, embeddings=None))]
+fn extract_embeddings<'py>(
+    py: Python<'py>,
+    response: &Bound<'py, PyAny>,
+    embeddings: Option<&Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let resp = from_py(response)?;
+    let out = lexi_core::extract_embeddings(&resp, opt_from_py(embeddings)?.as_ref());
+    to_py(py, &Value::Array(out))
+}
+
+#[pyfunction]
 fn get_path(py: Python<'_>, obj: &Bound<'_, PyAny>, path: String) -> PyResult<PyObject> {
     let v = from_py(obj)?;
     match lexi_core::get_path(&v, &path) {
@@ -444,6 +456,7 @@ fn _lexi(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(render_annotations, m)?)?;
     m.add_function(wrap_pyfunction!(extract_artifacts, m)?)?;
     m.add_function(wrap_pyfunction!(get_path, m)?)?;
+    m.add_function(wrap_pyfunction!(extract_embeddings, m)?)?;
     m.add_function(wrap_pyfunction!(validate_definition, m)?)?;
     m.add_function(wrap_pyfunction!(cli_flags, m)?)?;
     m.add_function(wrap_pyfunction!(tool_preset_names, m)?)?;

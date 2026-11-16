@@ -74,6 +74,37 @@ pub fn extract_artifacts(response: &Value, cfg: Option<&Value>) -> Vec<Value> {
     out
 }
 
+/// Extract embedding vectors per `response.embeddings` (`items_path`,
+/// `vector_path`, optional `index_path`), ordered by index when present.
+/// Items without a vector are skipped.
+pub fn extract_embeddings(response: &Value, cfg: Option<&Value>) -> Vec<Value> {
+    let Some(cfg) = cfg.filter(|c| c.is_object()) else {
+        return Vec::new();
+    };
+    let items_path = as_str_or(cfg, "items_path", "data");
+    let vector_path = as_str_or(cfg, "vector_path", "embedding");
+    let index_path = cfg.get("index_path").and_then(Value::as_str);
+    let Some(Value::Array(items)) = get_path(response, items_path) else {
+        return Vec::new();
+    };
+    let mut out: Vec<(u64, Value)> = items
+        .iter()
+        .enumerate()
+        .filter_map(|(i, item)| {
+            let v = get_path(item, vector_path)
+                .filter(|v| !v.is_null())?
+                .clone();
+            let idx = index_path
+                .and_then(|p| get_path(item, p))
+                .and_then(Value::as_u64)
+                .unwrap_or(i as u64);
+            Some((idx, v))
+        })
+        .collect();
+    out.sort_by_key(|(i, _)| *i);
+    out.into_iter().map(|(_, v)| v).collect()
+}
+
 /// Extract the assistant text per `text_extract` config (Mode A or Mode B).
 pub fn extract_text(response: &Value, cfg: Option<&Value>) -> String {
     let cfg = match cfg {

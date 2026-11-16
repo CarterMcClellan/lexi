@@ -15,7 +15,7 @@ def test_providers_lifecycle(home):
         "name", "template", "url", "api", "apis", "default_model", "hosted_models",
         "hosted_model_fields", "key_source",
     }
-    assert row["template"] == "openai" and row["apis"] == ["responses", "image-generations"]
+    assert row["template"] == "openai" and row["apis"] == ["responses", "image-generations", "embeddings"]
 
     assert lexi.providers.add("mine", "https://x.example/v1", "m1", api_key="sk-abcdefghij") == {
         "added": "mine"

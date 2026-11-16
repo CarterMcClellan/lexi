@@ -44,6 +44,7 @@ __all__ = [
     "prepare",
     "generate",
     "upload",
+    "embed",
     "tags",
     "jobs",
     "providers",
@@ -244,6 +245,36 @@ def generate(
     keyword arguments (``set={"size": "1024x1024"}``, …) pass through.
     """
     return respond(provider, prompt, model=model, output="image", out_dir=out_dir, **options)
+
+
+def embed(
+    provider: str,
+    inputs: Union[str, Iterable[str]],
+    *,
+    model: Optional[str] = None,
+    params: Optional[Mapping[str, Any]] = None,
+    set: Optional[SetPaths] = None,
+    unset: Optional[Iterable[str]] = None,
+    validate: bool = True,
+) -> Dict[str, Any]:
+    """Embed texts as vectors, one per text (``lexi embed``).
+
+    ``model`` defaults to the provider's embedding model. API options go in
+    ``set`` (``{"dimensions": 256}``, NVIDIA's ``{"input_type": "passage"}``).
+    Returns ``{"provider", "model", "api", "count", "dimensions",
+    "embeddings": [[float, …], …], "metadata"}``.
+    """
+    texts = [inputs] if isinstance(inputs, str) else [*inputs]
+    o: Dict[str, Any] = {"inputs": texts, "validate": validate}
+    if model is not None:
+        o["model"] = model
+    if params is not None:
+        o["params"] = dict(params)
+    if set is not None:
+        o["set"] = dict(set) if isinstance(set, Mapping) else [[*p] for p in set]
+    if unset is not None:
+        o["unset"] = [*unset]
+    return _lexi._embed(provider, o)
 
 
 def tags() -> Dict[str, Any]:

@@ -104,6 +104,7 @@ struct ChatOpts {
     raw: bool,
     output: Option<String>,
     out_dir: Option<String>,
+    inputs: Vec<String>,
 }
 
 /// `set` as `{path: value}` or `[(path, value), …]`.
@@ -397,6 +398,26 @@ fn _job_wait<'py>(
 // --- media ------------------------------------------------------------------
 
 #[pyfunction]
+fn _embed<'py>(
+    py: Python<'py>,
+    provider: String,
+    opts: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    ensure_home()?;
+    let o = parse_opts(opts)?;
+    let req = lexi_host::EmbedRequest {
+        inputs: o.inputs.clone(),
+        model: o.model.clone(),
+        overrides: o.params.clone(),
+        set_paths: set_paths(&o.set)?,
+        unset_paths: o.unset.clone(),
+        skip_validation: !o.validate.unwrap_or(true),
+    };
+    let out = block_on(py, async move { lexi_host::embed(&provider, &req).await })?;
+    to_py(py, &out)
+}
+
+#[pyfunction]
 fn _upload<'py>(py: Python<'py>, provider: String, path: PathBuf) -> PyResult<Bound<'py, PyAny>> {
     ensure_home()?;
     let file_id = block_on(py, {
@@ -530,7 +551,7 @@ fn _admin<'py>(py: Python<'py>, op: &str, args: &Bound<'py, PyAny>) -> PyResult<
             let r = lexi_host::models::resolve_model(
                 a.str("provider")?,
                 a.opt_str("model"),
-                a.opt_str("output").unwrap_or("text"),
+                a.opt_str("output"),
             )
             .map_err(e)?;
             json!({ "provider": r.provider, "model": r.model, "api": r.api, "kind": r.kind, "tags": r.tags })
@@ -735,6 +756,7 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(_job_status, m)?)?;
     m.add_function(wrap_pyfunction!(_job_wait, m)?)?;
     m.add_function(wrap_pyfunction!(_upload, m)?)?;
+    m.add_function(wrap_pyfunction!(_embed, m)?)?;
     m.add_function(wrap_pyfunction!(_admin, m)?)?;
     Ok(())
 }

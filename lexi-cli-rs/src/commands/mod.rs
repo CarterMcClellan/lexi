@@ -4,6 +4,7 @@
 mod api;
 mod chat;
 pub(crate) mod config;
+mod embed;
 mod jobs;
 mod models;
 mod prompts;
@@ -23,6 +24,7 @@ pub(crate) async fn dispatch(cmd: Cmd, io: &mut Io<'_>, opts: RunOptions) -> u8 
             model,
             out,
         } => chat::generate(io, provider, prompt, model, out).await,
+        Cmd::Embed { provider, args } => embed::embed(io, &provider, &args).await,
         Cmd::Upload { provider, file } => chat::upload(io, provider, file).await,
         Cmd::Jobs { cmd } => jobs::run(io, cmd).await,
         Cmd::Tags => models::vocabulary(io),

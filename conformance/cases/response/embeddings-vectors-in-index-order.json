@@ -1,0 +1,49 @@
+{
+  "name": "embeddings-vectors-in-index-order",
+  "description": "Embeddings come back as data[].embedding; returned in `index` order even if the provider lists them otherwise (NVIDIA/OpenAI shape).",
+  "api": "embeddings",
+  "response": {
+    "object": "list",
+    "model": "nvidia/nemotron-3-embed-1b",
+    "data": [
+      {
+        "object": "embedding",
+        "index": 1,
+        "embedding": [
+          0.3,
+          0.4
+        ]
+      },
+      {
+        "object": "embedding",
+        "index": 0,
+        "embedding": [
+          0.1,
+          0.2
+        ]
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 4,
+      "total_tokens": 4
+    }
+  },
+  "expect": {
+    "text": "",
+    "embeddings": [
+      [
+        0.1,
+        0.2
+      ],
+      [
+        0.3,
+        0.4
+      ]
+    ],
+    "metadata": {
+      "model": "nvidia/nemotron-3-embed-1b",
+      "input_tokens": 4,
+      "total_tokens": 4
+    }
+  }
+}

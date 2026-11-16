@@ -93,6 +93,8 @@ def test_response(path: Path) -> None:
         meta = {k: lexi.get_path(resp, p) for k, p in (rc.get("metadata") or {}).items()}
         assert meta == expect["metadata"], case["name"]
 
+    if "embeddings" in expect:
+        assert lexi.extract_embeddings(resp, rc.get("embeddings")) == expect["embeddings"], case["name"]
     if "artifacts" in expect:
         assert lexi.extract_artifacts(resp, rc.get("artifacts")) == expect["artifacts"], case["name"]
 

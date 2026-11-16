@@ -9,6 +9,7 @@ pub mod admin;
 pub mod auth;
 pub mod bootstrap;
 pub mod config;
+pub mod embed;
 pub mod generate;
 pub mod hosted;
 pub mod image;
@@ -58,6 +59,7 @@ pub enum HostError {
 }
 
 pub use bootstrap::{ensure_home, ensure_home_in};
+pub use embed::{embed, EmbedRequest};
 pub use generate::{generate_images_text, generate_images_with_effective, SavedArtifact};
 pub use hosted::{
     cached_catalog, check_api_key, fetch_hosted_models, fetch_hosted_models_with, KeyStatus,

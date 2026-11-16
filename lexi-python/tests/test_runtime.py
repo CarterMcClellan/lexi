@@ -224,3 +224,35 @@ def test_output_image_picks_the_image_api(mock, tmp_path):
     r = lexi.respond("img", "a fox", output="image", out_dir=tmp_path)
     assert r["api"] == "image-generations" and r["text"] == ""
     assert r["artifacts"][0]["path"].endswith("a-fox-1.png")
+
+
+def test_embed(mock, tmp_path):
+    mock.routes[("POST", "/embeddings")] = ok({
+        "data": [{"index": 1, "embedding": [0.3, 0.4]}, {"index": 0, "embedding": [0.1, 0.2]}],
+        "usage": {"prompt_tokens": 2, "total_tokens": 2},
+    })
+    (mock.home / "providers" / "providers-config.yaml").write_text(
+        f"providers:\n  nv:\n    template: nvidia\n    url: {mock.url}\n    api_key: k\n"
+    )
+    r = lexi.embed("nv", ["a", "b"], set={"input_type": "passage"})
+    assert r["api"] == "embeddings" and r["model"] == "nvidia/nemotron-3-embed-1b"
+    assert r["embeddings"] == [[0.1, 0.2], [0.3, 0.4]]
+    assert (r["count"], r["dimensions"]) == (2, 2)
+    sent = mock.bodies()[-1]
+    assert sent["input"] == ["a", "b"] and sent["input_type"] == "passage"
+    assert lexi.embed("nv", "one text")["count"] == 2  # (the mock always returns two)
+    with pytest.raises(lexi.LexiError, match="doesn't produce vector"):
+        lexi.embed("nv", "x", model="meta/llama-3.1-70b-instruct")
+
+
+def test_named_model_picks_its_output(mock, tmp_path):
+    # No output= given: the image model's tags pick the image API.
+    mock.routes[("POST", "/images/generations")] = ok({"data": [{"b64_json": base64.b64encode(b"i").decode()}]})
+    (mock.home / "providers" / "providers-config.yaml").write_text(
+        f"providers:\n  oa:\n    template: openai\n    url: {mock.url}\n    api_key: k\n"
+    )
+    r = lexi.respond("oa", "a fox", model="gpt-image-9", out_dir=tmp_path)
+    assert r["api"] == "image-generations" and len(r["artifacts"]) == 1
+    assert lexi.models.resolve("oa", "gpt-image-9")["api"] == "image-generations"
+    with pytest.raises(lexi.LexiError, match="doesn't produce text"):
+        lexi.models.resolve("oa", "gpt-image-9", output="text")

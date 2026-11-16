@@ -123,11 +123,18 @@ fn validate_response(resp: Option<&Value>, errors: &mut Vec<String>) {
 
     let te = resp.get("text_extract");
     let arts = resp.get("artifacts");
-    if te.is_none() && arts.is_none() {
+    let embs = resp.get("embeddings");
+    if te.is_none() && arts.is_none() && embs.is_none() {
         errors.push(
-            "response must define 'text_extract' (text output) or 'artifacts' (binary output)."
+            "response must define 'text_extract' (text output), 'artifacts' (binary output) \
+             or 'embeddings' (vector output)."
                 .into(),
         );
+    }
+    if let Some(e) = embs {
+        if !e.is_object() {
+            errors.push("'response.embeddings' must be a dict.".into());
+        }
     }
     match te {
         None => {}
