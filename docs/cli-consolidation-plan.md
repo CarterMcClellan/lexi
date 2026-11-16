@@ -29,8 +29,8 @@ are two I/O stacks.
 | First-run seeding of `~/.lexi-cli/` | ✅ | ❌ |
 
 The desktop app runs on `lexi-host`, so the Rust CLI is the one that matches the
-GUI — and the architecture invariant (*nothing is GUI-only; the CLI is the
-complete surface*) can only hold if the CLI sits on the same runtime.
+GUI — and the surface principle (§3: every underlying operation is reachable from
+the CLI) is only cheap to keep if the CLI sits on the same runtime.
 
 ## 2. What `lexi-host` already provides
 
@@ -179,7 +179,14 @@ The structured face other programs (and agents) drive:
 ## 7. Out of scope
 
 New modalities (audio in, video gen), agentic/tool loops, a persistent `lexi serve`
-mode, OS keychain storage, PyPI publishing, wheel bindings over `lexi-host`
-(Python `lexi.respond(...)` — backlog; needed for the API surface to reach full
-coverage, see §3). All easier *after* consolidation —
+mode, OS keychain storage, PyPI publishing. All easier *after* consolidation —
 each then gets built once.
+
+**Follow-on plans (next, in order):**
+1. **Wheel over `lexi-host`** — Python bindings for the runtime (`lexi.respond(...)`,
+   streaming, generate, upload, admin), so the language-binding API reaches the
+   coverage §3 requires; then the surface-matrix API column becomes enforced.
+2. **Provider adapter trait** — today providers are 100% declarative (API-definition
+   YAML + provider entries). A code escape hatch in `lexi-host` for what YAML can't
+   express (realtime/websocket audio, SigV4/OAuth auth, multi-step video jobs, tool
+   loops); config stays the default path.
