@@ -7,6 +7,7 @@
 //! exactly the commands a terminal user types and capture what they print.
 
 pub mod cli;
+mod coerce;
 mod commands;
 pub mod output;
 

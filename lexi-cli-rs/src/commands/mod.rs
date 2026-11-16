@@ -37,7 +37,7 @@ pub(crate) async fn dispatch(cmd: Cmd, io: &mut Io<'_>) -> u8 {
         Cmd::Version => chat::version(io),
         Cmd::Config { cmd } => config::run(io, cmd),
         Cmd::Prompts { cmd } => prompts::run(io, cmd),
-        Cmd::Providers { cmd } => providers::run(io, cmd),
+        Cmd::Providers { cmd } => providers::run(io, cmd).await,
         Cmd::Models { cmd } => models::run(io, cmd).await,
         Cmd::Api { cmd } => api::run(io, cmd),
     }

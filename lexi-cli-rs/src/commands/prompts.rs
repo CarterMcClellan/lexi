@@ -16,6 +16,145 @@ pub(crate) fn run(io: &mut Io<'_>, cmd: PromptsCmd) -> u8 {
             detailed,
             table,
         } => list(io, name, raw, detailed, table),
+        PromptsCmd::Set { args } => set(io, &args),
+        PromptsCmd::Rm { name } => rm(io, &name),
+        PromptsCmd::Activate { name } => activate(io, &name),
+        PromptsCmd::Text(args) => adhoc(io, &args),
+    }
+}
+
+/// A new prompt's fields before any options are applied.
+fn prompt_defaults() -> Value {
+    json!({ "prompt": "", "max_tokens": 256, "temperature": 0.7, "role": "user" })
+}
+
+/// Apply prompt text and options to `base` (the Python CLI's
+/// `parse_prompt_options`): bare words and `--prompt` values form the text;
+/// `-m/--max_tokens`, `-t/--temperature`, `-r/--role`, `--set path=value`,
+/// `--unset path` edit fields.
+fn apply_prompt_options(
+    tokens: &[String],
+    mut base: Value,
+    require_prompt: bool,
+) -> Result<Value, String> {
+    let mut text: Vec<&str> = Vec::new();
+    let mut i = 0;
+    let value = |i: usize, what: &str| -> Result<&String, String> {
+        tokens
+            .get(i + 1)
+            .ok_or_else(|| format!("{what} requires a value"))
+    };
+    while i < tokens.len() {
+        let tok = tokens[i].as_str();
+        match tok {
+            "--max_tokens" | "--max-tokens" | "-m" => {
+                let v = value(i, "max_tokens")?;
+                let n: i64 = v
+                    .parse()
+                    .map_err(|_| "max_tokens must be an integer".to_string())?;
+                base["max_tokens"] = Value::from(n);
+                i += 2;
+            }
+            "--temperature" | "-t" => {
+                let v = value(i, "temperature")?;
+                let t: f64 = v
+                    .parse()
+                    .map_err(|_| "temperature must be numeric".to_string())?;
+                base["temperature"] = Value::from(t);
+                i += 2;
+            }
+            "--role" | "-r" => {
+                base["role"] = Value::from(value(i, "role")?.as_str());
+                i += 2;
+            }
+            "--prompt" => {
+                text.push(value(i, "prompt")?);
+                i += 2;
+            }
+            "--set" => {
+                let (path, v) = crate::coerce::parse_set_arg(value(i, "--set")?)?;
+                lexi_core::path::set_path(&mut base, &path, v);
+                i += 2;
+            }
+            "--unset" => {
+                lexi_core::path::unset_path(&mut base, value(i, "--unset")?);
+                i += 2;
+            }
+            _ => {
+                text.push(tok);
+                i += 1;
+            }
+        }
+    }
+    let text = text.join(" ").trim().replace("\\n", "\n");
+    if !text.is_empty() {
+        base["prompt"] = Value::from(text);
+    }
+    if require_prompt && scalar(base.get("prompt")).is_empty() {
+        return Err("prompt text is required".into());
+    }
+    Ok(base)
+}
+
+fn set(io: &mut Io<'_>, args: &[String]) -> u8 {
+    // A leading bare word names the prompt when anything follows it; on its
+    // own it is the active prompt's text.
+    let (name, rest) = match args.first() {
+        Some(first) if !first.starts_with('-') && args.len() >= 2 => (first.as_str(), &args[1..]),
+        _ => (ACTIVE_PROMPT, args),
+    };
+    let existing = match lexi_host::config::load_prompts() {
+        Ok(p) => p.into_iter().find(|(n, _)| n == name).map(|(_, b)| b),
+        Err(e) => return io.fail(e),
+    };
+    let mut base = prompt_defaults();
+    if let Some(Value::Object(fields)) = existing {
+        for (k, v) in fields {
+            base[k.as_str()] = v;
+        }
+    }
+    let body = match apply_prompt_options(rest, base, false) {
+        Ok(b) => b,
+        Err(e) => return io.fail(e),
+    };
+    if scalar(body.get("prompt")).is_empty() {
+        return io.fail("prompts set requires prompt text (use --prompt or supply text)");
+    }
+    match lexi_host::config::save_prompt(name, &body) {
+        Ok(()) => io.result(format!("Saved prompt '{name}'."), prompt_json(name, &body)),
+        Err(e) => io.fail(e),
+    }
+}
+
+fn rm(io: &mut Io<'_>, name: &str) -> u8 {
+    match lexi_host::config::load_prompts() {
+        Ok(p) if p.iter().any(|(n, _)| n == name) => {}
+        Ok(_) => return io.fail(format_args!("prompt {name:?} not found")),
+        Err(e) => return io.fail(e),
+    }
+    match lexi_host::config::delete_prompt(name) {
+        Ok(()) => io.result(
+            format!("Removed prompt '{name}'."),
+            json!({ "removed": name }),
+        ),
+        Err(e) => io.fail(e),
+    }
+}
+
+fn activate(io: &mut Io<'_>, name: &str) -> u8 {
+    match lexi_host::config::set_active_prompt(name) {
+        Ok(()) => io.result(
+            format!("Activated prompt '{name}'."),
+            json!({ "active": name }),
+        ),
+        Err(e) => io.fail(e),
+    }
+}
+
+fn adhoc(io: &mut Io<'_>, args: &[String]) -> u8 {
+    match apply_prompt_options(args, prompt_defaults(), true) {
+        Ok(body) => io.result(pretty(&body), body),
+        Err(e) => io.fail(e),
     }
 }
 

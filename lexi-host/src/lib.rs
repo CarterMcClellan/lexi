@@ -48,7 +48,7 @@ pub enum HostError {
 
 pub use bootstrap::{ensure_home, ensure_home_in};
 pub use generate::{generate_images_text, generate_images_with_effective, SavedArtifact};
-pub use hosted::{fetch_hosted_models, fetch_hosted_models_with};
+pub use hosted::{check_api_key, fetch_hosted_models, fetch_hosted_models_with, KeyStatus};
 pub use image::{resolve_image, resolve_images, ResolvedImage};
 pub use respond::{
     respond_background_text, respond_background_with_effective, respond_stream_text,

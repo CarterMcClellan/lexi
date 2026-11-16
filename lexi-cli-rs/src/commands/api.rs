@@ -11,6 +11,31 @@ pub(crate) fn run(io: &mut Io<'_>, cmd: ApiCmd) -> u8 {
         ApiCmd::List { raw } => list(io, raw),
         ApiCmd::Show { name, raw } => show(io, &name, raw),
         ApiCmd::Validate { name } => validate(io, &name),
+        ApiCmd::Create {
+            name,
+            from,
+            path,
+            text_path,
+        } => create(
+            io,
+            &name,
+            from.as_deref(),
+            path.as_deref(),
+            text_path.as_deref(),
+        ),
+        ApiCmd::Edit {
+            name,
+            path,
+            text_path,
+            set_meta,
+        } => edit(io, &name, path.as_deref(), text_path.as_deref(), &set_meta),
+        ApiCmd::Rm { name } => match lexi_host::config::delete_api_def(&name) {
+            Ok(()) => io.result(
+                format!("API definition {name:?} removed."),
+                json!({ "removed": name }),
+            ),
+            Err(e) => io.fail(e),
+        },
     }
 }
 
@@ -222,4 +247,48 @@ fn validate(io: &mut Io<'_>, name: &str) -> u8 {
         io.fail(msg);
     }
     EXIT_FAILURE
+}
+
+fn create(
+    io: &mut Io<'_>,
+    name: &str,
+    from: Option<&str>,
+    path: Option<&str>,
+    text_path: Option<&str>,
+) -> u8 {
+    if lexi_host::config::load_api_def(name).is_ok() {
+        return io.fail(format_args!(
+            "API definition {name:?} already exists; use `api edit` to modify it"
+        ));
+    }
+    match lexi_host::config::create_api_def(name, from, path, text_path) {
+        Ok(()) => io.result(
+            format!("API definition {name:?} created."),
+            json!({ "created": name }),
+        ),
+        Err(e) => io.fail(e),
+    }
+}
+
+fn edit(
+    io: &mut Io<'_>,
+    name: &str,
+    path: Option<&str>,
+    text_path: Option<&str>,
+    set_meta: &[String],
+) -> u8 {
+    let mut meta = Vec::new();
+    for m in set_meta {
+        match m.split_once(':') {
+            Some((k, v)) if !k.is_empty() => meta.push((k.to_string(), v.to_string())),
+            _ => return io.fail(format_args!("--set-meta format is KEY:PATH (got {m:?})")),
+        }
+    }
+    match lexi_host::config::edit_api_def(name, path, text_path, &meta) {
+        Ok(()) => io.result(
+            format!("API definition {name:?} updated."),
+            json!({ "updated": name }),
+        ),
+        Err(e) => io.fail(e),
+    }
 }

@@ -131,3 +131,49 @@ mod tests {
         assert_eq!(hosted_endpoint(&cfg), "https://x.test/models");
     }
 }
+
+/// A provider's API-key readiness, as `providers status` reports it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct KeyStatus {
+    /// `"ready"`, `"no api-key"`, or `"invalid api-key"`.
+    pub status: &'static str,
+    /// Where the key comes from (see [`config::api_key_source`]).
+    pub source: Option<&'static str>,
+}
+
+/// How long `check_api_key` waits for the models endpoint.
+const KEY_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Check a provider's API key with a live authenticated GET to its models
+/// endpoint: 401/403 means `invalid api-key`; success — or any other outcome
+/// that can't prove the key bad (timeouts, 5xx, no endpoint) — means `ready`.
+pub async fn check_api_key(provider: &str) -> Result<KeyStatus, HostError> {
+    let providers = config::load_providers()?;
+    let provider_cfg = providers
+        .get("providers")
+        .and_then(|p| p.get(provider))
+        .cloned()
+        .ok_or_else(|| HostError::UnknownProvider(provider.to_string()))?;
+    let source = config::api_key_source(provider, &provider_cfg)?;
+    let Some(source) = source else {
+        return Ok(KeyStatus {
+            status: "no api-key",
+            source: None,
+        });
+    };
+    let api_key = config::resolve_api_key(provider, &provider_cfg)?;
+    let eff = config::effective_config(provider, &provider_cfg)?;
+    let client = reqwest::Client::builder()
+        .timeout(KEY_CHECK_TIMEOUT)
+        .build()?;
+    let status = match fetch_hosted_models_with(&client, &eff, &api_key).await {
+        Err(HostError::HttpStatus {
+            status: 401 | 403, ..
+        }) => "invalid api-key",
+        _ => "ready",
+    };
+    Ok(KeyStatus {
+        status,
+        source: Some(source),
+    })
+}
