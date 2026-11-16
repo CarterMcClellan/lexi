@@ -5,6 +5,7 @@
 //! providers/keys/config, building auth headers, and HTTP transport. It is the
 //! shared runtime beneath the CLI and (later) the Tauri GUI.
 
+pub mod admin;
 pub mod auth;
 pub mod bootstrap;
 pub mod config;

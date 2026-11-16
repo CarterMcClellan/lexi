@@ -552,7 +552,8 @@ fn set_config_in(home: &Path, updates: &Map) -> Result<Value, HostError> {
 }
 
 /// The `prompts/` dir name of the active prompt slot.
-const ACTIVE_PROMPT: &str = "$$";
+/// The saved-prompt name that holds the active prompt.
+pub const ACTIVE_PROMPT: &str = "$$";
 
 /// Save a prompt under `name` (or the active `$$` slot). `body` is written
 /// verbatim as the prompt's JSON object (e.g. `{prompt, max_tokens, …}`).

@@ -47,39 +47,20 @@ pub(crate) fn run(io: &mut Io<'_>, cmd: ApiCmd) -> u8 {
     }
 }
 
-/// A definition's response text path, as the Python CLI's list shows it.
-fn text_path(def: &Value) -> String {
-    let te = def.pointer("/response/text_extract");
-    if let Some(p) = te.and_then(|t| t.get("text_path")).and_then(Value::as_str) {
-        return p.to_string();
-    }
-    match te.and_then(|t| t.get("items_path")).and_then(Value::as_str) {
-        Some(items) => format!("items:{items}"),
-        None => String::new(),
-    }
-}
-
 fn list(io: &mut Io<'_>, raw: bool) -> u8 {
-    let defs = match lexi_host::config::list_api_defs() {
-        Ok(d) => d,
+    let rows = match lexi_host::admin::api_summaries() {
+        Ok(r) => r,
         Err(e) => return io.fail(e),
     };
-    let shipped = lexi_host::config::embedded_api_names();
     let mut all = Map::new();
-    let mut rows = Vec::new();
-    for (name, desc) in &defs {
-        let def = match lexi_host::config::load_api_def(name) {
-            Ok(d) => d,
-            Err(e) => return io.fail(e),
-        };
-        rows.push(json!({
-            "name": name,
-            "description": desc,
-            "path": def.pointer("/request/path"),
-            "text_path": text_path(&def),
-            "builtin": shipped.contains(&name.as_str()),
-        }));
-        all.insert(name.clone(), def);
+    if raw {
+        for r in &rows {
+            let name = scalar(r.get("name"));
+            match lexi_host::config::load_api_def(&name) {
+                Ok(def) => all.insert(name, def),
+                Err(e) => return io.fail(e),
+            };
+        }
     }
     let human = if raw {
         pretty(&Value::Object(all))

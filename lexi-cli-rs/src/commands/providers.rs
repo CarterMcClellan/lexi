@@ -49,11 +49,7 @@ pub(crate) async fn run(io: &mut Io<'_>, cmd: ProvidersCmd) -> u8 {
 
 /// The provider's config entry, or fail with "unknown provider".
 fn provider_cfg(io: &mut Io<'_>, name: &str) -> Result<Value, u8> {
-    let cfg = lexi_host::config::load_providers().map_err(|e| io.fail(e))?;
-    cfg.get("providers")
-        .and_then(|p| p.get(name))
-        .cloned()
-        .ok_or_else(|| io.fail(lexi_host::HostError::UnknownProvider(name.into())))
+    lexi_host::admin::provider_config(name).map_err(|e| io.fail(e))
 }
 
 async fn status(io: &mut Io<'_>, name: &str, raw: bool) -> u8 {
@@ -81,24 +77,9 @@ fn add(
     api: &str,
     hosted_models: &str,
 ) -> u8 {
-    if let Err(e) = lexi_host::config::load_api_def(api) {
-        return io.fail(e);
-    }
-    let mut entry = serde_json::Map::new();
-    entry.insert("url".into(), Value::from(url));
-    entry.insert("hosted_models".into(), Value::from(hosted_models));
-    entry.insert("api".into(), Value::from(api));
-    entry.insert("default_model".into(), Value::from(default_model));
-    if let Err(e) = lexi_host::config::add_provider(name, &entry) {
-        return io.fail(e);
-    }
-    // The key goes to the provider's owner-only key file, never the config.
-    if let Some(key) = api_key {
-        if let Err(e) = lexi_host::config::set_api_key(name, key) {
-            return io.fail(e);
-        }
-    }
-    if let Err(e) = lexi_host::config::set_default_model(name, Some(default_model)) {
+    if let Err(e) =
+        lexi_host::admin::create_provider(name, url, default_model, api_key, api, hosted_models)
+    {
         return io.fail(e);
     }
     io.result(format!("Added provider {name}."), json!({ "added": name }))
@@ -137,41 +118,14 @@ fn key_set(io: &mut Io<'_>, name: &str, value: Option<String>) -> u8 {
 }
 
 /// `sk-a…wxyz`-style masking: first and last 4 shown when long enough.
-fn mask(key: &str) -> String {
-    let chars: Vec<char> = key.chars().collect();
-    if chars.len() > 8 {
-        let head: String = chars[..4].iter().collect();
-        let tail: String = chars[chars.len() - 4..].iter().collect();
-        format!("{head}{}{tail}", "*".repeat(chars.len() - 8))
-    } else {
-        "*".repeat(chars.len())
-    }
-}
-
 fn key_show(io: &mut Io<'_>, name: &str, reveal: bool) -> u8 {
-    let cfg = match provider_cfg(io, name) {
-        Ok(c) => c,
-        Err(code) => return code,
-    };
-    let source = match lexi_host::config::api_key_source(name, &cfg) {
-        Ok(s) => s,
-        Err(e) => return io.fail(e),
-    };
-    if source.is_none() {
-        return io.result(
-            format!("No API key configured for {name}."),
-            json!({ "provider": name, "source": null, "key": null }),
-        );
+    match lexi_host::admin::api_key_info(name, reveal) {
+        Ok(info) if info["key"].is_null() => {
+            io.result(format!("No API key configured for {name}."), info)
+        }
+        Ok(info) => io.result(scalar(info.get("key")), info),
+        Err(e) => io.fail(e),
     }
-    let key = match lexi_host::config::resolve_api_key(name, &cfg) {
-        Ok(k) => k,
-        Err(e) => return io.fail(e),
-    };
-    let shown = if reveal { key } else { mask(&key) };
-    io.result(
-        &shown,
-        json!({ "provider": name, "source": source, "key": shown }),
-    )
 }
 
 fn key_remove(io: &mut Io<'_>, name: &str) -> u8 {
@@ -192,32 +146,10 @@ fn key_remove(io: &mut Io<'_>, name: &str) -> u8 {
 }
 
 fn list(io: &mut Io<'_>, raw: bool, as_table: bool) -> u8 {
-    let cfg = match lexi_host::config::load_providers() {
-        Ok(c) => c,
+    let rows = match lexi_host::admin::provider_summaries() {
+        Ok(r) => r,
         Err(e) => return io.fail(e),
     };
-    let empty = serde_json::Map::new();
-    let providers = cfg
-        .get("providers")
-        .and_then(Value::as_object)
-        .unwrap_or(&empty);
-
-    let mut rows = Vec::new();
-    for (name, pcfg) in providers {
-        let source = match lexi_host::config::api_key_source(name, pcfg) {
-            Ok(s) => s,
-            Err(e) => return io.fail(e),
-        };
-        rows.push(json!({
-            "name": name,
-            "url": pcfg.get("url"),
-            "api": pcfg.get("api"),
-            "default_model": pcfg.get("default_model"),
-            "hosted_models": pcfg.get("hosted_models"),
-            "hosted_model_fields": pcfg.get("hosted_model_fields"),
-            "key_source": source,
-        }));
-    }
     let json = Value::Array(rows.clone());
 
     let human = if raw {

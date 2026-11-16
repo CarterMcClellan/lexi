@@ -166,7 +166,9 @@ for ev in lexi.stream("anthropic", "Count to five"):
         print(ev["text"], end="")
 ```
 
-Results are the CLI's `--json` shapes. Prebuilt wheels (macOS, Linux, Windows)
+It also manages that config — `lexi.providers`, `lexi.models`, `lexi.prompts`,
+`lexi.config`, `lexi.apis` mirror the CLI's admin commands. Results are the
+CLI's `--json` shapes. Prebuilt wheels (macOS, Linux, Windows)
 and an sdist are attached to each GitHub Release; download the wheel for your
 platform and `pip install ./lexi-*.whl`. See `lexi-python/README.md`. (Not on
 PyPI — the `lexi` name there is taken.)

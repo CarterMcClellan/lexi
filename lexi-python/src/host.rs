@@ -403,6 +403,282 @@ fn _upload<'py>(py: Python<'py>, provider: String, path: PathBuf) -> PyResult<Bo
     to_py(py, &json!({ "provider": provider, "file_id": file_id }))
 }
 
+// --- admin --------------------------------------------------------------------
+
+/// Typed access to an admin call's keyword arguments.
+struct Args(Map<String, Value>);
+
+impl Args {
+    fn opt_str(&self, k: &str) -> Option<&str> {
+        self.0.get(k).and_then(Value::as_str)
+    }
+    fn str(&self, k: &str) -> PyResult<&str> {
+        self.opt_str(k)
+            .ok_or_else(|| PyValueError::new_err(format!("{k} is required")))
+    }
+    fn string(&self, k: &str) -> PyResult<String> {
+        self.str(k).map(str::to_string)
+    }
+    fn flag(&self, k: &str) -> bool {
+        self.0.get(k).and_then(Value::as_bool).unwrap_or(false)
+    }
+    fn map(&self, k: &str) -> Map<String, Value> {
+        self.0
+            .get(k)
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default()
+    }
+}
+
+fn require_provider(name: &str) -> Result<Value, HostError> {
+    lexi_host::admin::provider_config(name)
+}
+
+/// The admin operations, by `group.verb` (the Python wrappers in
+/// `python/lexi/{providers,models,prompts,config,apis}.py`). Results are the
+/// CLI's `--json` shapes.
+#[pyfunction]
+fn _admin<'py>(py: Python<'py>, op: &str, args: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    use lexi_host::{admin, config as cfg};
+    ensure_home()?;
+    let a = match from_py(args)? {
+        Value::Object(m) => Args(m),
+        Value::Null => Args(Map::new()),
+        _ => return Err(PyValueError::new_err("admin arguments must be a dict")),
+    };
+    let e = lexi_err;
+    let out: Value = match op {
+        // providers
+        "providers.list" => json!(admin::provider_summaries().map_err(e)?),
+        "providers.status" => {
+            let name = a.string("name")?;
+            block_on(py, async move {
+                let st = lexi_host::check_api_key(&name).await?;
+                Ok(json!({ "provider": name, "status": st.status, "source": st.source }))
+            })?
+        }
+        "providers.add" => {
+            let name = a.str("name")?;
+            admin::create_provider(
+                name,
+                a.str("url")?,
+                a.str("default_model")?,
+                a.opt_str("api_key"),
+                a.opt_str("api").unwrap_or("chat-completions"),
+                a.opt_str("hosted_models").unwrap_or("/models"),
+            )
+            .map_err(e)?;
+            json!({ "added": name })
+        }
+        "providers.rename" => {
+            let (old, new) = (a.str("old")?, a.str("new")?);
+            cfg::rename_provider(old, new).map_err(e)?;
+            json!({ "renamed": old, "to": new })
+        }
+        "providers.remove" => {
+            let name = a.str("name")?;
+            cfg::remove_provider(name).map_err(e)?;
+            json!({ "removed": name })
+        }
+        "providers.set_key" => {
+            let name = a.str("name")?;
+            require_provider(name).map_err(e)?;
+            cfg::set_api_key(name, a.str("key")?).map_err(e)?;
+            json!({ "provider": name })
+        }
+        "providers.show_key" => admin::api_key_info(a.str("name")?, a.flag("reveal")).map_err(e)?,
+        "providers.remove_key" => {
+            let name = a.str("name")?;
+            require_provider(name).map_err(e)?;
+            json!({ "removed": cfg::remove_api_key(name).map_err(e)? })
+        }
+
+        // models
+        "models.list" => {
+            let p = a.str("provider")?;
+            require_provider(p).map_err(e)?;
+            json!(cfg::load_models(p).map_err(e)?)
+        }
+        "models.hosted" => {
+            let p = a.string("provider")?;
+            require_provider(&p).map_err(e)?;
+            Value::Array(block_on(py, async move {
+                lexi_host::fetch_hosted_models(&p).await
+            })?)
+        }
+        "models.default" => {
+            let p = a.str("provider")?;
+            require_provider(p).map_err(e)?;
+            json!({ "provider": p, "default_model": cfg::default_model(p).map_err(e)? })
+        }
+        "models.set_default" => {
+            let p = a.str("provider")?;
+            require_provider(p).map_err(e)?;
+            let m = a.opt_str("model");
+            cfg::set_default_model(p, m).map_err(e)?;
+            json!({ "provider": p, "default_model": m })
+        }
+        "models.add" => {
+            let (p, m) = (a.str("provider")?, a.str("model")?);
+            require_provider(p).map_err(e)?;
+            let existed =
+                cfg::upsert_model(p, m, &a.map("fields"), a.flag("default")).map_err(e)?;
+            json!({ "provider": p, "model": m, "existed": existed })
+        }
+        "models.remove" => {
+            let (p, m) = (a.str("provider")?, a.str("model")?);
+            require_provider(p).map_err(e)?;
+            cfg::delete_model(p, m).map_err(e)?;
+            json!({ "provider": p, "removed": m })
+        }
+        "models.aliases" => {
+            let p = a.str("provider")?;
+            require_provider(p).map_err(e)?;
+            let mut aliases: Vec<_> = cfg::model_aliases(p).map_err(e)?.into_iter().collect();
+            aliases.sort_by(|x, y| x.0.cmp(&y.0));
+            Value::Array(
+                aliases
+                    .into_iter()
+                    .map(|(alias, model)| json!({ "alias": alias, "model": model }))
+                    .collect(),
+            )
+        }
+        "models.set_alias" => {
+            let (p, al, m) = (a.str("provider")?, a.str("alias")?, a.str("model")?);
+            require_provider(p).map_err(e)?;
+            cfg::set_model_alias(p, al, m).map_err(e)?;
+            json!({ "provider": p, "alias": al, "model": m })
+        }
+        "models.remove_alias" => {
+            let (p, al) = (a.str("provider")?, a.str("alias")?);
+            require_provider(p).map_err(e)?;
+            cfg::delete_model_alias(p, al).map_err(e)?;
+            json!({ "provider": p, "removed": al })
+        }
+
+        // prompts
+        "prompts.list" => json!(admin::prompt_summaries().map_err(e)?),
+        "prompts.get" => {
+            let name = a.str("name")?;
+            admin::prompt_summaries()
+                .map_err(e)?
+                .into_iter()
+                .find(|p| p["name"] == name)
+                .ok_or_else(|| lexi_err(format!("prompt {name:?} not found")))?
+        }
+        "prompts.save" => admin::update_prompt(a.str("name")?, &a.map("fields")).map_err(e)?,
+        "prompts.remove" => {
+            let name = a.str("name")?;
+            cfg::delete_prompt(name).map_err(e)?;
+            json!({ "removed": name })
+        }
+        "prompts.activate" => {
+            let name = a.str("name")?;
+            cfg::set_active_prompt(name).map_err(e)?;
+            json!({ "active": name })
+        }
+
+        // config (app settings)
+        "config.list" => Value::Object(admin::settings().map_err(e)?),
+        "config.get" => {
+            let key = a.str("key")?;
+            let v = admin::settings()
+                .map_err(e)?
+                .get(key)
+                .cloned()
+                .ok_or_else(|| lexi_err(format!("config key {key:?} not found")))?;
+            json!({ "key": key, "value": v })
+        }
+        "config.set" => {
+            let key = a.str("key")?;
+            let value = a.0.get("value").cloned().unwrap_or(Value::Null);
+            let mut update = Map::new();
+            update.insert(key.to_string(), value.clone());
+            cfg::set_config(&update).map_err(e)?;
+            json!({ "key": key, "value": value })
+        }
+        "config.remove" => {
+            let key = a.str("key")?;
+            if !cfg::delete_config(key).map_err(e)? {
+                return Err(lexi_err(format!("config key {key:?} not found")));
+            }
+            json!({ "removed": key })
+        }
+
+        // API definitions
+        "apis.list" => json!(admin::api_summaries().map_err(e)?),
+        "apis.show" => cfg::load_api_def(a.str("name")?).map_err(e)?,
+        "apis.validate" => {
+            let name = a.str("name")?;
+            let (valid, errors) = cfg::validate_api_def(name).map_err(e)?;
+            json!({ "name": name, "valid": valid, "errors": errors })
+        }
+        "apis.preview" => cfg::preview_api_def(
+            a.opt_str("name"),
+            a.opt_str("yaml"),
+            a.opt_str("prompt").unwrap_or("Sample prompt"),
+            a.opt_str("model").unwrap_or("sample-model"),
+            a.opt_str("role").unwrap_or("user"),
+        )
+        .map_err(e)?,
+        "apis.create" => {
+            let name = a.str("name")?;
+            if cfg::load_api_def(name).is_ok() {
+                return Err(lexi_err(format!(
+                    "API definition {name:?} already exists; use apis.edit to modify it"
+                )));
+            }
+            cfg::create_api_def(
+                name,
+                a.opt_str("template"),
+                a.opt_str("path"),
+                a.opt_str("text_path"),
+            )
+            .map_err(e)?;
+            json!({ "created": name })
+        }
+        "apis.edit" => {
+            let name = a.str("name")?;
+            let meta: Vec<(String, String)> = a
+                .map("metadata")
+                .into_iter()
+                .map(|(k, v)| {
+                    (
+                        k,
+                        v.as_str()
+                            .map(str::to_string)
+                            .unwrap_or_else(|| v.to_string()),
+                    )
+                })
+                .collect();
+            cfg::edit_api_def(name, a.opt_str("path"), a.opt_str("text_path"), &meta).map_err(e)?;
+            json!({ "updated": name })
+        }
+        "apis.save" => {
+            let name = a.str("name")?;
+            if cfg::embedded_api_names().contains(&name) {
+                return Err(lexi_err(format!(
+                    "{name:?} is a shipped definition and can't be replaced; save under another name"
+                )));
+            }
+            let errors = cfg::save_api_raw(name, a.str("yaml")?).map_err(e)?;
+            json!({ "saved": name, "valid": errors.is_empty(), "errors": errors })
+        }
+        "apis.remove" => {
+            let name = a.str("name")?;
+            cfg::delete_api_def(name).map_err(e)?;
+            json!({ "removed": name })
+        }
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown admin operation {other:?}"
+            )))
+        }
+    };
+    to_py(py, &out)
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("LexiError", m.py().get_type_bound::<LexiError>())?;
     m.add_class::<ChatStream>()?;
@@ -414,5 +690,6 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(_job_wait, m)?)?;
     m.add_function(wrap_pyfunction!(_generate, m)?)?;
     m.add_function(wrap_pyfunction!(_upload, m)?)?;
+    m.add_function(wrap_pyfunction!(_admin, m)?)?;
     Ok(())
 }

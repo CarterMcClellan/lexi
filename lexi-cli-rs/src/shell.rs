@@ -131,7 +131,7 @@ pub async fn execute_line(line: &str, io: &mut Io<'_>, opts: RunOptions) -> Line
 pub(crate) async fn repl(io: &mut Io<'_>, opts: RunOptions) -> u8 {
     use rustyline::error::ReadlineError;
 
-    let cfg = crate::commands::config::effective_config().unwrap_or_default();
+    let cfg = lexi_host::admin::settings().unwrap_or_default();
     let get = |k: &str, d: &str| {
         cfg.get(k)
             .map(|v| crate::output::scalar(Some(v)))
