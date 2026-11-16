@@ -1,0 +1,25 @@
+{
+  "name": "catalog-openai-shutdown-date",
+  "description": "`present` rules: a non-null shutdown_date marks the model deprecated; null says nothing.",
+  "catalog": {
+    "tags": {
+      "status:deprecated": {
+        "path": "shutdown_date",
+        "present": true
+      }
+    }
+  },
+  "entry": {
+    "id": "gpt-image-1",
+    "object": "model",
+    "created": 1,
+    "owned_by": "system",
+    "shutdown_date": "2026-10-23"
+  },
+  "expect_tags": [
+    "+status:deprecated"
+  ],
+  "expect_facts": {
+    "limits": {}
+  }
+}

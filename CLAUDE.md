@@ -25,12 +25,13 @@ Surface principle (`docs/cli-consolidation-plan.md` §3): library, language bind
 - Design: `docs/provider-model-design.md`. A provider offers one or more **bindings** (`apis: [{api, for?, default_model?, url?}]`); the older single `api:` still reads as one binding.
 - Shipped **provider templates** (`lexi-core/providers/*.yaml`, embedded) — an entry with `template: openai` is the template merged with the entry (`lexi_core::merge_provider_template`); `config::load_providers` applies it.
 - **Tags** (closed vocabulary in `lexi_core::models`: `in:`/`out:`/`kind:`/`feature:`/`status:`, plus free-form `label:`) describe models; layers: API defaults → provider `tag_rules` (globs) → catalog → user tags (`providers/<p>/model-tags.yaml`). `lexi_core::classify_model` picks the binding (first `for:` match, else a catch-all whose API serves the model's kind); `lexi_host::models::resolve_model` is the entry point for respond/generate. Pinned by `conformance/cases/model/`.
+- **Catalog** (`catalog:` in a template: path, pagination, `tags`/`limits`/`name` value rules → `lexi_core::catalog_tags`/`catalog_facts`): `models hosted` fetches and caches `providers/<p>/catalog.json`; classification reads only the cache (no hidden network calls), so catalog models are usable unconfigured. `prepare_chat` checks requests against the model (`ResolvedModel::check_request`: `in:image` for images, output-token limits — a default over the limit is lowered, an explicit one refused; deprecated → warning); `--no-validate` skips it.
 - Put provider-specific knowledge in templates / tag rules / API definitions, never in code.
 
 ### Configuration Structure
 - Config dir: `~/.lexi-cli/` (override with `$LEXI_HOME`)
 - Main provider config: `providers/providers-config.yaml`
-- Per-provider: `providers/<provider>/configured-models.yaml`, `model-aliases.yaml`, `default-model.yaml`, `model-tags.yaml` (your tags), `api-key` (0600)
+- Per-provider: `providers/<provider>/configured-models.yaml`, `model-aliases.yaml`, `default-model.yaml`, `model-tags.yaml` (your tags), `catalog.json` (cached listing), `api-key` (0600)
 - Command aliases: `aliases.json`; CLI settings: `config.json`; shell history: `history`
 - Prompts: individual JSON files in `prompts/` (the active prompt is `$$`)
 - API definitions: shipped ones are embedded in the binary (`lexi-core/apis/`) and always win; `apis/` holds custom definitions only

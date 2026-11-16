@@ -185,6 +185,8 @@ respond openai "Draw a fox and describe it" --tool image_generation
 upload openai ./report.pdf                                 # Files API upload; prints the file id
 ```
 
+`models hosted <provider>` lists what the provider serves, with each model's kind and API — filter with `--tag out:image` — and caches the list so those models can be used without configuring them. Where a provider describes its models (Anthropic: image/PDF input, thinking, token limits), that becomes tags too, and `respond` checks requests against it before sending (`--no-validate` skips that).
+
 Each provider can offer several APIs, and a model's **tags** decide which one serves it (`models tags openai gpt-image-2.5-flare` shows why). The shipped OpenAI template serves chat models through the Responses API and `gpt-image-*` models through the Images API, so the image-only flags (`--size`, `--quality`, `--n`, …) appear when the request goes there. Images are saved as `<prompt-words>-<n>.png` and never overwrite an existing file. Tag models a provider can't describe with `models tag <provider> <model> +kind:image-generation` (see `tags` for the vocabulary). `upload` works with providers whose API definition has a `files` block (`responses`, `messages`).
 
 > Upgrading from an older config: entries without `template:` keep working as one API per provider. Add `template: openai` (or `anthropic` / `nvidia`) under a provider to get the shipped APIs and tag rules; your own settings still win.

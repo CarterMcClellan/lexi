@@ -133,12 +133,37 @@ fn pinned_api(provider: &str, model: &str) -> Result<Option<String>, HostError> 
 /// source}], error?}` (see `lexi_core::classify_model`). No network I/O.
 pub fn classify(provider: &str, model: &str) -> Result<Value, HostError> {
     let pcfg = require_provider(provider)?;
+    let entry = crate::hosted::cached_entry(provider, &pcfg, model);
+    classify_with(provider, &pcfg, model, entry)
+}
+
+/// [`classify`] with the listing entry already in hand.
+fn classify_with(
+    provider: &str,
+    pcfg: &Value,
+    model: &str,
+    entry: Option<Value>,
+) -> Result<Value, HostError> {
+    let pcfg = pcfg.clone();
     let pinned = pinned_api(provider, model)?;
     let defs = binding_defs(&pcfg, pinned.as_deref())?;
     let user = Value::Object(user_model_tags(provider)?);
+    let catalog = crate::hosted::catalog_cfg(&pcfg);
+    let catalog_ops = entry
+        .as_ref()
+        .map(|e| json!(lexi_core::catalog_tags(e, &catalog)))
+        .unwrap_or(Value::Null);
     let mut out =
-        lexi_core::classify_model(&pcfg, &defs, model, &user, &Value::Null, pinned.as_deref());
+        lexi_core::classify_model(&pcfg, &defs, model, &user, &catalog_ops, pinned.as_deref());
     out["provider"] = Value::from(provider);
+    out["in_catalog"] = Value::Bool(entry.is_some());
+    if let Some(e) = &entry {
+        let facts = lexi_core::catalog_facts(e, &catalog);
+        out["limits"] = facts["limits"].clone();
+        if let Some(n) = facts.get("name") {
+            out["name"] = n.clone();
+        }
+    }
     Ok(out)
 }
 
@@ -155,6 +180,9 @@ pub struct ResolvedModel {
     pub tags: Vec<Value>,
     /// The binding's effective config, with the model's own overrides merged.
     pub effective: Value,
+    /// Limits from the provider's catalog (`context_window`,
+    /// `max_output_tokens`, …), when the cached listing has the model.
+    pub limits: Map<String, Value>,
 }
 
 impl ResolvedModel {
@@ -233,8 +261,10 @@ pub fn resolve_model(
         t["tag"].as_str().is_some_and(|x| x.starts_with("kind:"))
             && t["source"].as_str().is_some_and(|s| !s.starts_with("api:"))
     });
+    let in_catalog = cls["in_catalog"].as_bool().unwrap_or(false);
     if explicit
         && !recognized
+        && !in_catalog
         && !configured.is_empty()
         && !configured.iter().any(|x| x.id == model)
     {
@@ -299,7 +329,46 @@ pub fn resolve_model(
         kind,
         tags,
         effective,
+        limits: cls["limits"].as_object().cloned().unwrap_or_default(),
     })
+}
+
+/// Request-body fields that cap a reply's output tokens, across APIs.
+pub const OUTPUT_TOKEN_KEYS: &[&str] =
+    &["max_tokens", "max_output_tokens", "max_completion_tokens"];
+
+impl ResolvedModel {
+    /// Check a composed request against what the model's tags and limits say
+    /// it accepts. Returns errors (refuse) and warnings (send anyway).
+    pub fn check_request(&self, body: &Value, has_images: bool) -> (Vec<String>, Vec<String>) {
+        let (mut errors, mut warnings) = (Vec::new(), Vec::new());
+        let m = &self.model;
+        if has_images && !self.has_tag("in:image") {
+            errors.push(format!(
+                "{m} doesn't accept image input (no in:image tag); if it does, tag it: \
+                 `lexi models tag {} {m} +in:image` (or pass --no-validate)",
+                self.provider
+            ));
+        }
+        if let Some(limit) = self.limits.get("max_output_tokens").and_then(Value::as_u64) {
+            for key in OUTPUT_TOKEN_KEYS {
+                if let Some(n) = body.get(*key).and_then(Value::as_u64) {
+                    if n > limit {
+                        errors.push(format!(
+                            "{key} {n} is more than {m} allows ({limit}); lower it (or pass --no-validate)"
+                        ));
+                    }
+                }
+            }
+        }
+        if self.has_tag("status:deprecated") {
+            warnings.push(format!(
+                "{m} is deprecated by {} and may stop working; see `lexi models hosted {}`",
+                self.provider, self.provider
+            ));
+        }
+        (errors, warnings)
+    }
 }
 
 /// A provider that defines its API inline (`request:` / `response:`, no `api`):
@@ -333,6 +402,7 @@ fn resolve_inline(
         kind: None,
         tags: Vec::new(),
         effective,
+        limits: Map::new(),
     })
 }
 
@@ -358,4 +428,63 @@ pub fn model_summaries(provider: &str) -> Result<Vec<Value>, HostError> {
             Ok(v)
         })
         .collect()
+}
+
+/// The provider's hosted models (the catalog), each with Lexi's
+/// classification added: the provider's entry plus `kind`, `api` and `tags`
+/// (tag names). `cached` reads the last fetch instead of the network (an error
+/// if there is none); otherwise fetches and refreshes the cache. With `tags`,
+/// only models having all of them.
+pub async fn hosted_summaries(
+    provider: &str,
+    cached: bool,
+    tags: &[String],
+) -> Result<Vec<Value>, HostError> {
+    let pcfg = require_provider(provider)?;
+    for t in tags {
+        lexi_core::validate_tag(t).map_err(HostError::Invalid)?;
+    }
+    let entries = if cached {
+        crate::hosted::cached_catalog(provider)?
+            .and_then(|c| c.get("models").and_then(Value::as_array).cloned())
+            .ok_or_else(|| {
+                HostError::Invalid(format!(
+                    "no cached catalog for {provider}; run `lexi models hosted {provider}` first"
+                ))
+            })?
+    } else {
+        crate::hosted::fetch_hosted_models(provider).await?
+    };
+    let id_path = crate::hosted::catalog_cfg(&pcfg)
+        .get("id_path")
+        .and_then(Value::as_str)
+        .unwrap_or("id")
+        .to_string();
+    let mut out = Vec::new();
+    for entry in entries {
+        let Some(id) = lexi_core::get_path(&entry, &id_path)
+            .and_then(Value::as_str)
+            .map(String::from)
+        else {
+            continue;
+        };
+        let cls = classify_with(provider, &pcfg, &id, Some(entry.clone()))?;
+        let names: Vec<Value> = cls["tags"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|t| t.get("tag").cloned())
+            .collect();
+        if !tags.iter().all(|t| names.iter().any(|n| n == t.as_str())) {
+            continue;
+        }
+        let mut v = entry;
+        if let Some(o) = v.as_object_mut() {
+            o.insert("kind".into(), cls["kind"].clone());
+            o.insert("api".into(), cls["api"].clone());
+            o.insert("tags".into(), Value::Array(names));
+        }
+        out.push(v);
+    }
+    Ok(out)
 }

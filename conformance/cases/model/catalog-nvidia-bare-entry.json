@@ -1,0 +1,32 @@
+{
+  "name": "catalog-nvidia-bare-entry",
+  "description": "An entry without the optional fields: nothing derived, nothing removed.",
+  "catalog": {
+    "tags": {
+      "in:image": {
+        "path": "model_type",
+        "in": [
+          "vlm"
+        ]
+      },
+      "feature:tools": {
+        "path": "supports_tools"
+      }
+    },
+    "limits": {
+      "context_window": {
+        "path": "context_window"
+      }
+    }
+  },
+  "entry": {
+    "id": "bigcode/starcoder2-15b",
+    "object": "model",
+    "created": 735790403,
+    "owned_by": "bigcode"
+  },
+  "expect_tags": [],
+  "expect_facts": {
+    "limits": {}
+  }
+}

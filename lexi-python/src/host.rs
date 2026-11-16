@@ -538,9 +538,19 @@ fn _admin<'py>(py: Python<'py>, op: &str, args: &Bound<'py, PyAny>) -> PyResult<
         "tags.vocabulary" => lexi_host::models::tag_vocabulary(),
         "models.hosted" => {
             let p = a.string("provider")?;
-            require_provider(&p).map_err(e)?;
+            let cached = a.flag("cached");
+            let tags: Vec<String> =
+                a.0.get("tags")
+                    .and_then(Value::as_array)
+                    .map(|v| {
+                        v.iter()
+                            .filter_map(Value::as_str)
+                            .map(String::from)
+                            .collect()
+                    })
+                    .unwrap_or_default();
             Value::Array(block_on(py, async move {
-                lexi_host::fetch_hosted_models(&p).await
+                lexi_host::models::hosted_summaries(&p, cached, &tags).await
             })?)
         }
         "models.default" => {

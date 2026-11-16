@@ -177,3 +177,28 @@ def test_model_tags_and_resolution(home):
 
     listed = {m["id"]: m for m in lexi.models.list("anthropic")}
     assert all(m["api"] == "messages" and "kind:chat" in m["tags"] for m in listed.values())
+
+
+def test_hosted_catalog_tags_and_cache(home):
+    m = Mock()
+    try:
+        m.routes[("GET", "/models")] = ok({"data": [
+            {"id": "claude-a", "capabilities": {"image_input": {"supported": True}}, "max_tokens": 1000},
+            {"id": "claude-b", "capabilities": {"image_input": {"supported": False}}},
+        ]})
+        (home / "providers").mkdir(parents=True, exist_ok=True)
+        lexi.providers.list()  # seed
+        (home / "providers" / "providers-config.yaml").write_text(
+            f"providers:\n  anthropic:\n    template: anthropic\n    url: {m.url}\n    api_key: k\n"
+        )
+        # The template pages with ?limit=1000 (the mock routes on the path).
+        all_ = lexi.models.hosted("anthropic")
+        assert [x["id"] for x in all_] == ["claude-a", "claude-b"]
+        assert all_[0]["api"] == "messages" and "in:image" in all_[0]["tags"]
+        assert "in:image" not in all_[1]["tags"]
+        only = lexi.models.hosted("anthropic", tags=["in:image"], cached=True)
+        assert [x["id"] for x in only] == ["claude-a"]
+        assert lexi.models.tags("anthropic", "claude-a")["limits"] == {"max_output_tokens": 1000}
+        assert lexi.models.resolve("anthropic", "claude-b")["api"] == "messages"  # catalog-only model
+    finally:
+        m.server.shutdown()

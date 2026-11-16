@@ -355,6 +355,12 @@ pub enum ModelsCmd {
         /// Render as a table.
         #[arg(short, long)]
         table: bool,
+        /// Only models with this tag (repeatable: all must match), e.g. out:image.
+        #[arg(long = "tag", value_name = "TAG")]
+        tags: Vec<String>,
+        /// Use the last fetched listing instead of calling the provider.
+        #[arg(long)]
+        cached: bool,
     },
     /// Show a provider's default model, or set it.
     Default {

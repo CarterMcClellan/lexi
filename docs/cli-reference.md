@@ -416,6 +416,8 @@ lexi models hosted [OPTIONS] <PROVIDER>
 - `<PROVIDER>`
 - `-r, --raw` — Print the models as JSON
 - `-t, --table` — Render as a table
+- `--tag` — Only models with this tag (repeatable: all must match), e.g. out:image
+- `--cached` — Use the last fetched listing instead of calling the provider
 
 #### `models default`
 

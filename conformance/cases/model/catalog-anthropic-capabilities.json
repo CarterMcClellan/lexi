@@ -1,0 +1,70 @@
+{
+  "name": "catalog-anthropic-capabilities",
+  "description": "Anthropic's /models entries carry real capability data: supported → add, unsupported → remove; limits and display name read too.",
+  "catalog": {
+    "tags": {
+      "in:image": {
+        "path": "capabilities.image_input.supported"
+      },
+      "in:document": {
+        "path": "capabilities.pdf_input.supported"
+      },
+      "feature:thinking": {
+        "path": "capabilities.thinking.supported"
+      },
+      "feature:structured-output": {
+        "path": "capabilities.structured_outputs.supported"
+      }
+    },
+    "limits": {
+      "context_window": {
+        "path": "max_input_tokens"
+      },
+      "max_output_tokens": {
+        "path": "max_tokens"
+      }
+    },
+    "name": {
+      "path": "display_name"
+    }
+  },
+  "entry": {
+    "id": "claude-x",
+    "type": "model",
+    "display_name": "Claude X",
+    "max_input_tokens": 200000,
+    "max_tokens": 64000,
+    "capabilities": {
+      "image_input": {
+        "supported": true
+      },
+      "pdf_input": {
+        "supported": false
+      },
+      "thinking": {
+        "supported": true,
+        "types": {
+          "adaptive": {
+            "supported": true
+          }
+        }
+      },
+      "structured_outputs": {
+        "supported": true
+      }
+    }
+  },
+  "expect_tags": [
+    "+in:image",
+    "-in:document",
+    "+feature:thinking",
+    "+feature:structured-output"
+  ],
+  "expect_facts": {
+    "limits": {
+      "context_window": 200000,
+      "max_output_tokens": 64000
+    },
+    "name": "Claude X"
+  }
+}

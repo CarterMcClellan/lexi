@@ -18,7 +18,9 @@ pub(crate) async fn run(io: &mut Io<'_>, cmd: ModelsCmd) -> u8 {
             provider,
             raw,
             table,
-        } => hosted(io, &provider, raw, table).await,
+            tags,
+            cached,
+        } => hosted(io, &provider, raw, table, &tags, cached).await,
         ModelsCmd::Default { provider, model } => default(io, &provider, model.as_deref()),
         ModelsCmd::Alias { cmd } => match cmd {
             ModelAliasCmd::List { provider, raw } => alias_list(io, &provider, raw),
@@ -208,12 +210,19 @@ fn list(
     io.result(human, json)
 }
 
-async fn hosted(io: &mut Io<'_>, provider: &str, raw: bool, as_table: bool) -> u8 {
+async fn hosted(
+    io: &mut Io<'_>,
+    provider: &str,
+    raw: bool,
+    as_table: bool,
+    tags: &[String],
+    cached: bool,
+) -> u8 {
     let pcfg = match require_provider(io, provider) {
         Ok(c) => c,
         Err(code) => return code,
     };
-    let items = match lexi_host::fetch_hosted_models(provider).await {
+    let items = match lexi_host::models::hosted_summaries(provider, cached, tags).await {
         Ok(i) => i,
         Err(e) => return io.fail(e),
     };
@@ -222,17 +231,32 @@ async fn hosted(io: &mut Io<'_>, provider: &str, raw: bool, as_table: bool) -> u
         return io.result(pretty(&json), json);
     }
     if items.is_empty() {
-        return io.result(format!("No hosted models returned for {provider}."), json);
+        let what = if tags.is_empty() {
+            String::new()
+        } else {
+            format!(" tagged {}", tags.join(" "))
+        };
+        return io.result(format!("No hosted models{what} for {provider}."), json);
     }
-    // Columns: the provider's configured hosted_model_fields, else the first
-    // item's keys, else just the value itself.
-    let fields: Vec<String> = pcfg
-        .get("hosted_model_fields")
+    // Columns: the catalog's fields (else the first item's keys), then Lexi's
+    // classification: kind and the API that serves it.
+    let catalog_fields = pcfg
+        .pointer("/catalog/fields")
+        .or_else(|| pcfg.get("hosted_model_fields"))
         .and_then(Value::as_array)
-        .filter(|a| !a.is_empty())
+        .filter(|a| !a.is_empty());
+    let mut fields: Vec<String> = catalog_fields
         .map(|a| a.iter().map(|v| scalar(Some(v))).collect())
-        .or_else(|| items[0].as_object().map(|o| o.keys().cloned().collect()))
+        .or_else(|| {
+            items[0].as_object().map(|o| {
+                o.keys()
+                    .filter(|k| !["kind", "api", "tags"].contains(&k.as_str()))
+                    .cloned()
+                    .collect()
+            })
+        })
         .unwrap_or_else(|| vec!["id".into()]);
+    fields.extend(["kind".to_string(), "api".to_string()]);
     let cells = |item: &Value| -> Vec<String> {
         match item.as_object() {
             Some(o) => fields.iter().map(|f| scalar(o.get(f))).collect(),

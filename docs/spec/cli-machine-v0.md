@@ -53,9 +53,9 @@ API keys are never included in any result except `providers api-key show`
 | `providers api-key set` / `show` / `remove` | `{"provider"}` / `{"provider", "source", "key"}` / `{"removed": bool}` |
 | `models list` | `[{"id", "name", "description", "default", "aliases", "metadata", "kind", "api", "tags"}]` — `api` serves the model; `tags` its effective tags |
 | `models tag` | `{"provider", "model", "tags": ["+tag" \| "-tag", …]}` (your ops on that id/glob) · with `--clear`: `{"provider", "model", "cleared": bool}` |
-| `models tags` | `{"provider", "model", "kind", "api", "binding", "tags": [{"tag", "source"}], "error"?}` — `api`/`binding` null and `error` set when no API serves the model; `source` ∈ `api:<name>`, `rule:<glob>`, `catalog`, `user`, `kind` |
+| `models tags` | `{"provider", "model", "kind", "api", "binding", "tags": [{"tag", "source"}], "in_catalog", "limits"?, "name"?, "error"?}` (`limits`/`name` from the cached catalog) — `api`/`binding` null and `error` set when no API serves the model; `source` ∈ `api:<name>`, `rule:<glob>`, `catalog`, `user`, `kind` |
 | `tags` | `{"namespaces": {"in", "out", "kind", "feature", "status"}, "kinds": {"<kind>": {"in", "out"}}, "labels"}` |
-| `models hosted` | the provider's model entries, as a flat array |
+| `models hosted` | the provider's model entries, as a flat array, each with Lexi's `"kind"`, `"api"` and `"tags"` added; `--tag T` keeps entries having every given tag; `--cached` reads the last fetch |
 | `models default` | `{"provider", "default_model"}` (`null` when unset) |
 | `models add` / `set` / `rm` | `{"provider", "model", "existed"}` / same / `{"provider", "removed"}` |
 | `models alias list` | `[{"alias", "model"}]` |
@@ -65,7 +65,7 @@ API keys are never included in any result except `providers api-key show`
 | `api validate` | `{"name", "valid", "errors"}` |
 | `api preview` | `{"name", "description", "valid", "errors", "flags", "presets", "body" \| "body_error"}` |
 | `api create` / `edit` / `save` / `rm` | `{"created"}` / `{"updated"}` / `{"saved", "valid", "errors"}` / `{"removed"}` |
-| `respond` (buffered) | `{"provider", "model", "api", "text", "artifacts", "metadata", "activity"?, "sources"?, "raw"?}` — `api` is the API that served it; `artifacts` the files saved (§6); `sources` with `--cite`, `raw` with `--raw` |
+| `respond` (buffered) | `{"provider", "model", "api", "text", "artifacts", "metadata", "activity"?, "sources"?, "raw"?, "warnings"?}` — `api` is the API that served it; `artifacts` the files saved (§6); `sources` with `--cite`, `raw` with `--raw` |
 | `respond --background --detach` | the operation (§5) plus `"provider"` |
 | `generate` | the `respond` result (it is `respond --output image`) |
 | `upload` | `{"provider", "file_id"}` |
