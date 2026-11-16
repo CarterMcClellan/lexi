@@ -20,7 +20,8 @@ fn shell_runs_lines_records_history_and_replays_entries() {
     );
     assert!(o.status.success(), "{}", stderr(&o));
     let out = stdout(&o);
-    assert_eq!(out.matches("lexi 0.1.0 (rust)").count(), 3, "{out}");
+    let banner = format!("lexi {} (rust)", env!("CARGO_PKG_VERSION"));
+    assert_eq!(out.matches(banner.as_str()).count(), 3, "{out}");
     assert!(
         out.ends_with("1: version\n2: config set theme x\n3: version\n4: version\n5: history\n"),
         "{out}"
@@ -66,15 +67,15 @@ fn shell_keeps_going_after_errors_and_stops_at_exit() {
     assert!(err.contains("could not parse command"), "{err}");
     assert!(err.contains("out of range"), "{err}");
     assert!(
-        !stdout(&o).contains("lexi 0.1.0"),
+        !stdout(&o).contains(concat!("lexi ", env!("CARGO_PKG_VERSION"))),
         "nothing runs after exit"
     );
 
     // The shipped `q` alias also exits; so does EOF.
     let o = session(home.path(), &["q", "version"]);
-    assert!(!stdout(&o).contains("lexi 0.1.0"));
+    assert!(!stdout(&o).contains(concat!("lexi ", env!("CARGO_PKG_VERSION"))));
     let o = session(home.path(), &["version"]);
-    assert!(o.status.success() && stdout(&o).contains("lexi 0.1.0"));
+    assert!(o.status.success() && stdout(&o).contains(concat!("lexi ", env!("CARGO_PKG_VERSION"))));
 }
 
 #[test]

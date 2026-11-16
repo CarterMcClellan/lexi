@@ -25,7 +25,9 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-latest, target: x86_64 }
-          - { os: ubuntu-latest, target: aarch64 }
+          # Built natively on an ARM runner: the manylinux cross-compiler is too
+          # old for ring (TLS), which the wheel needs since it gained lexi-host.
+          - { os: ubuntu-22.04-arm, target: aarch64 }
           - { os: macos-latest, target: aarch64 }
           - { os: macos-latest, target: x86_64 }
           - { os: windows-latest, target: x64 }
