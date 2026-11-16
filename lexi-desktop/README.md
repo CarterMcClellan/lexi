@@ -40,7 +40,7 @@ Rust-core architecture vs. bundling Chromium + Node + Python.
 `tauri-action`, attaching them to a draft GitHub Release.
 
 ```sh
-git tag v0.1.0 && git push origin v0.1.0
+git tag v0.2.0 && git push origin v0.2.0
 ```
 
 ## Signing / notarization (needs your credentials)
