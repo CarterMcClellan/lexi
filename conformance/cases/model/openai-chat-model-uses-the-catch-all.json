@@ -1,0 +1,67 @@
+{
+  "name": "openai-chat-model-uses-the-catch-all",
+  "description": "An unmatched-kind model goes to the first binding without `for:`; API tags plus rule tags.",
+  "provider": {
+    "apis": [
+      {
+        "api": "responses",
+        "default_model": "gpt-4o"
+      },
+      {
+        "api": "image-generations",
+        "for": [
+          "kind:image-generation"
+        ],
+        "default_model": "gpt-image-2.5-flare"
+      }
+    ],
+    "tag_rules": {
+      "gpt-image-*": [
+        "kind:image-generation"
+      ],
+      "chatgpt-image-*": [
+        "kind:image-generation"
+      ],
+      "text-embedding-*": [
+        "kind:embedding"
+      ],
+      "gpt-*": [
+        "feature:tools",
+        "feature:web-search"
+      ]
+    }
+  },
+  "model": "gpt-4o",
+  "expect": {
+    "model": "gpt-4o",
+    "kind": "chat",
+    "api": "responses",
+    "binding": 0,
+    "tags": [
+      {
+        "tag": "in:image",
+        "source": "api:responses"
+      },
+      {
+        "tag": "in:text",
+        "source": "api:responses"
+      },
+      {
+        "tag": "out:text",
+        "source": "api:responses"
+      },
+      {
+        "tag": "kind:chat",
+        "source": "api:responses"
+      },
+      {
+        "tag": "feature:tools",
+        "source": "rule:gpt-*"
+      },
+      {
+        "tag": "feature:web-search",
+        "source": "rule:gpt-*"
+      }
+    ]
+  }
+}

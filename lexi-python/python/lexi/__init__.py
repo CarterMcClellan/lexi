@@ -44,6 +44,7 @@ __all__ = [
     "prepare",
     "generate",
     "upload",
+    "tags",
     "jobs",
     "providers",
     "models",
@@ -224,6 +225,12 @@ def generate(
     Returns ``{"provider", "artifacts": [{"path", "revised_prompt"}]}``.
     """
     return _lexi._generate(provider, prompt, model, os.fspath(out_dir))
+
+
+def tags() -> Dict[str, Any]:
+    """The model tag vocabulary (``lexi tags``): ``{namespaces: {in, out, kind,
+    feature, status}, kinds: {kind: {in, out}}, labels}``."""
+    return _lexi._admin("tags.vocabulary", {})
 
 
 def upload(provider: str, path: Union[str, "os.PathLike[str]"]) -> Dict[str, Any]:

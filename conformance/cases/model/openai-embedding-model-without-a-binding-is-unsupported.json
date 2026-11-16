@@ -1,0 +1,56 @@
+{
+  "name": "openai-embedding-model-without-a-binding-is-unsupported",
+  "description": "kind:embedding, and no binding serves embeddings: an error, not a fall-through to chat.",
+  "provider": {
+    "apis": [
+      {
+        "api": "responses",
+        "default_model": "gpt-4o"
+      },
+      {
+        "api": "image-generations",
+        "for": [
+          "kind:image-generation"
+        ],
+        "default_model": "gpt-image-2.5-flare"
+      }
+    ],
+    "tag_rules": {
+      "gpt-image-*": [
+        "kind:image-generation"
+      ],
+      "chatgpt-image-*": [
+        "kind:image-generation"
+      ],
+      "text-embedding-*": [
+        "kind:embedding"
+      ],
+      "gpt-*": [
+        "feature:tools",
+        "feature:web-search"
+      ]
+    }
+  },
+  "model": "text-embedding-3-large",
+  "expect": {
+    "model": "text-embedding-3-large",
+    "kind": "embedding",
+    "api": null,
+    "binding": null,
+    "tags": [
+      {
+        "tag": "in:text",
+        "source": "kind"
+      },
+      {
+        "tag": "out:vector",
+        "source": "kind"
+      },
+      {
+        "tag": "kind:embedding",
+        "source": "rule:text-embedding-*"
+      }
+    ],
+    "error": "text-embedding-3-large is a kind:embedding model, and this provider has no API configured for it"
+  }
+}

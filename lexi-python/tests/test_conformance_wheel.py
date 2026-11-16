@@ -47,6 +47,7 @@ DEFINITION = _cases("definition")
 OPERATION = _cases("operation")
 UPLOAD = _cases("upload")
 STREAM = _cases("stream")
+MODEL = _cases("model")
 
 
 @pytest.mark.parametrize("path", REQUEST, ids=[_id(p) for p in REQUEST])
@@ -185,6 +186,24 @@ def test_preview_binding() -> None:
     assert "body" not in bad
 
 
+@pytest.mark.parametrize("path", MODEL, ids=[_id(p) for p in MODEL])
+def test_model(path: Path) -> None:
+    case = _load_json(path)
+    if "template" in case:
+        got = lexi.merge_provider_template(case["template"], case["entry"])
+    else:
+        provider = case["provider"]
+        names = [b["api"] for b in lexi.provider_bindings(provider)]
+        if case.get("pinned_api"):
+            names.append(case["pinned_api"])
+        defs = {n: _load_api(n) for n in names}
+        got = lexi.classify_model(
+            provider, defs, case["model"],
+            case.get("user_tags"), case.get("catalog_tags"), case.get("pinned_api"),
+        )
+    assert got == case["expect"], case["name"]
+
+
 def test_suite_non_empty() -> None:
     assert REQUEST and RESPONSE and MESSAGE and CAPABILITY and OPERATION and UPLOAD and STREAM
-    assert DEFINITION
+    assert DEFINITION and MODEL

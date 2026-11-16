@@ -47,11 +47,14 @@ API keys are never included in any result except `providers api-key show`
 | `prompts list <name>` · `prompts set` | one prompt object as above |
 | `prompts rm` · `prompts activate` | `{"removed"}` · `{"active"}` |
 | `prompts <text…>` | the ad-hoc payload `{"prompt", "max_tokens", "temperature", "role"}` |
-| `providers list` | `[{"name", "url", "api", "default_model", "hosted_models", "hosted_model_fields", "key_source"}]`; `key_source` ∈ `"file" \| "env" \| "config" \| null` |
+| `providers list` | `[{"name", "template", "url", "api", "apis", "default_model", "hosted_models", "hosted_model_fields", "key_source"}]`; `api` is the catch-all binding's API, `apis` every binding's; `key_source` ∈ `"file" \| "env" \| "config" \| null` |
 | `providers status` | `{"provider", "status", "source"}`; `status` ∈ `"ready" \| "no api-key" \| "invalid api-key"` |
 | `providers add` / `rename` / `rm` | `{"added"}` / `{"renamed", "to"}` / `{"removed"}` |
 | `providers api-key set` / `show` / `remove` | `{"provider"}` / `{"provider", "source", "key"}` / `{"removed": bool}` |
-| `models list` | `[{"id", "name", "description", "default", "aliases", "metadata"}]` |
+| `models list` | `[{"id", "name", "description", "default", "aliases", "metadata", "kind", "api", "tags"}]` — `api` serves the model; `tags` its effective tags |
+| `models tag` | `{"provider", "model", "tags": ["+tag" \| "-tag", …]}` (your ops on that id/glob) · with `--clear`: `{"provider", "model", "cleared": bool}` |
+| `models tags` | `{"provider", "model", "kind", "api", "binding", "tags": [{"tag", "source"}], "error"?}` — `api`/`binding` null and `error` set when no API serves the model; `source` ∈ `api:<name>`, `rule:<glob>`, `catalog`, `user`, `kind` |
+| `tags` | `{"namespaces": {"in", "out", "kind", "feature", "status"}, "kinds": {"<kind>": {"in", "out"}}, "labels"}` |
 | `models hosted` | the provider's model entries, as a flat array |
 | `models default` | `{"provider", "default_model"}` (`null` when unset) |
 | `models add` / `set` / `rm` | `{"provider", "model", "existed"}` / same / `{"provider", "removed"}` |

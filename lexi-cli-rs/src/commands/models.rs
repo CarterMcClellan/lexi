@@ -39,6 +39,13 @@ pub(crate) async fn run(io: &mut Io<'_>, cmd: ModelsCmd) -> u8 {
             model,
             meta,
         } => upsert(io, &provider, &model, meta, true),
+        ModelsCmd::Tag {
+            provider,
+            model,
+            ops,
+            clear,
+        } => tag(io, &provider, &model, &ops, clear),
+        ModelsCmd::Tags { provider, model } => tags(io, &provider, &model),
         ModelsCmd::Rm { provider, model } => {
             if let Err(code) = require_provider(io, &provider) {
                 return code;
@@ -97,7 +104,23 @@ fn list(
         Ok(a) => a,
         Err(e) => return io.fail(e),
     };
-    let json = json!(models);
+    let json = match lexi_host::models::model_summaries(provider) {
+        Ok(s) => Value::Array(s),
+        Err(e) => return io.fail(e),
+    };
+    let tag_line = |id: &str| -> Option<String> {
+        let entry = json.as_array()?.iter().find(|m| m["id"] == id)?;
+        let tags: Vec<&str> = entry["tags"]
+            .as_array()?
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        Some(format!(
+            "api: {} | tags: {}",
+            scalar(entry.get("api")),
+            tags.join(" ")
+        ))
+    };
 
     if raw {
         let mut text =
@@ -132,6 +155,7 @@ fn list(
                             .into_iter()
                             .map(|(k, v)| format!("{k}: {v}")),
                     );
+                    desc.extend(tag_line(&m.id));
                 }
                 vec![label, aliases.join(", "), desc.join("\n")]
             })
@@ -167,6 +191,9 @@ fn list(
             if details {
                 for (k, v) in extra_metadata(&m.metadata) {
                     lines.push(format!("    {k}: {v}"));
+                }
+                if let Some(t) = tag_line(&m.id) {
+                    lines.push(format!("    {t}"));
                 }
             }
         }
@@ -368,4 +395,93 @@ fn alias_rm(io: &mut Io<'_>, provider: &str, alias: &str) -> u8 {
         ),
         Err(e) => io.fail(e),
     }
+}
+
+fn tag(io: &mut Io<'_>, provider: &str, model: &str, ops: &[String], clear: bool) -> u8 {
+    if clear {
+        return match lexi_host::models::clear_model_tags(provider, model) {
+            Ok(had) => {
+                let human = if had {
+                    format!("Cleared your tags on {model}.")
+                } else {
+                    format!("No tags of yours on {model}.")
+                };
+                io.result(
+                    human,
+                    json!({ "provider": provider, "model": model, "cleared": had }),
+                )
+            }
+            Err(e) => io.fail(e),
+        };
+    }
+    match lexi_host::models::tag_model(provider, model, ops) {
+        Ok(now) => io.result(
+            format!("{model}: {}", now.join(" ")),
+            json!({ "provider": provider, "model": model, "tags": now }),
+        ),
+        Err(e) => io.fail(e),
+    }
+}
+
+/// `models tags`: the classification, tag by tag with its source.
+fn tags(io: &mut Io<'_>, provider: &str, model: &str) -> u8 {
+    let cls = match lexi_host::models::classify(provider, model) {
+        Ok(c) => c,
+        Err(e) => return io.fail(e),
+    };
+    let mut lines = vec![format!(
+        "{model}: kind {} → api {}",
+        scalar(cls.get("kind")),
+        if cls["api"].is_null() {
+            "(none)".to_string()
+        } else {
+            scalar(cls.get("api"))
+        }
+    )];
+    for t in cls["tags"].as_array().into_iter().flatten() {
+        lines.push(format!(
+            "  {:<28} {}",
+            scalar(t.get("tag")),
+            scalar(t.get("source"))
+        ));
+    }
+    if let Some(err) = cls.get("error").and_then(Value::as_str) {
+        lines.push(format!("unsupported: {err}"));
+    }
+    io.result(lines.join("\n"), cls)
+}
+
+/// `tags`: the vocabulary.
+pub(crate) fn vocabulary(io: &mut Io<'_>) -> u8 {
+    let v = lexi_host::models::tag_vocabulary();
+    let mut lines = Vec::new();
+    for (ns, tags) in v["namespaces"].as_object().into_iter().flatten() {
+        let names: Vec<&str> = tags
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        lines.push(format!("{ns}: {}", names.join(", ")));
+    }
+    lines.push("label:<name>  (your own labels, for filtering only)".into());
+    lines.push(String::new());
+    lines.push("Kinds imply input/output tags:".into());
+    for (kind, io_) in v["kinds"].as_object().into_iter().flatten() {
+        let list = |k: &str| {
+            io_[k]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        lines.push(format!(
+            "  kind:{kind:<18} in:{}  out:{}",
+            list("in"),
+            list("out")
+        ));
+    }
+    io.result(lines.join("\n"), v)
 }

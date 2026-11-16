@@ -87,6 +87,16 @@ lexi jobs wait [OPTIONS] <PROVIDER> <ID>
 - `--interval` — Seconds between polls
 - `--timeout` — Give up after this many seconds
 
+## `tags`
+
+#### `tags`
+
+Show the model tag vocabulary (namespaces, kinds and what they imply)
+
+```
+lexi tags
+```
+
 ## `version`
 
 #### `version`
@@ -498,6 +508,32 @@ Remove a model
 
 ```
 lexi models rm <PROVIDER> <MODEL>
+```
+
+- `<PROVIDER>`
+- `<MODEL>`
+
+#### `models tag`
+
+Add or remove tags on a model id or glob: `+out:image`, `-in:image`.
+
+Tags describe what a model takes, produces and supports; they decide which of the provider's APIs serves it. Your tags win over the provider's tag rules. See `lexi tags` for the vocabulary.
+
+```
+lexi models tag [OPTIONS] <PROVIDER> <MODEL> [OPS]...
+```
+
+- `<PROVIDER>`
+- `<MODEL>` — A model id, or a glob such as "meta/*"
+- `<OPS>` — Tag operations: `+tag` (or `tag`) adds, `-tag` removes
+- `--clear` — Remove all of your tags on this model or glob
+
+#### `models tags`
+
+Show a model's effective tags, where each came from, and its API
+
+```
+lexi models tags <PROVIDER> <MODEL>
 ```
 
 - `<PROVIDER>`

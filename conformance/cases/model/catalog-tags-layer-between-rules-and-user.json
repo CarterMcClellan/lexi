@@ -1,0 +1,61 @@
+{
+  "name": "catalog-tags-layer-between-rules-and-user",
+  "description": "Catalog-derived ops apply after rules and before user tags.",
+  "provider": {
+    "apis": [
+      "chat-completions"
+    ],
+    "tag_rules": {
+      "*embed*": [
+        "kind:embedding"
+      ],
+      "*guard*": [
+        "kind:classifier"
+      ],
+      "*safety*": [
+        "kind:classifier"
+      ],
+      "*-vl-*": [
+        "in:image"
+      ]
+    }
+  },
+  "model": "deepseek-ai/deepseek-v4.1-flash",
+  "catalog_tags": [
+    "feature:tools",
+    "feature:thinking"
+  ],
+  "user_tags": {
+    "deepseek-ai/*": [
+      "-feature:thinking"
+    ]
+  },
+  "expect": {
+    "model": "deepseek-ai/deepseek-v4.1-flash",
+    "kind": "chat",
+    "api": "chat-completions",
+    "binding": 0,
+    "tags": [
+      {
+        "tag": "in:image",
+        "source": "api:chat-completions"
+      },
+      {
+        "tag": "in:text",
+        "source": "api:chat-completions"
+      },
+      {
+        "tag": "out:text",
+        "source": "api:chat-completions"
+      },
+      {
+        "tag": "kind:chat",
+        "source": "api:chat-completions"
+      },
+      {
+        "tag": "feature:tools",
+        "source": "catalog"
+      }
+    ]
+  }
+}

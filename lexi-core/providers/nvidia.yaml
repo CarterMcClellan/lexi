@@ -1,0 +1,27 @@
+# Shipped template for NVIDIA's hosted API catalog (see openai.yaml for how
+# templates merge). One /models listing mixes chat, vision, embedding and
+# safety models with almost no type data, so names do the classifying; tag
+# anything they miss with `lexi models tag nvidia <model> +kind:…`.
+url: https://integrate.api.nvidia.com/v1
+api_key: ${NVIDIA_API_KEY}
+
+apis:
+  - api: chat-completions
+    default_model: meta/llama-3.1-70b-instruct
+
+# Every matching rule applies, in order: start text-only, then add image input
+# back for the vision models.
+tag_rules:
+  "*": [-in:image]
+  "*embed*": [kind:embedding]
+  "nvidia/nvclip": [kind:embedding, in:image]
+  "*rerank*": [kind:rerank]
+  "*guard*": [kind:classifier]
+  "*safety*": [kind:classifier]
+  "*-detector*": [kind:detector]
+  "*-vl-*": [in:image]
+  "*vision*": [in:image]
+  "*omni*": [in:image, in:audio]
+
+hosted_models: /models
+hosted_model_fields: [id, owned_by]

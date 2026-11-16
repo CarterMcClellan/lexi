@@ -12,8 +12,10 @@ def test_providers_lifecycle(home):
     assert {"openai", "anthropic", "nvidia"} <= set(names)
     row = next(p for p in lexi.providers.list() if p["name"] == "openai")
     assert set(row) == {
-        "name", "url", "api", "default_model", "hosted_models", "hosted_model_fields", "key_source",
+        "name", "template", "url", "api", "apis", "default_model", "hosted_models",
+        "hosted_model_fields", "key_source",
     }
+    assert row["template"] == "openai" and row["apis"] == ["responses", "image-generations"]
 
     assert lexi.providers.add("mine", "https://x.example/v1", "m1", api_key="sk-abcdefghij") == {
         "added": "mine"
@@ -142,3 +144,36 @@ def test_api_definitions(home, tmp_path):
 
     assert lexi.apis.remove("mine") == {"removed": "mine"}
     assert "mine" not in [d["name"] for d in lexi.apis.list()]
+
+
+def test_model_tags_and_resolution(home):
+    # The shipped OpenAI template routes image models to the Images API.
+    img = lexi.models.tags("openai", "gpt-image-2.5-flare")
+    assert img["api"] == "image-generations" and img["kind"] == "image-generation"
+    assert {"tag": "kind:image-generation", "source": "rule:gpt-image-*"} in img["tags"]
+    assert lexi.models.resolve("openai", output="image")["api"] == "image-generations"
+    assert lexi.models.resolve("openai")["api"] == "responses"
+
+    # NVIDIA classifiers have no API: classification says why; resolve raises.
+    safety = lexi.models.tags("nvidia", "nvidia/nemotron-3.5-content-safety")
+    assert safety["api"] is None and "classifier" in safety["error"]
+    with pytest.raises(lexi.LexiError, match="kind:classifier"):
+        lexi.models.resolve("nvidia", "nvidia/nemotron-3.5-content-safety")
+
+    # User tags win and persist per provider.
+    out = lexi.models.tag("nvidia", "meta/*", add=["feature:tools", "label:big"], remove=["in:text"])
+    assert out["tags"] == ["+feature:tools", "+label:big", "-in:text"]
+    tags = {t["tag"]: t["source"] for t in lexi.models.tags("nvidia", "meta/llama-3.1-70b-instruct")["tags"]}
+    assert tags["label:big"] == "user" and "in:text" not in tags
+    assert (home / "providers" / "nvidia" / "model-tags.yaml").exists()
+    assert lexi.models.tag("nvidia", "meta/*", clear=True)["cleared"] is True
+
+    with pytest.raises(lexi.LexiError, match="unknown tag"):
+        lexi.models.tag("nvidia", "x", add=["out:smell"])
+
+    vocab = lexi.tags()
+    assert "image-generation" in vocab["namespaces"]["kind"]
+    assert vocab["kinds"]["embedding"] == {"in": ["text"], "out": ["vector"]}
+
+    listed = {m["id"]: m for m in lexi.models.list("anthropic")}
+    assert all(m["api"] == "messages" and "kind:chat" in m["tags"] for m in listed.values())

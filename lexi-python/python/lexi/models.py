@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from ._admin import call
 
 
 def list(provider: str) -> List[Dict[str, Any]]:
-    """Configured models: ``[{id, name, description, default, aliases, metadata}]``."""
+    """Configured models: ``[{id, name, description, default, aliases, metadata,
+    kind, api, tags}]`` — ``api`` is the API that serves the model, ``tags`` its
+    effective tags."""
     return call("models.list", provider=provider)
 
 
@@ -70,3 +72,34 @@ def set_alias(provider: str, alias: str, model: str) -> Dict[str, Any]:
 def remove_alias(provider: str, alias: str) -> Dict[str, Any]:
     """Remove an alias."""
     return call("models.remove_alias", provider=provider, alias=alias)
+
+
+def tag(
+    provider: str,
+    model: str,
+    add: Iterable[str] = (),
+    remove: Iterable[str] = (),
+    *,
+    clear: bool = False,
+) -> Dict[str, Any]:
+    """Add or remove your tags on a model id or glob (``"meta/*"``):
+    ``tag("nvidia", "some/model", add=["kind:image-generation"], remove=["in:image"])``.
+    ``clear=True`` removes all of your tags on it. Tags must be in the
+    vocabulary (:func:`lexi.tags`); ``label:<name>`` is free-form."""
+    if clear:
+        return call("models.tag", provider=provider, model=model, clear=True)
+    ops = ["+" + t for t in add] + ["-" + t for t in remove]
+    return call("models.tag", provider=provider, model=model, ops=ops)
+
+
+def tags(provider: str, model: str) -> Dict[str, Any]:
+    """A model's classification: ``{provider, model, kind, api, binding,
+    tags: [{tag, source}], error?}`` — ``error`` when no API serves it."""
+    return call("models.tags", provider=provider, model=model)
+
+
+def resolve(provider: str, model: Optional[str] = None, *, output: str = "text") -> Dict[str, Any]:
+    """Which model and API a request would use: ``{provider, model, api, kind,
+    tags}``. With no ``model``, the default for ``output`` (``"text"``,
+    ``"image"``, …). Raises :class:`lexi.LexiError` when nothing serves it."""
+    return call("models.resolve", provider=provider, model=model, output=output)

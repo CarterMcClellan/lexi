@@ -1,0 +1,54 @@
+{
+  "name": "nvidia-user-tag-removes-image-input",
+  "description": "User tags win: removing in:image from a vision model's API defaults.",
+  "provider": {
+    "apis": [
+      "chat-completions"
+    ],
+    "tag_rules": {
+      "*embed*": [
+        "kind:embedding"
+      ],
+      "*guard*": [
+        "kind:classifier"
+      ],
+      "*safety*": [
+        "kind:classifier"
+      ],
+      "*-vl-*": [
+        "in:image"
+      ]
+    }
+  },
+  "model": "meta/llama-3.1-70b-instruct",
+  "user_tags": {
+    "meta/*": [
+      "-in:image",
+      "label:big"
+    ]
+  },
+  "expect": {
+    "model": "meta/llama-3.1-70b-instruct",
+    "kind": "chat",
+    "api": "chat-completions",
+    "binding": 0,
+    "tags": [
+      {
+        "tag": "in:text",
+        "source": "api:chat-completions"
+      },
+      {
+        "tag": "out:text",
+        "source": "api:chat-completions"
+      },
+      {
+        "tag": "kind:chat",
+        "source": "api:chat-completions"
+      },
+      {
+        "tag": "label:big",
+        "source": "user"
+      }
+    ]
+  }
+}

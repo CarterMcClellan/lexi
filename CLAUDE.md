@@ -21,10 +21,16 @@ Surface principle (`docs/cli-consolidation-plan.md` §3): library, language bind
 - Commands write through `output::Io` (never directly to stdio), so `lexi_cli::run_with` / `execute_line` work in-process with captured output.
 - Config-driven API abstraction: provider auth, request body, and response parsing are defined in YAML, not hardcoded.
 
+### Providers, APIs and model tags
+- Design: `docs/provider-model-design.md`. A provider offers one or more **bindings** (`apis: [{api, for?, default_model?, url?}]`); the older single `api:` still reads as one binding.
+- Shipped **provider templates** (`lexi-core/providers/*.yaml`, embedded) — an entry with `template: openai` is the template merged with the entry (`lexi_core::merge_provider_template`); `config::load_providers` applies it.
+- **Tags** (closed vocabulary in `lexi_core::models`: `in:`/`out:`/`kind:`/`feature:`/`status:`, plus free-form `label:`) describe models; layers: API defaults → provider `tag_rules` (globs) → catalog → user tags (`providers/<p>/model-tags.yaml`). `lexi_core::classify_model` picks the binding (first `for:` match, else a catch-all whose API serves the model's kind); `lexi_host::models::resolve_model` is the entry point for respond/generate. Pinned by `conformance/cases/model/`.
+- Put provider-specific knowledge in templates / tag rules / API definitions, never in code.
+
 ### Configuration Structure
 - Config dir: `~/.lexi-cli/` (override with `$LEXI_HOME`)
 - Main provider config: `providers/providers-config.yaml`
-- Per-provider: `providers/<provider>/configured-models.yaml`, `model-aliases.yaml`, `default-model.yaml`, `api-key` (0600)
+- Per-provider: `providers/<provider>/configured-models.yaml`, `model-aliases.yaml`, `default-model.yaml`, `model-tags.yaml` (your tags), `api-key` (0600)
 - Command aliases: `aliases.json`; CLI settings: `config.json`; shell history: `history`
 - Prompts: individual JSON files in `prompts/` (the active prompt is `$$`)
 - API definitions: shipped ones are embedded in the binary (`lexi-core/apis/`) and always win; `apis/` holds custom definitions only
@@ -53,9 +59,9 @@ pip install ./lexi-python pytest pyyaml && pytest lexi-python/tests
 ## Key Implementation Details
 
 ### Provider System
-- Three preconfigured providers: OpenAI (`responses`), Anthropic (`messages`), NVIDIA (`chat-completions`)
+- Three preconfigured providers, each from a shipped template: OpenAI (`responses` + `image-generations`), Anthropic (`messages`), NVIDIA (`chat-completions`)
 - API key lookup: the provider's `api-key` file first, then the config's `api_key` (`${ENV_VAR}` or literal)
-- Model resolution: `--model` (aliases resolved; must be configured), else `default-model.yaml`, else the config's `default_model`; per-model `auth`/`request`/`response` overrides are deep-merged
+- Model resolution (`lexi_host::models::resolve_model`): `--model` (aliases resolved; must be configured or recognized by a `kind:` tag from a rule or your tags), else the default model of the binding producing the requested output (catch-all: `default-model.yaml` first); per-model `auth`/`request`/`response` overrides are deep-merged; an explicit `api:` on a configured model pins its binding
 - Providers reference an API definition with `api:` (or define `request`/`response` inline); provider entries deep-merge over it
 
 ### Configuration Seeding

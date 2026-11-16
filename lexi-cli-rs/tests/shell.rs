@@ -89,7 +89,7 @@ fn aliases_expand_in_the_shell_and_one_off_commands() {
     // One-off: `lexi prov list` and `lexi pl -r` (extra args follow the expansion).
     assert!(stdout(&lexi_out(h, &["prov", "list"])).contains("anthropic: url="));
     assert!(stdout(&lexi_out(h, &["--json", "pl"])).starts_with('['));
-    assert!(stdout(&lexi_out(h, &["pl", "-r"])).starts_with("providers:"));
+    assert!(stdout(&lexi_out(h, &["pl", "-r"])).contains("\nproviders:\n"));
     // In the shell.
     assert!(stdout(&session(h, &["pl"])).contains("anthropic: url="));
 

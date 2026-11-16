@@ -388,3 +388,40 @@ fn definitions() {
     }
     finish("definition", failures);
 }
+
+#[test]
+fn models() {
+    let mut failures = Vec::new();
+    let files = case_files("model");
+    assert!(!files.is_empty(), "no model cases found");
+
+    for path in files {
+        let case = load_json(&path);
+        let nm = name_of(&path);
+        let got = if let Some(template) = case.get("template") {
+            core::merge_provider_template(template, &case["entry"])
+        } else {
+            let provider = &case["provider"];
+            let mut defs = serde_json::Map::new();
+            for b in core::provider_bindings(provider) {
+                let name = b["api"].as_str().unwrap().to_string();
+                defs.insert(name.clone(), load_api(&name));
+            }
+            if let Some(p) = case.get("pinned_api").and_then(Value::as_str) {
+                defs.insert(p.to_string(), load_api(p));
+            }
+            core::classify_model(
+                provider,
+                &defs,
+                case["model"].as_str().unwrap(),
+                case.get("user_tags").unwrap_or(&Value::Null),
+                case.get("catalog_tags").unwrap_or(&Value::Null),
+                case.get("pinned_api").and_then(Value::as_str),
+            )
+        };
+        if got != case["expect"] {
+            failures.push(format!("{nm}: got {got}"));
+        }
+    }
+    finish("model", failures);
+}

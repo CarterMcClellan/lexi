@@ -1,0 +1,15 @@
+# Shipped template for Anthropic (see openai.yaml for how templates merge).
+# Every Claude model speaks the Messages API and returns text; the /models
+# listing carries real capability data (read by the catalog in a later slice).
+url: https://api.anthropic.com/v1
+api_key: ${ANTHROPIC_API_KEY}
+
+apis:
+  - api: messages
+    default_model: claude-3-5-sonnet-20241022
+
+tag_rules:
+  "claude-*": [feature:tools]
+
+hosted_models: /models
+hosted_model_fields: [id, display_name, max_input_tokens, max_tokens]

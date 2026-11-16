@@ -33,6 +33,54 @@ const EMBEDDED_APIS: &[(&str, &str)] = &[
     ),
 ];
 
+/// Provider templates embedded at build time (`lexi-core/providers/`). A
+/// provider entry with `template: <name>` is the template merged with the entry.
+const EMBEDDED_TEMPLATES: &[(&str, &str)] = &[
+    (
+        "openai",
+        include_str!("../../lexi-core/providers/openai.yaml"),
+    ),
+    (
+        "anthropic",
+        include_str!("../../lexi-core/providers/anthropic.yaml"),
+    ),
+    (
+        "nvidia",
+        include_str!("../../lexi-core/providers/nvidia.yaml"),
+    ),
+];
+
+/// The names of the shipped provider templates.
+pub fn template_names() -> Vec<&'static str> {
+    EMBEDDED_TEMPLATES.iter().map(|(n, _)| *n).collect()
+}
+
+/// A shipped provider template.
+pub fn provider_template(name: &str) -> Result<Value, HostError> {
+    let (_, text) = EMBEDDED_TEMPLATES
+        .iter()
+        .find(|(n, _)| *n == name)
+        .ok_or_else(|| {
+            HostError::Config(format!(
+                "unknown provider template {name:?} (shipped: {})",
+                template_names().join(", ")
+            ))
+        })?;
+    Ok(serde_yaml::from_str(text)?)
+}
+
+/// A provider entry with its `template:` (if any) applied.
+fn resolve_template(entry: &Value) -> Result<Value, HostError> {
+    match entry.get("template").and_then(Value::as_str) {
+        Some(name) => {
+            let mut merged = lexi_core::merge_provider_template(&provider_template(name)?, entry);
+            merged["template"] = Value::from(name); // keep where it came from
+            Ok(merged)
+        }
+        None => Ok(entry.clone()),
+    }
+}
+
 /// The Lexi config dir: `$LEXI_HOME`, else `~/.lexi-cli`.
 pub fn lexi_home() -> PathBuf {
     if let Ok(h) = std::env::var("LEXI_HOME") {
@@ -70,12 +118,19 @@ pub fn load_api_def(name: &str) -> Result<Value, HostError> {
     Err(HostError::UnknownApi(name.to_string()))
 }
 
-/// Load `providers-config.yaml`.
+/// Load `providers-config.yaml`, with each entry's `template:` applied (the
+/// file itself is read and written raw by the provider writers below).
 pub fn load_providers() -> Result<Value, HostError> {
     let path = lexi_home().join("providers").join("providers-config.yaml");
     let text = std::fs::read_to_string(&path)
         .map_err(|_| HostError::Config(format!("no providers-config at {}", path.display())))?;
-    Ok(serde_yaml::from_str(&text)?)
+    let mut doc: Value = serde_yaml::from_str(&text)?;
+    if let Some(providers) = doc.get_mut("providers").and_then(Value::as_object_mut) {
+        for entry in providers.values_mut() {
+            *entry = resolve_template(entry)?;
+        }
+    }
+    Ok(doc)
 }
 
 /// Deep-merge `overlay` over `base`: dicts recurse, lists/scalars are replaced
@@ -97,18 +152,48 @@ pub fn deep_merge(base: &Value, overlay: &Value) -> Value {
     }
 }
 
-/// Effective config = the referenced API definition with the provider entry
-/// merged over it (provider wins).
+/// Effective config for the provider's catch-all binding (its first binding
+/// without `for:`) — the API definition with the provider entry merged over it
+/// (provider wins). See [`binding_config`] for a specific binding.
 pub fn effective_config(provider_name: &str, provider_cfg: &Value) -> Result<Value, HostError> {
-    let Some(api_name) = provider_cfg.get("api").and_then(Value::as_str) else {
-        // No `api:` reference: the provider may define its API inline.
+    let bindings = lexi_core::provider_bindings(provider_cfg);
+    let Some(binding) = bindings
+        .iter()
+        .find(|b| b.get("for").is_none())
+        .or(bindings.first())
+    else {
+        // No API reference: the provider may define its API inline.
         if provider_cfg.get("request").is_some_and(Value::is_object) {
             return Ok(provider_cfg.clone());
         }
         return Err(HostError::MissingApi(provider_name.to_string()));
     };
+    binding_config(provider_cfg, binding)
+}
+
+/// Provider keys that describe the provider's APIs and models rather than
+/// configure a request; not merged into an effective config.
+const CLASSIFICATION_KEYS: &[&str] = &["apis", "api", "tag_rules", "template", "replace"];
+
+/// Effective config for one binding: its API definition, then the provider
+/// entry, then the binding's own keys (`url`, `auth`, `request`, `response`,
+/// `default_model`, …).
+pub fn binding_config(provider_cfg: &Value, binding: &Value) -> Result<Value, HostError> {
+    let api_name = binding.get("api").and_then(Value::as_str).unwrap_or("");
     let api_def = load_api_def(api_name)?;
-    Ok(deep_merge(&api_def, provider_cfg))
+    let mut provider = provider_cfg.clone();
+    if let Some(p) = provider.as_object_mut() {
+        for k in CLASSIFICATION_KEYS {
+            p.shift_remove(*k);
+        }
+    }
+    let mut over = binding.clone();
+    if let Some(b) = over.as_object_mut() {
+        b.shift_remove("for");
+    }
+    let mut eff = deep_merge(&deep_merge(&api_def, &provider), &over);
+    eff["api"] = Value::from(api_name);
+    Ok(eff)
 }
 
 /// Resolve a provider's API key: the per-provider key file
