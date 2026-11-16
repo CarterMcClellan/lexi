@@ -111,28 +111,46 @@ pub fn effective_config(provider_name: &str, provider_cfg: &Value) -> Result<Val
 /// Resolve a provider's API key: an explicit `api_key` (with `${VAR}` env
 /// expansion), else `~/.lexi-cli/providers/<name>/api-key`.
 pub fn resolve_api_key(provider_name: &str, provider_cfg: &Value) -> Result<String, HostError> {
+    find_api_key(&lexi_home(), provider_name, provider_cfg)?
+        .map(|(key, _)| key)
+        .ok_or_else(|| HostError::MissingApiKey(provider_name.to_string()))
+}
+
+/// Where a provider's API key would come from, without revealing it:
+/// `"env"` (a `${VAR}` reference that is set), `"config"` (a literal in
+/// providers-config.yaml), `"file"` (`providers/<name>/api-key`), or `None`.
+/// Same precedence as [`resolve_api_key`].
+pub fn api_key_source(
+    provider_name: &str,
+    provider_cfg: &Value,
+) -> Result<Option<&'static str>, HostError> {
+    Ok(find_api_key(&lexi_home(), provider_name, provider_cfg)?.map(|(_, source)| source))
+}
+
+fn find_api_key(
+    home: &Path,
+    provider_name: &str,
+    provider_cfg: &Value,
+) -> Result<Option<(String, &'static str)>, HostError> {
     if let Some(raw) = provider_cfg.get("api_key").and_then(Value::as_str) {
         if let Some(var) = raw.strip_prefix("${").and_then(|s| s.strip_suffix('}')) {
             if let Ok(val) = std::env::var(var) {
                 if !val.is_empty() {
-                    return Ok(val);
+                    return Ok(Some((val, "env")));
                 }
             }
         } else if !raw.is_empty() {
-            return Ok(raw.to_string());
+            return Ok(Some((raw.to_string(), "config")));
         }
     }
-    let key_file = lexi_home()
-        .join("providers")
-        .join(provider_name)
-        .join("api-key");
+    let key_file = home.join("providers").join(provider_name).join("api-key");
     if key_file.exists() {
         let s = std::fs::read_to_string(&key_file)?.trim().to_string();
         if !s.is_empty() {
-            return Ok(s);
+            return Ok(Some((s, "file")));
         }
     }
-    Err(HostError::MissingApiKey(provider_name.to_string()))
+    Ok(None)
 }
 
 /// Extract provider names from a loaded providers config (declaration order).
@@ -163,10 +181,14 @@ fn read_provider_file(home: &Path, provider: &str, file: &str) -> Result<Value, 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ModelInfo {
     pub id: String,
+    /// Display name (`name` in configured-models.yaml).
+    pub name: Option<String>,
     pub description: Option<String>,
     pub default: bool,
     /// Aliases that resolve to this model id.
     pub aliases: Vec<String>,
+    /// The model's full metadata entry (name, description, max_tokens, …).
+    pub metadata: Value,
 }
 
 /// Load a provider's configured models, enriched with its default model and
@@ -204,12 +226,14 @@ fn load_models_in(home: &Path, provider: &str) -> Result<Vec<ModelInfo>, HostErr
                 .unwrap_or_default();
             ModelInfo {
                 id: id.clone(),
+                name: meta.get("name").and_then(Value::as_str).map(str::to_string),
                 description: meta
                     .get("description")
                     .and_then(Value::as_str)
                     .map(str::to_string),
                 default: default.as_deref() == Some(id.as_str()),
                 aliases: alias_list,
+                metadata: meta.clone(),
             }
         })
         .collect())

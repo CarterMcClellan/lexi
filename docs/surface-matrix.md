@@ -26,16 +26,19 @@ next plan). **GUI** names the desktop tab.
 | Attach images to a prompt | `resolve_image`, `resolve_images` | `respond` | — | — |
 | Generate images to disk | `generate_images_text`, `generate_images_with_effective` | `generate` | — | — |
 | Upload a file | `upload_file`, `upload_file_with_effective` | `upload` | — | — |
-| List providers | `provider_names`, `list_providers`, `load_providers` | planned (C2) | — | Providers |
-| List configured models | `load_models` | planned (C2) | — | Models |
-| List hosted models | `fetch_hosted_models`, `fetch_hosted_models_with` | planned (C2) | — | Models |
-| Get / set default model | `default_model`, `set_default_model` | planned (C2 read, C3 write) | — | Models |
-| List / set / remove model aliases | `model_aliases`, `set_model_alias`, `delete_model_alias` | planned (C2 read, C3 write) | — | Models |
+| List providers | `provider_names`, `list_providers`, `load_providers`, `api_key_source` | `providers list` | — | Providers |
+| List configured models | `load_models` | `models list` | — | Models |
+| List hosted models | `fetch_hosted_models`, `fetch_hosted_models_with` | `models hosted` | — | Models |
+| Get / set default model | `default_model`, `set_default_model` | `models default` | — | Models |
+| List model aliases | `model_aliases` | `models alias list` | — | Models |
+| Set / remove model aliases | `set_model_alias`, `delete_model_alias` | planned (C3) | — | Models |
 | Add / update / remove a model | `upsert_model`, `delete_model` | planned (C3) | — | Models |
-| Read / write config | `load_config`, `set_config` | planned (C2 read, C3 write) | — | Config |
-| List / save / remove / activate prompts | `load_prompts`, `save_prompt`, `delete_prompt`, `set_active_prompt` | planned (C2 read, C3 write) | — | Prompts |
-| List / show API definitions | `list_api_defs`, `load_api_raw`, `embedded_api_names` | planned (C2) | — | API definitions |
-| Validate an API definition | `validate_api_def` | planned (C2) | — | API definitions |
+| Read config | `load_config` | `config list` | — | Config |
+| Write config | `set_config` | planned (C3) | — | Config |
+| List prompts | `load_prompts` | `prompts list` | — | Prompts |
+| Save / remove / activate prompts | `save_prompt`, `delete_prompt`, `set_active_prompt` | planned (C3) | — | Prompts |
+| List / show API definitions | `list_api_defs`, `load_api_raw`, `embedded_api_names` | `api list`, `api show` | — | API definitions |
+| Validate an API definition | `validate_api_def` | `api validate` | — | API definitions |
 | Create / save / remove an API definition | `create_api_def`, `save_api_raw`, `delete_api_def` | planned (C3) | — | API definitions |
 | Preview an API definition | `preview_api_def` | planned (C5) | — | API definitions |
 

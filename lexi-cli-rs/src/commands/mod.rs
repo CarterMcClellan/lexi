@@ -1,0 +1,49 @@
+//! Command handlers: each turns parsed arguments into `lexi-host` calls and
+//! reports through [`Io`]. One module per command group.
+
+mod api;
+mod chat;
+mod config;
+mod models;
+mod prompts;
+mod providers;
+
+use crate::cli::Cmd;
+use crate::output::Io;
+
+pub(crate) async fn dispatch(cmd: Cmd, io: &mut Io<'_>) -> u8 {
+    match cmd {
+        Cmd::Respond {
+            provider,
+            prompt,
+            role,
+            model,
+            stream,
+            background,
+            images,
+        } => {
+            chat::respond(
+                io, provider, prompt, role, model, stream, background, images,
+            )
+            .await
+        }
+        Cmd::Generate {
+            provider,
+            prompt,
+            model,
+            out,
+        } => chat::generate(io, provider, prompt, model, out).await,
+        Cmd::Upload { provider, file } => chat::upload(io, provider, file).await,
+        Cmd::Version => chat::version(io),
+        Cmd::Config { cmd } => config::run(io, cmd),
+        Cmd::Prompts { cmd } => prompts::run(io, cmd),
+        Cmd::Providers { cmd } => providers::run(io, cmd),
+        Cmd::Models { cmd } => models::run(io, cmd).await,
+        Cmd::Api { cmd } => api::run(io, cmd),
+    }
+}
+
+/// Read a file under the Lexi home for `--raw` display.
+pub(crate) fn read_home_file(rel: &str) -> std::io::Result<String> {
+    std::fs::read_to_string(lexi_host::config::lexi_home().join(rel))
+}

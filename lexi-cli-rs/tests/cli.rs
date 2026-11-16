@@ -1,44 +1,11 @@
 //! The `lexi` binary end to end: real process, temp `LEXI_HOME`, mock provider.
 
-use std::path::Path;
+mod common;
 
-use assert_cmd::Command;
+use common::{home_with_mock_provider, lexi, run, stdout};
 use serde_json::{json, Value};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-
-fn lexi(home: &Path) -> Command {
-    let mut cmd = Command::cargo_bin("lexi").unwrap();
-    cmd.env("LEXI_HOME", home);
-    cmd
-}
-
-/// A home whose only provider, `mock`, speaks the Messages API at `url`.
-fn home_with_mock_provider(url: &str) -> tempfile::TempDir {
-    let dir = tempfile::tempdir().unwrap();
-    let cfg = dir.path().join("providers/providers-config.yaml");
-    std::fs::create_dir_all(cfg.parent().unwrap()).unwrap();
-    std::fs::write(
-        &cfg,
-        format!(
-            "providers:\n  mock:\n    url: {url}\n    api_key: test-key\n    api: messages\n    default_model: claude-x\n"
-        ),
-    )
-    .unwrap();
-    dir
-}
-
-/// Run the (blocking) binary off the async test runtime.
-async fn run(cmd: Command) -> std::process::Output {
-    let mut cmd = cmd;
-    tokio::task::spawn_blocking(move || cmd.output().unwrap())
-        .await
-        .unwrap()
-}
-
-fn stdout(o: &std::process::Output) -> String {
-    String::from_utf8_lossy(&o.stdout).into_owned()
-}
 
 #[test]
 fn version_human_and_json() {

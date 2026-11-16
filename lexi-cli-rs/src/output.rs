@@ -72,3 +72,34 @@ impl<'a> Io<'a> {
         let _ = self.err.flush();
     }
 }
+
+/// Render a titled table (rounded box, like the Python CLI's `rich` tables).
+pub fn table(title: &str, headers: &[&str], rows: Vec<Vec<String>>) -> String {
+    let mut t = comfy_table::Table::new();
+    t.load_preset(comfy_table::presets::UTF8_FULL_CONDENSED)
+        .apply_modifier(comfy_table::modifiers::UTF8_ROUND_CORNERS)
+        .set_content_arrangement(comfy_table::ContentArrangement::Dynamic)
+        .set_header(headers.iter().copied());
+    // Wrap to the terminal; when not a terminal (piped, captured), to 100 cols.
+    if t.width().is_none() {
+        t.set_width(100);
+    }
+    for row in rows {
+        t.add_row(row);
+    }
+    format!("{title}\n{t}")
+}
+
+/// Pretty-print a JSON value (2-space indent).
+pub fn pretty(value: &Value) -> String {
+    serde_json::to_string_pretty(value).unwrap_or_default()
+}
+
+/// A JSON scalar as display text (strings unquoted; null as empty).
+pub fn scalar(value: Option<&Value>) -> String {
+    match value {
+        None | Some(Value::Null) => String::new(),
+        Some(Value::String(s)) => s.clone(),
+        Some(v) => v.to_string(),
+    }
+}
