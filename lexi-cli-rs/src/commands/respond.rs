@@ -1,18 +1,20 @@
-//! `respond` — send a saved prompt (or inline text) to a provider.
-//!
-//! Grammar (the Python CLI's, plus the Rust host's media/stream options):
+//! `respond` — send a prompt to a provider; get back text, images, or both.
 //!
 //! ```text
-//! respond <provider> [prompt_name] [--text TEXT|-] [--model M] [--role R]
-//!         [--stream] [--background] [--image URL|PATH]…
-//!         [<schema flags>] [--set path=value]… [--unset path]…
-//!         [--tool preset[,preset]]… [--params FILE] [--cite]
-//!         [--raw|-r] [--verbose|-v] [--no-validate]
+//! respond <provider> [TEXT…|-] [--prompt NAME] [--model M] [--output KIND]
+//!         [--out DIR] [--role R] [--stream] [--background [--detach]]
+//!         [--image URL|PATH]… [<schema flags>] [--set path=value]…
+//!         [--unset path]… [--tool preset[,preset]]… [--params FILE]
+//!         [--cite] [--raw|-r] [--verbose|-v] [--no-validate]
 //! ```
 //!
-//! Schema flags come from the provider's API definition (`x-cli` in its
-//! `body_schema`; see `lexi api show <api>`), so they are parsed here rather
-//! than declared to clap.
+//! The words given are the prompt text (`-` reads stdin); with none, the saved
+//! prompt `--prompt NAME`, else the active one. The model's tags pick the API
+//! (`docs/provider-model-design.md`); `--output image` asks for the provider's
+//! image API and default image model. Schema flags come from *that* API's
+//! definition (`x-cli`; see `lexi api show <api>`), so they're parsed here
+//! rather than declared to clap. Images and other artifacts are saved to
+//! `--out` (default: the current directory) and never overwrite a file.
 
 use std::io::Read;
 
@@ -25,6 +27,8 @@ use crate::output::{pretty, Io, EXIT_FAILURE, EXIT_OK};
 struct Plan {
     prompt_name: Option<String>,
     text: Option<String>,
+    output: Option<String>,
+    out_dir: Option<String>,
     role: Option<String>,
     model: Option<String>,
     stream: bool,
@@ -39,6 +43,20 @@ struct Plan {
     raw: bool,
     verbose: bool,
     no_validate: bool,
+}
+
+/// `--model` and `--output` from the raw arguments, before the full parse
+/// (which needs the flags of the API they select).
+fn prescan(args: &[String]) -> (Option<String>, Option<String>) {
+    let (mut model, mut output) = (None, None);
+    for (i, a) in args.iter().enumerate() {
+        match a.as_str() {
+            "--model" => model = args.get(i + 1).cloned(),
+            "--output" => output = args.get(i + 1).cloned(),
+            _ => {}
+        }
+    }
+    (model, output)
 }
 
 /// `--max_tokens` and `--max-tokens` are the same flag.
@@ -59,13 +77,8 @@ fn parse(args: &[String], flag_specs: &[Value], presets: &[String]) -> Result<Pl
         }
     }
     let mut plan = Plan::default();
+    let mut words: Vec<&str> = Vec::new();
     let mut i = 0;
-    if let Some(first) = args.first() {
-        if !first.starts_with('-') {
-            plan.prompt_name = Some(first.clone());
-            i = 1;
-        }
-    }
     let value = |i: usize, flag: &str| -> Result<String, String> {
         args.get(i + 1)
             .cloned()
@@ -77,6 +90,9 @@ fn parse(args: &[String], flag_specs: &[Value], presets: &[String]) -> Result<Pl
         let mut step = 2;
         match tok.as_str() {
             "--text" => plan.text = Some(value(i, "--text")?),
+            "--prompt" => plan.prompt_name = Some(value(i, "--prompt")?),
+            "--output" => plan.output = Some(value(i, "--output")?),
+            "--out" => plan.out_dir = Some(value(i, "--out")?),
             "--role" => plan.role = Some(value(i, "--role")?),
             "--model" => plan.model = Some(value(i, "--model")?),
             "--image" => plan.images.push(value(i, "--image")?),
@@ -110,6 +126,10 @@ fn parse(args: &[String], flag_specs: &[Value], presets: &[String]) -> Result<Pl
                     _ => plan.no_validate = true,
                 }
             }
+            _ if raw_tok == "-" || !raw_tok.starts_with('-') => {
+                words.push(raw_tok);
+                step = 1;
+            }
             _ => {
                 let Some(spec) = flag_map.get(&tok) else {
                     return Err(format!("unknown option {raw_tok:?}"));
@@ -138,8 +158,14 @@ fn parse(args: &[String], flag_specs: &[Value], presets: &[String]) -> Result<Pl
         }
         i += step;
     }
+    if !words.is_empty() {
+        if plan.text.is_some() {
+            return Err("give the prompt text once (as words or --text), not both".into());
+        }
+        plan.text = Some(words.join(" "));
+    }
     if plan.text.is_some() && plan.prompt_name.is_some() {
-        return Err("give a prompt name or --text, not both".into());
+        return Err("give prompt text or --prompt NAME, not both".into());
     }
     if plan.stream && plan.background {
         return Err("--stream and --background can't be combined".into());
@@ -150,7 +176,7 @@ fn parse(args: &[String], flag_specs: &[Value], presets: &[String]) -> Result<Pl
     Ok(plan)
 }
 
-/// The prompt payload: `--text` (or stdin for `-`), else the named or active
+/// The prompt payload: the text (stdin for `-`), else the `--prompt` or active
 /// saved prompt; `--role` overrides its role.
 fn prompt_payload(plan: &Plan) -> Result<Value, String> {
     let mut payload = match &plan.text {
@@ -224,17 +250,16 @@ pub(crate) async fn respond(io: &mut Io<'_>, provider: &str, args: &[String]) ->
         io.json = true;
     }
     let args = &args[..];
-    // The schema (for flags) comes from the provider's effective config.
-    let flag_cfg = lexi_host::config::load_providers().and_then(|all| {
-        let cfg = all
-            .get("providers")
-            .and_then(|p| p.get(provider))
-            .cloned()
-            .ok_or_else(|| lexi_host::HostError::UnknownProvider(provider.into()))?;
-        lexi_host::config::effective_config(provider, &cfg)
-    });
-    let flag_cfg = match flag_cfg {
-        Ok(c) => c,
+    // Schema flags come from the API that serves the request, so resolve the
+    // model (and output kind) first; this also refuses an unservable model
+    // before anything is parsed or sent.
+    let (pre_model, pre_output) = prescan(args);
+    let flag_cfg = match lexi_host::resolve_model(
+        provider,
+        pre_model.as_deref(),
+        pre_output.as_deref().unwrap_or("text"),
+    ) {
+        Ok(r) => r.effective,
         Err(e) => return io.fail(e),
     };
     let flags = lexi_core::cli_flags(&flag_cfg);
@@ -265,6 +290,7 @@ pub(crate) async fn respond(io: &mut Io<'_>, provider: &str, args: &[String]) ->
         set_paths: plan.set_paths.clone(),
         unset_paths: plan.unset_paths.clone(),
         skip_validation: plan.no_validate,
+        output: plan.output.clone(),
     };
     let mode = if plan.stream {
         lexi_host::ChatMode::Stream
@@ -343,8 +369,23 @@ pub(crate) async fn respond(io: &mut Io<'_>, provider: &str, args: &[String]) ->
         Err(e) => return io.fail(e),
     };
 
+    // Images (and other artifacts) the response carried go to files.
+    let out_dir = std::path::PathBuf::from(plan.out_dir.as_deref().unwrap_or("."));
+    let saved = match lexi_host::generate::save_artifacts(&chat, &res, &out_dir).await {
+        Ok(s) => s,
+        Err(e) => return io.fail(e),
+    };
+
     if json_mode {
-        let mut done = chat.result_value(&res, plan.cite, plan.raw);
+        if streaming {
+            for a in &saved {
+                let mut ev = a.to_value();
+                ev["event"] = Value::from("artifact");
+                ev["provider"] = Value::from(provider);
+                io.json_line(&ev);
+            }
+        }
+        let mut done = chat.result_value(&res, plan.cite, plan.raw, &saved);
         if streaming {
             done["event"] = Value::from("provider_done");
         }
@@ -361,12 +402,21 @@ pub(crate) async fn respond(io: &mut Io<'_>, provider: &str, args: &[String]) ->
         return EXIT_OK;
     }
     if !streaming {
-        let text = if res.text.is_empty() {
-            pretty(&res.raw)
-        } else {
-            res.text.clone()
-        };
-        let _ = writeln!(io.out, "{text}");
+        if !res.text.is_empty() {
+            let _ = writeln!(io.out, "{}", res.text);
+        } else if saved.is_empty() {
+            // Nothing extracted: show the payload rather than nothing.
+            let _ = writeln!(io.out, "{}", pretty(&res.raw));
+        }
+    }
+    for a in &saved {
+        let _ = writeln!(io.out, "Saved {}: {}", a.kind, a.path.display());
+        if plan.verbose {
+            if let Some(rp) = &a.revised_prompt {
+                let line = format!("[revised prompt: {rp}]");
+                let _ = writeln!(io.err, "{}", crate::output::dim(&line, color));
+            }
+        }
     }
     if plan.cite && !details.sources.is_empty() {
         let _ = writeln!(io.out, "\nSources:");
@@ -402,6 +452,7 @@ mod tests {
         let presets = vec!["web_search".to_string()];
         let plan = parse(
             &args(&[
+                "--prompt",
                 "greet",
                 "--max_tokens",
                 "9",
@@ -447,6 +498,16 @@ mod tests {
             .unwrap_err()
             .contains("integer"));
         assert!(parse(&args(&["n", "--text", "t"]), &flags, &presets).is_err());
+        assert!(parse(&args(&["hi", "--prompt", "greet"]), &flags, &presets).is_err());
+        // Bare words anywhere are the prompt text; flag values aren't.
+        let plan = parse(
+            &args(&["a", "watercolor", "--max_tokens", "5", "fox"]),
+            &flags,
+            &presets,
+        )
+        .unwrap();
+        assert_eq!(plan.text.as_deref(), Some("a watercolor fox"));
+        assert_eq!(plan.set_paths, vec![("max_tokens".into(), json!(5))]);
         assert!(parse(&args(&["--stream", "--background"]), &flags, &presets).is_err());
     }
 

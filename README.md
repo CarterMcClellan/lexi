@@ -16,7 +16,7 @@ stable Rust:
 
 lexi                                 # interactive shell
 lexi providers list                  # or one-off commands
-lexi respond anthropic --text "Explain quicksort in one paragraph"
+lexi respond anthropic "Explain quicksort in one paragraph"
 ```
 
 On first run, Lexi seeds `~/.lexi-cli/` (or `$LEXI_HOME`) with provider configs,
@@ -30,8 +30,9 @@ and add `--json` to any command for machine-readable output ([spec](docs/spec/cl
 
 | Command | Description |
 |---|---|
-| `respond <provider> [prompt] [--text T] [--model M] [--stream] …` | Send a saved prompt or inline text to a provider |
-| `generate <provider> <prompt>` · `upload <provider> <file>` | Generate images to disk · upload to a Files API |
+| `respond <provider> [TEXT] [--prompt NAME] [--model M] [--output image] [--stream] …` | Send a prompt; get back text, images (saved to disk), or both |
+| `generate <provider> <prompt>` · `upload <provider> <file>` | Shortcut for `respond --output image` · upload to a Files API |
+| `models tag\|tags` · `tags` | Tag models (what they take, produce, support) · the tag vocabulary |
 | `jobs status\|wait` | Background jobs (`respond --background --detach`) |
 | `prompts list\|set\|rm\|activate` | Manage saved prompts |
 | `providers list\|add\|rename\|rm\|status\|api-key` | Manage LLM providers and their keys |
@@ -46,10 +47,16 @@ and add `--json` to any command for machine-readable output ([spec](docs/spec/cl
 ```bash
 # Save a prompt and send it to Anthropic
 prompts set myq --prompt "Explain quicksort in one paragraph"
-respond anthropic myq
+respond anthropic --prompt myq
 
-# Send inline text, streaming, with a specific model and a schema flag
-respond openai --text "Hello" --model gpt-4o --stream --temperature 0.2
+# Send text, streaming, with a specific model and a schema flag
+respond openai "Hello" --model gpt-4o --stream --temperature 0.2
+
+# An image: the model's tags pick OpenAI's Images API; saved to ./images
+respond openai "a lighthouse at dusk" --output image --size 1536x864 --out ./images
+
+# Text and an image in one reply (the Responses API's image tool)
+respond openai "Draw a fox and describe it" --tool image_generation
 
 # Use the active prompt ($$), with web search and citations
 respond openai --tool web_search --cite

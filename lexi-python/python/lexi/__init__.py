@@ -69,6 +69,8 @@ def _opts(
     validate: bool,
     cite: bool,
     raw: bool,
+    output: Optional[str] = None,
+    out_dir: Optional[Union[str, "os.PathLike[str]"]] = None,
 ) -> Dict[str, Any]:
     opts: Dict[str, Any] = {
         "text": text,
@@ -85,6 +87,8 @@ def _opts(
         "validate": validate,
         "cite": cite,
         "raw": raw,
+        "output": output,
+        "out_dir": os.fspath(out_dir) if out_dir is not None else None,
     }
     return {k: v for k, v in opts.items() if v is not None}
 
@@ -105,6 +109,8 @@ def respond(
     background: bool = False,
     cite: bool = False,
     raw: bool = False,
+    output: Optional[str] = None,
+    out_dir: Union[str, "os.PathLike[str]"] = ".",
 ) -> Dict[str, Any]:
     """Send a prompt and wait for the reply (``lexi respond``).
 
@@ -120,12 +126,19 @@ def respond(
     * ``validate=False`` — skip validating the body against the API schema.
     * ``background=True`` — run as a background job and poll until done (see
       :func:`submit` to return immediately instead).
+    * ``output`` — the kind of output wanted (``"text"`` default, ``"image"``):
+      with no ``model``, picks the provider's API for it and its default model.
+      A model's tags pick its API either way.
+    * ``out_dir`` — where images and other artifacts are saved (never
+      overwriting a file).
 
-    Returns ``{"provider", "model", "text", "metadata", "activity"?,
-    "sources"?, "raw"?}`` — ``sources`` (rendered citations) with ``cite``,
-    the provider's raw response with ``raw``.
+    Returns ``{"provider", "model", "api", "text", "artifacts": [{path, type,
+    media_type, revised_prompt}], "metadata", "activity"?, "sources"?, "raw"?}``
+    — ``sources`` (rendered citations) with ``cite``, the provider's raw
+    response with ``raw``.
     """
-    o = _opts(text, prompt, role, model, images, params, tools, set, unset, validate, cite, raw)
+    o = _opts(text, prompt, role, model, images, params, tools, set, unset, validate, cite, raw,
+              output, out_dir)
     return _lexi._respond(provider, o, background)
 
 
@@ -144,6 +157,8 @@ def stream(
     validate: bool = True,
     cite: bool = False,
     raw: bool = False,
+    output: Optional[str] = None,
+    out_dir: Union[str, "os.PathLike[str]"] = ".",
 ) -> Iterator[Dict[str, Any]]:
     """Send a prompt and stream the reply (``lexi respond --stream --json``).
 
@@ -153,13 +168,15 @@ def stream(
         {"event": "provider_start", "provider": ...}
         {"event": "activity", "provider": ..., "message": "searching the web"}
         {"event": "delta", "provider": ..., "text": "Hel"}
+        {"event": "artifact", "provider", "path", "type", "media_type", "revised_prompt"}
         {"event": "provider_done", "provider", "model", "text", "metadata", ...}
 
     ``provider_done`` carries the full result (as :func:`respond` returns it).
     A failure raises :class:`LexiError`. The request starts when ``stream()``
     is called; ``close()`` the iterator (or drop it) to stop early.
     """
-    o = _opts(text, prompt, role, model, images, params, tools, set, unset, validate, cite, raw)
+    o = _opts(text, prompt, role, model, images, params, tools, set, unset, validate, cite, raw,
+              output, out_dir)
     return _lexi._stream(provider, o)
 
 
@@ -219,12 +236,14 @@ def generate(
     *,
     model: Optional[str] = None,
     out_dir: Union[str, "os.PathLike[str]"] = ".",
+    **options: Any,
 ) -> Dict[str, Any]:
-    """Generate images and save them under ``out_dir`` (``lexi generate``).
-
-    Returns ``{"provider", "artifacts": [{"path", "revised_prompt"}]}``.
+    """Generate images: :func:`respond` with ``output="image"`` (``lexi
+    generate``). Images are saved under ``out_dir``; returns the
+    :func:`respond` result — ``result["artifacts"]`` lists the files. Other
+    keyword arguments (``set={"size": "1024x1024"}``, …) pass through.
     """
-    return _lexi._generate(provider, prompt, model, os.fspath(out_dir))
+    return respond(provider, prompt, model=model, output="image", out_dir=out_dir, **options)
 
 
 def tags() -> Dict[str, Any]:

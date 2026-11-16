@@ -17,7 +17,7 @@ Surface principle (`docs/cli-consolidation-plan.md` §3): library, language bind
 ### CLI Architecture
 - Grammar: plural nouns with verb subcommands (`prompts list`, `models alias set`, …), kept from the original Python CLI. Command handlers live in `lexi-cli-rs/src/commands/` (one module per group).
 - `lexi` with no command starts the interactive shell (`src/shell.rs`, rustyline): history (`~/.lexi-cli/history`), `#N` replay, `!cmd`, `?`, command aliases (`~/.lexi-cli/aliases.json`, which also expand for one-off commands and never shadow real commands).
-- `respond` parses its own arguments: schema flags come from the provider's API definition (`x-cli`), so they can't be declared to clap.
+- `respond` is the one command for every output (text, images, or both): bare words are the prompt text, `--prompt NAME` a saved prompt, `--output image` asks for the provider's image API; artifacts are saved by `lexi_host::generate::save_artifacts` (`<prompt-slug>-<n>.<ext>`, never overwriting). It pre-scans `--model`/`--output`, resolves the model, then parses schema flags from *that* API's definition (`x-cli`), so they can't be declared to clap. `generate` is a shortcut for `respond --output image`.
 - Commands write through `output::Io` (never directly to stdio), so `lexi_cli::run_with` / `execute_line` work in-process with captured output.
 - Config-driven API abstraction: provider auth, request body, and response parsing are defined in YAML, not hardcoded.
 

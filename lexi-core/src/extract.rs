@@ -49,9 +49,13 @@ pub fn extract_artifacts(response: &Value, cfg: Option<&Value>) -> Vec<Value> {
     };
     let atype = cfg.get("type").and_then(Value::as_str).unwrap_or("file");
     let fields = cfg.get("fields").and_then(Value::as_object);
+    let item_filter = as_map(cfg.get("item_filter"));
 
     let mut out = Vec::new();
     for item in items {
+        if !all_kv_match(item, &item_filter) {
+            continue;
+        }
         let mut artifact = Map::new();
         artifact.insert("type".into(), Value::from(atype));
         if let Some(fields) = fields {
