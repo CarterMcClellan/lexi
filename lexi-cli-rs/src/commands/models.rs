@@ -285,6 +285,8 @@ fn alias_list(io: &mut Io<'_>, provider: &str, raw: bool) -> u8 {
         Ok(a) => a,
         Err(e) => return io.fail(e),
     };
+    let mut aliases: Vec<(String, Value)> = aliases.into_iter().collect();
+    aliases.sort_by(|a, b| a.0.cmp(&b.0));
     let json = Value::Array(
         aliases
             .iter()

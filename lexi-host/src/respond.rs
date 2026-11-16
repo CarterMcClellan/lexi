@@ -223,9 +223,111 @@ async fn post_stream<F: FnMut(StreamEvent)>(
     })
 }
 
-/// POST a composed background body, then poll `operation.poll` until a
-/// terminal state and extract the result. The engine (`read_operation` /
-/// `poll_path`) classifies each poll; the host does the HTTP and the sleeps.
+/// A background operation's state — `{id, status, state, done}` from the
+/// engine's `read_operation` — plus the extracted result once it succeeded.
+#[derive(Debug, Clone)]
+pub struct OperationStatus {
+    pub operation: Value,
+    pub result: Option<RespondResult>,
+}
+
+impl OperationStatus {
+    pub fn done(&self) -> bool {
+        self.operation["done"].as_bool().unwrap_or(false)
+    }
+    pub fn failed(&self) -> bool {
+        self.operation["state"].as_str() == Some("failed")
+    }
+}
+
+fn operation_cfg(effective_cfg: &Value) -> Result<Value, HostError> {
+    effective_cfg.get("operation").cloned().ok_or_else(|| {
+        HostError::Config("this API defines no `operation` (background) lifecycle".into())
+    })
+}
+
+/// Classify a response as an operation, extracting the result when it has
+/// succeeded.
+fn operation_status_of(effective_cfg: &Value, op_cfg: &Value, response: Value) -> OperationStatus {
+    let operation = lexi_core::read_operation(&response, Some(op_cfg));
+    let result = (operation["state"].as_str() == Some("succeeded")).then(|| RespondResult {
+        text: lexi_core::extract_text(&response, text_extract(effective_cfg)),
+        raw: response,
+    });
+    OperationStatus { operation, result }
+}
+
+/// Submit a composed background body; returns the operation as first reported.
+async fn submit_background(
+    client: &reqwest::Client,
+    effective_cfg: &Value,
+    api_key: &str,
+    body: &Value,
+) -> Result<OperationStatus, HostError> {
+    let op_cfg = operation_cfg(effective_cfg)?;
+    let resp = client
+        .post(endpoint_url(effective_cfg))
+        .headers(auth::build_headers(effective_cfg, api_key))
+        .json(body)
+        .send()
+        .await?;
+    let response: Value = check_status(resp).await?.json().await?;
+    Ok(operation_status_of(effective_cfg, &op_cfg, response))
+}
+
+/// Poll an operation once (`operation.poll`).
+async fn poll_operation(
+    client: &reqwest::Client,
+    effective_cfg: &Value,
+    api_key: &str,
+    id: &Value,
+) -> Result<OperationStatus, HostError> {
+    let op_cfg = operation_cfg(effective_cfg)?;
+    let base_url = effective_cfg
+        .get("url")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let poll_url = format!("{base_url}{}", lexi_core::poll_path(&op_cfg, id));
+    let resp = client
+        .get(&poll_url)
+        .headers(auth::build_headers(effective_cfg, api_key))
+        .send()
+        .await?;
+    let response: Value = check_status(resp).await?.json().await?;
+    Ok(operation_status_of(effective_cfg, &op_cfg, response))
+}
+
+/// Poll until the operation is terminal. A failed operation is an error.
+async fn wait_for(
+    client: &reqwest::Client,
+    effective_cfg: &Value,
+    api_key: &str,
+    mut status: OperationStatus,
+    poll_interval: std::time::Duration,
+    max_polls: usize,
+) -> Result<OperationStatus, HostError> {
+    let mut polls = 0;
+    while !status.done() {
+        if polls >= max_polls {
+            return Err(HostError::OperationTimeout);
+        }
+        tokio::time::sleep(poll_interval).await;
+        let id = status.operation.get("id").cloned().unwrap_or(Value::Null);
+        status = poll_operation(client, effective_cfg, api_key, &id).await?;
+        polls += 1;
+    }
+    if status.failed() {
+        return Err(HostError::OperationFailed(
+            status.operation["status"]
+                .as_str()
+                .unwrap_or("unknown")
+                .to_string(),
+        ));
+    }
+    Ok(status)
+}
+
+/// Submit a background body, poll to completion, and return the result.
 async fn post_background(
     client: &reqwest::Client,
     effective_cfg: &Value,
@@ -234,50 +336,18 @@ async fn post_background(
     poll_interval: std::time::Duration,
     max_polls: usize,
 ) -> Result<RespondResult, HostError> {
-    let operation_cfg = effective_cfg.get("operation").cloned().ok_or_else(|| {
-        HostError::Config("this API defines no `operation` (background) lifecycle".into())
-    })?;
-    let headers = auth::build_headers(effective_cfg, api_key);
-    let base_url = effective_cfg
-        .get("url")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-
-    let resp = client
-        .post(endpoint_url(effective_cfg))
-        .headers(headers.clone())
-        .json(body)
-        .send()
-        .await?;
-    let mut current: Value = check_status(resp).await?.json().await?;
-    let mut op = lexi_core::read_operation(&current, Some(&operation_cfg));
-
-    let mut polls = 0;
-    while !op["done"].as_bool().unwrap_or(false) {
-        if polls >= max_polls {
-            return Err(HostError::OperationTimeout);
-        }
-        tokio::time::sleep(poll_interval).await;
-        let id = op.get("id").cloned().unwrap_or(Value::Null);
-        let poll_url = format!("{base_url}{}", lexi_core::poll_path(&operation_cfg, &id));
-        let presp = client
-            .get(&poll_url)
-            .headers(headers.clone())
-            .send()
-            .await?;
-        current = check_status(presp).await?.json().await?;
-        op = lexi_core::read_operation(&current, Some(&operation_cfg));
-        polls += 1;
-    }
-
-    if op["state"].as_str() == Some("failed") {
-        return Err(HostError::OperationFailed(
-            op["status"].as_str().unwrap_or("unknown").to_string(),
-        ));
-    }
-    let text = lexi_core::extract_text(&current, text_extract(effective_cfg));
-    Ok(RespondResult { text, raw: current })
+    let submitted = submit_background(client, effective_cfg, api_key, body).await?;
+    let done = wait_for(
+        client,
+        effective_cfg,
+        api_key,
+        submitted,
+        poll_interval,
+        max_polls,
+    )
+    .await?;
+    done.result
+        .ok_or_else(|| HostError::OperationFailed("finished without a result".into()))
 }
 
 // ---------------------------------------------------------------------------
@@ -622,4 +692,47 @@ pub async fn run_chat<F: FnMut(StreamEvent)>(
     } else {
         post_buffered(&client, &chat.effective, &chat.api_key, &chat.body).await
     }
+}
+
+// ---------------------------------------------------------------------------
+// Detached background jobs (`respond --background --detach`, `jobs`).
+// ---------------------------------------------------------------------------
+
+/// Submit a prepared background chat without waiting; returns the operation
+/// (its `id` is what [`operation_status`] / [`wait_operation`] take).
+pub async fn submit_chat(chat: &PreparedChat) -> Result<OperationStatus, HostError> {
+    let client = reqwest::Client::new();
+    submit_background(&client, &chat.effective, &chat.api_key, &chat.body).await
+}
+
+fn resolve_provider(provider: &str) -> Result<(Value, String), HostError> {
+    let providers = config::load_providers()?;
+    let provider_cfg = providers
+        .get("providers")
+        .and_then(|p| p.get(provider))
+        .cloned()
+        .ok_or_else(|| HostError::UnknownProvider(provider.to_string()))?;
+    let eff = config::effective_config(provider, &provider_cfg)?;
+    let api_key = config::resolve_api_key(provider, &provider_cfg)?;
+    Ok((eff, api_key))
+}
+
+/// Check a background operation once.
+pub async fn operation_status(provider: &str, id: &str) -> Result<OperationStatus, HostError> {
+    let (eff, api_key) = resolve_provider(provider)?;
+    let client = reqwest::Client::new();
+    poll_operation(&client, &eff, &api_key, &Value::from(id)).await
+}
+
+/// Poll a background operation until it finishes (a failure is an error).
+pub async fn wait_operation(
+    provider: &str,
+    id: &str,
+    poll_interval: std::time::Duration,
+    max_polls: usize,
+) -> Result<OperationStatus, HostError> {
+    let (eff, api_key) = resolve_provider(provider)?;
+    let client = reqwest::Client::new();
+    let first = poll_operation(&client, &eff, &api_key, &Value::from(id)).await?;
+    wait_for(&client, &eff, &api_key, first, poll_interval, max_polls).await
 }

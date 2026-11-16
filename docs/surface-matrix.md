@@ -24,6 +24,7 @@ next plan). **GUI** names the desktop tab.
 | Send a prompt (buffered) | `respond_text`, `respond_with_effective` | `respond` | — | Chat |
 | Send a prompt (streaming) | `respond_stream_text`, `respond_stream_with_effective` | `respond` | — | Chat |
 | Send a prompt (background job) | `respond_background_text`, `respond_background_with_effective` | `respond` | — | — |
+| Detached background jobs: submit, check, wait | `submit_chat`, `operation_status`, `wait_operation` | `respond`, `jobs status`, `jobs wait` | — | — |
 | Attach images to a prompt | `resolve_image`, `resolve_images` | `respond` | — | — |
 | Generate images to disk | `generate_images_text`, `generate_images_with_effective` | `generate` | — | — |
 | Upload a file | `upload_file`, `upload_file_with_effective` | `upload` | — | — |

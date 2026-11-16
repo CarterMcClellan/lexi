@@ -378,7 +378,7 @@ pub fn delete_model_alias(provider: &str, alias: &str) -> Result<(), HostError> 
 
 fn delete_model_alias_in(home: &Path, provider: &str, alias: &str) -> Result<(), HostError> {
     let mut aliases = model_aliases_in(home, provider)?;
-    if aliases.remove(alias).is_none() {
+    if aliases.shift_remove(alias).is_none() {
         return Err(HostError::Config(format!(
             "alias {alias:?} not found for {provider}"
         )));
@@ -456,7 +456,7 @@ fn delete_model_in(home: &Path, provider: &str, model: &str) -> Result<(), HostE
             .ok_or_else(|| {
                 HostError::Config(format!("model {model:?} not found for {provider}"))
             })?;
-        if models.remove(model).is_none() {
+        if models.shift_remove(model).is_none() {
             return Err(HostError::Config(format!(
                 "model {model:?} not found for {provider}"
             )));
@@ -691,7 +691,7 @@ fn apply_path_overrides(obj: &mut Map, path: Option<&str>, text_path: Option<&st
                     "content_path",
                     "content_filter",
                 ] {
-                    te.remove(drop);
+                    te.shift_remove(drop);
                 }
             }
         }
@@ -1465,5 +1465,21 @@ mod tests {
         assert!(remove_api_key_in(home, "p").unwrap());
         assert!(!remove_api_key_in(home, "p").unwrap());
         assert_eq!(find_api_key(home, "p", &json!({})).unwrap(), None);
+    }
+
+    #[test]
+    fn deleting_an_alias_keeps_the_others_in_file_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        for (a, m) in [("one", "m1"), ("two", "m2"), ("three", "m3")] {
+            set_model_alias_in(home, "p", a, m).unwrap();
+        }
+        delete_model_alias_in(home, "p", "one").unwrap();
+        let names: Vec<String> = model_aliases_in(home, "p")
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
+        assert_eq!(names, ["two", "three"]);
     }
 }
