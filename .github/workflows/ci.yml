@@ -23,8 +23,9 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ["3.11"]
         include:
-          # keep a lower-bound check on the minimum supported Python
-          - os: ubuntu-latest
+          # keep a lower-bound check on the minimum supported Python. Pinned:
+          # ubuntu-latest (26.04) no longer ships 3.9 (EOL Oct 2025).
+          - os: ubuntu-24.04
             python-version: "3.9"
     defaults:
       run:
@@ -120,8 +121,8 @@ jobs:
         run: cargo clippy -p lexi-host -p lexi-cli-rs --all-targets -- -D warnings
       - name: Test (mock-server pipeline)
         run: cargo test -p lexi-host
-      - name: Build CLI
-        run: cargo build -p lexi-cli-rs
+      - name: Test CLI (binary end-to-end + surface matrix)
+        run: cargo test -p lexi-cli-rs
 
   # Desktop app (Tauri over lexi-host). macOS only for now: WKWebView is a system
   # framework there, so no extra deps. Linux (webkit2gtk) / Windows (WebView2)
