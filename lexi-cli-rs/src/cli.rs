@@ -71,6 +71,26 @@ pub enum Cmd {
         #[arg(long, default_value = ".")]
         out: PathBuf,
     },
+    /// Embed texts as vectors (one per text) with a provider's embedding model.
+    ///
+    /// embed <provider> TEXT... [--file FILE] [-] [--model M] [<schema flags>]
+    /// [--set path=value]... [--unset path]... [--no-validate]
+    ///
+    /// Each argument is one text; --file adds one text per line, `-` reads
+    /// lines from stdin. Schema flags (e.g. --dimensions, --input-type) come
+    /// from the embedding API's definition. Use --json for the vectors.
+    #[command(verbatim_doc_comment)]
+    Embed {
+        /// Provider name, as in providers-config.yaml.
+        provider: String,
+        /// Texts and options (see above).
+        #[arg(
+            trailing_var_arg = true,
+            allow_hyphen_values = true,
+            value_name = "ARGS"
+        )]
+        args: Vec<String>,
+    },
     /// Upload a file to a provider's Files API; prints the file id.
     Upload {
         /// Provider name.

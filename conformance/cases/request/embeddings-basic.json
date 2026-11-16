@@ -1,0 +1,21 @@
+{
+  "name": "embeddings-basic",
+  "description": "Inputs bind as the `input` array; optional fields (input_type, dimensions) are omitted unless set.",
+  "api": "embeddings",
+  "compose": {
+    "prompt_payload": {
+      "inputs": [
+        "a",
+        "b"
+      ],
+      "model": "text-embedding-3-small"
+    }
+  },
+  "expect_body": {
+    "model": "text-embedding-3-small",
+    "input": [
+      "a",
+      "b"
+    ]
+  }
+}

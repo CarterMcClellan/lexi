@@ -8,12 +8,30 @@ api_key: ${NVIDIA_API_KEY}
 apis:
   - api: chat-completions
     default_model: meta/llama-3.1-70b-instruct
+  # `lexi embed`. NVIDIA's retrieval models embed queries and passages
+  # differently; this defaults to query (`--input-type passage` when indexing
+  # documents; `--unset input_type` for models that reject it).
+  - api: embeddings
+    for: [kind:embedding]
+    default_model: nvidia/nemotron-3-embed-1b
+    request:
+      body_schema:
+        properties:
+          input_type: { default: query }
+  # Image models live on another host, one URL per model (/v1/genai/<model>),
+  # and aren't in the /v1/models listing — name them with --model.
+  - api: nvidia-genai-image
+    url: https://ai.api.nvidia.com/v1
+    for: [kind:image-generation]
+    default_model: black-forest-labs/flux.1-schnell
 
 # Every matching rule applies, in order: start text-only, then add image input
 # back for the vision models.
 tag_rules:
   "*": [-in:image]
   "*embed*": [kind:embedding]
+  "black-forest-labs/*": [kind:image-generation]
+  "stabilityai/*": [kind:image-generation]
   "nvidia/nvclip": [kind:embedding, in:image]
   "*rerank*": [kind:rerank]
   "*guard*": [kind:classifier]

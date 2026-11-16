@@ -31,6 +31,14 @@ const EMBEDDED_APIS: &[(&str, &str)] = &[
         "image-generations",
         include_str!("../../lexi-core/apis/image-generations.yaml"),
     ),
+    (
+        "embeddings",
+        include_str!("../../lexi-core/apis/embeddings.yaml"),
+    ),
+    (
+        "nvidia-genai-image",
+        include_str!("../../lexi-core/apis/nvidia-genai-image.yaml"),
+    ),
 ];
 
 /// Provider templates embedded at build time (`lexi-core/providers/`). A

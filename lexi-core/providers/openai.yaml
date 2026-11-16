@@ -10,6 +10,9 @@ apis:
   - api: image-generations
     for: [kind:image-generation]
     default_model: gpt-image-2.5-flare
+  - api: embeddings             # `lexi embed`
+    for: [kind:embedding]
+    default_model: text-embedding-3-small
 
 # Model-id globs → tags; the first rule that sets a kind: wins. OpenAI's
 # /models listing carries no type data, but its names are consistent.

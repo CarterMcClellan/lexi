@@ -254,14 +254,11 @@ pub(crate) async fn respond(io: &mut Io<'_>, provider: &str, args: &[String]) ->
     // model (and output kind) first; this also refuses an unservable model
     // before anything is parsed or sent.
     let (pre_model, pre_output) = prescan(args);
-    let flag_cfg = match lexi_host::resolve_model(
-        provider,
-        pre_model.as_deref(),
-        pre_output.as_deref().unwrap_or("text"),
-    ) {
-        Ok(r) => r.effective,
-        Err(e) => return io.fail(e),
-    };
+    let flag_cfg =
+        match lexi_host::resolve_model(provider, pre_model.as_deref(), pre_output.as_deref()) {
+            Ok(r) => r.effective,
+            Err(e) => return io.fail(e),
+        };
     let flags = lexi_core::cli_flags(&flag_cfg);
     let presets = lexi_core::tool_preset_names(&flag_cfg);
     let plan = match parse(args, &flags, &presets) {

@@ -472,7 +472,7 @@ fn resolve_provider_model(
     provider: &str,
     model_override: Option<&str>,
 ) -> Result<(Value, String, String), HostError> {
-    let resolved = crate::models::resolve_model(provider, model_override, "text")?;
+    let resolved = crate::models::resolve_model(provider, model_override, Some("text"))?;
     let api_key = provider_api_key(provider)?;
     Ok((resolved.effective, api_key, resolved.model))
 }
@@ -693,14 +693,27 @@ pub fn prepare_chat(
     if text.trim().is_empty() {
         return Err(HostError::Config("prompt text is empty".into()));
     }
-    let output = req.output.as_deref().unwrap_or("text");
-    let resolved = crate::models::resolve_model(provider, req.model.as_deref(), output)?;
+    let resolved =
+        crate::models::resolve_model(provider, req.model.as_deref(), req.output.as_deref())?;
     let (eff, model, api) = (
         resolved.effective.clone(),
         resolved.model.clone(),
         resolved.api.clone(),
     );
     let api_key = provider_api_key(provider)?;
+    // `respond` returns text and/or artifacts; vectors are `embed`'s job.
+    let outputs: Vec<&str> = eff
+        .pointer("/capabilities/output")
+        .and_then(Value::as_array)
+        .map(|o| o.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_else(|| vec!["text"]);
+    if !outputs.iter().any(|o| matches!(*o, "text" | "image")) {
+        return Err(HostError::Unsupported(format!(
+            "{model} is a kind:{} model (it produces {}); use embed instead",
+            resolved.kind.as_deref().unwrap_or("unknown"),
+            outputs.join(", ")
+        )));
+    }
     let what = if api.is_empty() {
         "this provider's API".to_string()
     } else {
@@ -718,9 +731,17 @@ pub fn prepare_chat(
         _ => {}
     }
     let mut overrides = req.overrides.clone();
-    overrides
-        .entry("model")
-        .or_insert_with(|| Value::from(model.clone()));
+    // The model goes in the body when the API's schema has a `model` field
+    // (some APIs put it in the URL instead).
+    if eff
+        .pointer("/request/body_schema/properties/model")
+        .is_some()
+        || eff.pointer("/request/body_schema").is_none()
+    {
+        overrides
+            .entry("model")
+            .or_insert_with(|| Value::from(model.clone()));
+    }
     match mode {
         ChatMode::Buffered => {}
         ChatMode::Stream => {

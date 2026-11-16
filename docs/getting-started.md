@@ -182,6 +182,14 @@ generate openai "a lighthouse at dusk"                     # shortcut for --outp
 # Text and an image in one reply
 respond openai "Draw a fox and describe it" --tool image_generation
 
+# Embeddings: one vector per text (--json for the vectors)
+embed openai "first text" "second text" --dimensions 256
+embed nvidia --file docs.txt --input-type passage          # NVIDIA: passage when indexing, query (default) when searching
+
+# NVIDIA image models run on their own host; name one, or ask for --output image
+respond nvidia "a lighthouse at dusk" --output image --steps 4
+respond nvidia "a lighthouse at dusk" --model stabilityai/sdxl-turbo
+
 upload openai ./report.pdf                                 # Files API upload; prints the file id
 ```
 

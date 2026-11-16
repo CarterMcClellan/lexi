@@ -30,6 +30,7 @@ not enforced). The wheel's engine functions (`lexi.compose_request_body`, …) w
 | Detached background jobs: submit, check, wait | `submit_chat`, `operation_status`, `wait_operation` | `respond`, `jobs status`, `jobs wait` | `lexi.submit`, `lexi.jobs.status`, `lexi.jobs.wait` | — |
 | Attach images to a prompt | `resolve_image`, `resolve_images` | `respond` | `lexi.respond` | — |
 | Generate images / save a response's artifacts to disk | `generate_images_text`, `generate_images_with_effective`, `save_artifacts` | `respond`, `generate` | `lexi.respond`, `lexi.generate` | — |
+| Embed texts as vectors | `embed` | `embed` | `lexi.embed` | — |
 | Upload a file | `upload_file`, `upload_file_with_effective` | `upload` | `lexi.upload` | — |
 | List providers | `provider_names`, `list_providers`, `load_providers`, `api_key_source`, `provider_summaries` | `providers list` | `lexi.providers.list` | Providers |
 | Add / rename / remove a provider | `add_provider`, `rename_provider`, `remove_provider`, `create_provider` | `providers add`, `providers rename`, `providers rm` | `lexi.providers.add`, `lexi.providers.rename`, `lexi.providers.remove` | — |

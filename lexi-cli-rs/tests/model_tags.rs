@@ -100,7 +100,8 @@ async fn one_provider_serves_chat_and_images_by_tags() {
         "gpt-image-9"
     );
 
-    // An image model can't answer a chat request — refused before any call.
+    // Asked for text, an image model is refused before any call. (Named
+    // without --output, it would make images: its tags pick the API.)
     let o = go(
         h,
         &[
@@ -110,6 +111,8 @@ async fn one_provider_serves_chat_and_images_by_tags() {
             "hi",
             "--model",
             "gpt-image-9",
+            "--output",
+            "text",
         ],
     )
     .await;
@@ -274,5 +277,8 @@ fn tag_commands_and_vocabulary() {
         .find(|p| p["name"] == "openai")
         .unwrap();
     assert_eq!(openai["template"], "openai");
-    assert_eq!(openai["apis"], json!(["responses", "image-generations"]));
+    assert_eq!(
+        openai["apis"],
+        json!(["responses", "image-generations", "embeddings"])
+    );
 }

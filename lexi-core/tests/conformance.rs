@@ -186,6 +186,15 @@ fn response_extraction() {
             }
         }
 
+        if let Some(exp) = expect.get("embeddings") {
+            let got = Value::Array(core::extract_embeddings(
+                response,
+                resp_cfg.get("embeddings"),
+            ));
+            if &got != exp {
+                failures.push(format!("{nm}: embeddings mismatch (got {got})"));
+            }
+        }
         if let Some(Value::Array(exp_arts)) = expect.get("artifacts") {
             let got = core::extract_artifacts(response, resp_cfg.get("artifacts"));
             if &got != exp_arts {

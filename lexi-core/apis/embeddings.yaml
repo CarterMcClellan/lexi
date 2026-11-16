@@ -1,0 +1,63 @@
+name: embeddings
+description: "OpenAI-compatible Embeddings API (/v1/embeddings) — texts in, vectors out (OpenAI, NVIDIA, …)."
+
+auth:
+  header: Authorization
+  value_prefix: "Bearer "
+
+request:
+  method: POST
+  path: /embeddings
+  body_schema:
+    type: object
+    required: [model, input]
+    properties:
+      model:
+        type: string
+        description: "Embedding model ID."
+        x-bind: { from: model }
+      input:
+        type: array
+        items: { type: string }
+        description: "The texts to embed (one vector each)."
+        x-bind: { from: inputs }
+      encoding_format:
+        type: string
+        enum: [float, base64]
+        description: "Vector encoding (float by default)."
+        x-cli: { flag: --encoding-format }
+      dimensions:
+        type: integer
+        minimum: 1
+        description: "Output dimensions, for models that can shorten vectors (OpenAI text-embedding-3)."
+        x-cli: { flag: --dimensions }
+      input_type:
+        type: string
+        enum: [query, passage]
+        description: "NVIDIA retrieval models: embed as a search query or a document passage."
+        x-cli: { flag: --input-type }
+      truncate:
+        type: string
+        enum: [NONE, START, END]
+        description: "NVIDIA: how to truncate inputs longer than the model's limit."
+        x-cli: { flag: --truncate }
+      user:
+        type: string
+        x-cli: { flag: --user }
+
+# Text in, vectors out.
+capabilities:
+  kind: embedding
+  input: [text]
+  output: [vector]
+
+response:
+  # One vector per input, in input order (`index`).
+  embeddings:
+    items_path: data
+    vector_path: embedding
+    index_path: index
+  metadata:
+    model: model
+    input_tokens: usage.prompt_tokens
+    total_tokens: usage.total_tokens

@@ -194,17 +194,21 @@ impl ResolvedModel {
 /// Resolve which model a request uses and which binding serves it.
 ///
 /// - `model`: an alias or id; `None` picks the default model of the first
-///   binding whose API produces `output` (for the catch-all binding:
-///   `default-model.yaml`, then its `default_model`).
-/// - The model must be configured, an alias, or recognized by a `kind:` tag
-///   from a tag rule or the user's tags (typo protection).
-/// - Errors when no binding serves the model, or its API doesn't produce
-///   `output` (`text`, `image`, …).
+///   binding whose API produces `output` (default `text`; for the catch-all
+///   binding: `default-model.yaml`, then its `default_model`).
+/// - `output` (`text`, `image`, `vector`, …): what the request asks for. With
+///   a named model and no `output`, the model's API decides (an image model
+///   makes images); with both, a model whose API doesn't produce `output` is
+///   refused.
+/// - The model must be configured, an alias, in the cached catalog, or
+///   recognized by a `kind:` tag from a rule or the user's tags (typo
+///   protection).
 pub fn resolve_model(
     provider: &str,
     model: Option<&str>,
-    output: &str,
+    output: Option<&str>,
 ) -> Result<ResolvedModel, HostError> {
+    let want = output.unwrap_or("text");
     let pcfg = require_provider(provider)?;
     let configured = config::load_models(provider)?;
     let bindings = lexi_core::provider_bindings(&pcfg);
@@ -222,9 +226,9 @@ pub fn resolve_model(
         }
         None => {
             let defs = binding_defs(&pcfg, None)?;
-            let idx = lexi_core::binding_for_output(&pcfg, &defs, output).ok_or_else(|| {
+            let idx = lexi_core::binding_for_output(&pcfg, &defs, want).ok_or_else(|| {
                 HostError::Unsupported(format!(
-                    "provider {provider:?} has no API configured that produces {output}"
+                    "provider {provider:?} has no API configured that produces {want}"
                 ))
             })?;
             let catch_all = bindings.iter().position(|b| b.get("for").is_none());
@@ -245,7 +249,7 @@ pub fn resolve_model(
             };
             let m = m.ok_or_else(|| {
                 HostError::Config(format!(
-                    "no {output} model (pass --model or set a default model)"
+                    "no {want} model (pass --model or set a default model)"
                 ))
             })?;
             (m, false)
@@ -288,13 +292,22 @@ pub fn resolve_model(
         .and_then(|i| bindings.get(i as usize).cloned())
         .unwrap_or_else(|| json!({ "api": api }));
     let mut effective = config::binding_config(&pcfg, &binding)?;
+    // APIs that put the model in the URL (`/genai/{model}`).
+    if let Some(p) = effective.pointer_mut("/request/path") {
+        if let Some(s) = p.as_str().filter(|s| s.contains("{model}")) {
+            *p = Value::from(s.replace("{model}", &model));
+        }
+    }
 
     let kind = cls["kind"].as_str().map(String::from);
     let produces = effective
         .pointer("/capabilities/output")
         .and_then(Value::as_array)
-        .is_some_and(|o| o.iter().any(|x| x.as_str() == Some(output)));
-    if !produces {
+        .is_some_and(|o| o.iter().any(|x| x.as_str() == Some(want)));
+    // Checked when the output was asked for, or when the model is the default
+    // for it; a named model with no output asked for produces what it produces.
+    if !produces && (output.is_some() || !explicit) {
+        let output = want;
         return Err(HostError::Unsupported(format!(
             "{model} is a kind:{} model (served by the {api} API), which doesn't produce {output}",
             kind.as_deref().unwrap_or("unknown")

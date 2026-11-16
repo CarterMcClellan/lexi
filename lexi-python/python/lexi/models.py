@@ -103,8 +103,12 @@ def tags(provider: str, model: str) -> Dict[str, Any]:
     return call("models.tags", provider=provider, model=model)
 
 
-def resolve(provider: str, model: Optional[str] = None, *, output: str = "text") -> Dict[str, Any]:
+def resolve(
+    provider: str, model: Optional[str] = None, *, output: Optional[str] = None
+) -> Dict[str, Any]:
     """Which model and API a request would use: ``{provider, model, api, kind,
-    tags}``. With no ``model``, the default for ``output`` (``"text"``,
-    ``"image"``, …). Raises :class:`lexi.LexiError` when nothing serves it."""
+    tags}``. With no ``model``, the default for ``output`` (``"text"`` when
+    omitted; ``"image"``, ``"vector"``, …). With a model and an ``output`` it
+    can't produce, raises :class:`lexi.LexiError`; with a model alone, its API
+    decides."""
     return call("models.resolve", provider=provider, model=model, output=output)

@@ -1,0 +1,25 @@
+{
+  "name": "nvidia-genai-image-artifacts",
+  "description": "NVIDIA visual GenAI returns base64 images under artifacts[] (FLUX shape: base64, seed, finishReason).",
+  "api": "nvidia-genai-image",
+  "response": {
+    "artifacts": [
+      {
+        "base64": "iVBORw0KGgo=",
+        "finishReason": "SUCCESS",
+        "seed": 42
+      }
+    ]
+  },
+  "expect": {
+    "text": "",
+    "artifacts": [
+      {
+        "type": "image",
+        "b64": "iVBORw0KGgo=",
+        "seed": 42,
+        "finish_reason": "SUCCESS"
+      }
+    ]
+  }
+}
