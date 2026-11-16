@@ -23,8 +23,9 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ["3.11"]
         include:
-          # keep a lower-bound check on the minimum supported Python
-          - os: ubuntu-latest
+          # keep a lower-bound check on the minimum supported Python. Pinned:
+          # ubuntu-latest (26.04) no longer ships 3.9 (EOL Oct 2025).
+          - os: ubuntu-24.04
             python-version: "3.9"
     defaults:
       run:
