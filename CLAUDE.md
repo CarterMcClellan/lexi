@@ -4,94 +4,73 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture Overview
 
-Lexi is a CLI-first tool for working with multiple LLM providers side by side, with a native desktop app. The core is a Rust workspace; the Python CLI is an application on top of it.
+Lexi is a CLI-first tool for working with multiple LLM providers side by side, with a native desktop app. Everything is a Rust workspace; Python gets the engine as a library (the `lexi` wheel).
 
 - **lexi-core**: Rust engine — the provider-agnostic, pure (no-I/O) schema-driven request composition, response extraction, message IR, and definition validation. Behavioral parity pinned by the `conformance/` oracle.
-- **lexi-host**: Rust runtime (I/O layer over the engine) — HTTP/SSE transport, config/key loading, auth, streaming, polling, uploads, and the admin read/write helpers over `~/.lexi-cli/`.
-- **lexi-python**: PyO3 wheel wrapping `lexi-core` (`import lexi`); the one engine the Python CLI uses.
-- **lexi-cli-rs**: thin Rust CLI binary (`lexi`) over `lexi-host`.
-- **lexi-desktop**: native [Tauri](https://tauri.app) app — a thin webview shell whose `/api/*` calls are served in-process by `lexi-host` (see `lexi-desktop/src/backend.rs`). No Node, no Python, no localhost server. Replaced the old Node/Electron `lexi-gui`.
-- **lexi-cli**: Python CLI application (src/lexi_cli/), an application on the `lexi` wheel.
+- **lexi-host**: Rust runtime (I/O layer over the engine) — HTTP/SSE transport, config/key loading, auth, streaming, polling, uploads, first-run seeding, and the admin read/write helpers over `~/.lexi-cli/`. Every user-facing operation lives here once.
+- **lexi-cli-rs**: the `lexi` CLI — a library (`lexi_cli`: command tree, parser, dispatcher, shell, output) plus a thin binary. Complete command surface; `--json` machine mode on every command.
+- **lexi-desktop**: native [Tauri](https://tauri.app) app — a thin webview shell whose `/api/*` calls are served in-process by `lexi-host` (see `lexi-desktop/src/backend.rs`). No Node, no Python, no localhost server.
+- **lexi-python**: PyO3 wheel wrapping `lexi-core` (`import lexi`) — the Python library, not an application.
+
+Surface principle (`docs/cli-consolidation-plan.md` §3): library, language bindings, CLI and GUI all sit on the library; every `lexi-host` operation must be reachable from the CLI. `docs/surface-matrix.md` lists them and `lexi-cli-rs/tests/surface_matrix.rs` enforces it — a new `pub fn` in `lexi-host` fails CI until it is listed there.
 
 ### CLI Architecture
-- Single-file CLI implementation in `cli.py` (~95KB) with embedded commands, history, and configuration management
-- Uses src/ layout with package data including provider configs and default aliases
-- Persistent configuration stored in `~/.lexi-cli/` directory structure
-- Provider-specific configurations in `~/.lexi-cli/providers/<provider>/` with YAML files for models, aliases, and configs
-- Interactive shell with history support and command aliases
-- Config-driven API abstraction: provider auth, request body, and response parsing are defined in YAML, not hardcoded
+- Grammar: plural nouns with verb subcommands (`prompts list`, `models alias set`, …), kept from the original Python CLI. Command handlers live in `lexi-cli-rs/src/commands/` (one module per group).
+- `lexi` with no command starts the interactive shell (`src/shell.rs`, rustyline): history (`~/.lexi-cli/history`), `#N` replay, `!cmd`, `?`, command aliases (`~/.lexi-cli/aliases.json`, which also expand for one-off commands and never shadow real commands).
+- `respond` parses its own arguments: schema flags come from the provider's API definition (`x-cli`), so they can't be declared to clap.
+- Commands write through `output::Io` (never directly to stdio), so `lexi_cli::run_with` / `execute_line` work in-process with captured output.
+- Config-driven API abstraction: provider auth, request body, and response parsing are defined in YAML, not hardcoded.
 
 ### Configuration Structure
-- Main provider config: `~/.lexi-cli/providers/providers-config.yaml`
-- Per-provider model configs: `~/.lexi-cli/providers/<provider>/configured-models.yaml`
-- Model aliases: `~/.lexi-cli/providers/<provider>/model-aliases.yaml`
-- Default model: `~/.lexi-cli/providers/<provider>/default-model.yaml`
-- Command aliases: `~/.lexi-cli/aliases.json`
-- Prompts stored as individual JSON files in `~/.lexi-cli/prompts/`
+- Config dir: `~/.lexi-cli/` (override with `$LEXI_HOME`)
+- Main provider config: `providers/providers-config.yaml`
+- Per-provider: `providers/<provider>/configured-models.yaml`, `model-aliases.yaml`, `default-model.yaml`, `api-key` (0600)
+- Command aliases: `aliases.json`; CLI settings: `config.json`; shell history: `history`
+- Prompts: individual JSON files in `prompts/` (the active prompt is `$$`)
+- API definitions: shipped ones are embedded in the binary (`lexi-core/apis/`) and always win; `apis/` holds custom definitions only
 
 ## Development Commands
 
-### CLI Development
 ```bash
-# Install CLI in development mode
-cd lexi-cli && pip install -e .
+cargo test                     # all crates (CLI integration tests run the real binary)
+cargo clippy --all-targets     # lint (CI gates -D warnings)
+cargo fmt --all                # format
+cargo run -p lexi-cli-rs -- …  # run the CLI from source
+cargo install --path lexi-cli-rs   # install `lexi` (or ./install.sh)
 
-# Run CLI directly (multiple options)
-lexi                    # If installed
-python -m lexi_cli      # From repo root
-./cli                   # Using shim script
-
-# Development tools
-ruff check src/         # Lint code
-ruff format src/        # Format code
-mypy src/              # Type checking
-pytest                 # Run tests
-pytest --cov=lexi_cli  # Run tests with coverage
-
-# Install with crypto support (for API key encryption)
-pip install -e ".[crypto]"
-```
-
-### Rust workspace (engine / runtime / CLI / desktop)
-```bash
-cargo test             # all crates
-cargo clippy --all-targets   # lint (CI gates -D warnings)
-cargo fmt --all        # format
+# Regenerate docs/cli-reference.md after changing the command tree
+LEXI_UPDATE_DOCS=1 cargo test -p lexi-cli-rs --test cli_reference
 
 # Desktop app (Tauri)
 cargo install tauri-cli --version '^2'   # once
-cd lexi-desktop && cargo tauri dev       # run with devtools
-cd lexi-desktop && cargo tauri build     # native installer
+cd lexi-desktop && cargo tauri dev        # run with devtools
+cd lexi-desktop && cargo tauri build      # native installer
 
 # The Python wheel builds via maturin, not `cargo build` (PyO3 extension module):
-#   pip install ./lexi-python
+pip install ./lexi-python pytest pyyaml && pytest lexi-python/tests
 ```
 
 ## Key Implementation Details
 
-### Command Structure
-All main commands use plural forms (`prompts`, `providers`, `models`, `alias`) and support subcommands. The CLI includes extensive help system accessible via `help <command>` or `help <command> <subcommand>`.
-
 ### Provider System
-- Three preconfigured providers: OpenAI, Anthropic, NVIDIA
-- Each provider has hosted models endpoint support with configurable field mapping
-- API keys can be encrypted using cryptography library if installed
-- Model metadata and aliases stored separately from main provider config
-- Auth headers, request body templates, and response text extraction are all config-driven via `auth`, `request`, and `response` blocks in providers-config.yaml
-- Legacy configs using `respond_kind`/`respond_path` are migrated at runtime
+- Three preconfigured providers: OpenAI (`responses`), Anthropic (`messages`), NVIDIA (`chat-completions`)
+- API key lookup: the provider's `api-key` file first, then the config's `api_key` (`${ENV_VAR}` or literal)
+- Model resolution: `--model` (aliases resolved; must be configured), else `default-model.yaml`, else the config's `default_model`; per-model `auth`/`request`/`response` overrides are deep-merged
+- Providers reference an API definition with `api:` (or define `request`/`response` inline); provider entries deep-merge over it
 
 ### Configuration Seeding
-On first run, the CLI seeds `~/.lexi-cli/` from the packaged `providers/` directory and creates default aliases from `default-aliases.json`.
+On every run, `lexi_host::ensure_home` fills in missing defaults (embedded from the root `providers/` directory and `providers/default-aliases.json`). It never overwrites existing files.
 
-### Dependencies
-- Python CLI: Python 3.9+, pyyaml, rich, the `lexi` wheel (optional: cryptography for API key encryption)
-- Rust workspace: stable Rust; desktop app needs tauri-cli v2 + the platform webview (macOS WKWebView, Linux webkit2gtk, Windows WebView2)
+### Tests
+- CLI: `lexi-cli-rs/tests/` — the binary end to end against a temp `LEXI_HOME` and a wiremock provider, plus the surface-matrix and CLI-reference guards
+- Runtime: `lexi-host/tests/` (wiremock) and unit tests
+- Engine: `lexi-core/tests/conformance.rs` runs `conformance/`; the wheel runs the same fixtures (`lexi-python/tests/`)
 
 ## File Locations
 - Rust engine / runtime / CLI / desktop: `lexi-core/`, `lexi-host/`, `lexi-cli-rs/`, `lexi-desktop/`
+- Shipped API definitions: `lexi-core/apis/` (embedded by `lexi-host`)
+- Default provider configs: `providers/` (embedded; seeded into `~/.lexi-cli/providers/`)
 - Python wheel: `lexi-python/` (PyO3 over lexi-core)
-- Python CLI source: `lexi-cli/src/lexi_cli/`
-- Desktop `/api/*` backend: `lexi-desktop/src/backend.rs`; reused frontend snapshot: `lexi-desktop/frontend/index.html`
-- Cross-language conformance oracle: `conformance/` (run by `lexi-core/tests/conformance.rs` + `lexi-python/tests/`)
-- Provider configs: `providers/` (copied to `~/.lexi-cli/providers/` on first run)
-- Package configuration: `lexi-cli/pyproject.toml`, per-crate `Cargo.toml`
+- Desktop `/api/*` backend: `lexi-desktop/src/backend.rs`; frontend: `lexi-desktop/frontend/index.html`
+- Cross-language conformance oracle: `conformance/`
+- Docs: `docs/cli-reference.md` (generated), `docs/spec/` (API definition, message IR, CLI machine interface), `docs/surface-matrix.md`

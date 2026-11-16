@@ -6,32 +6,37 @@ Lexi is a CLI-first tool for working with multiple LLM providers side by side, w
 
 ## Quick Start
 
-**Requirements:** Python 3.9+ (CLI). The desktop app ships as a prebuilt native installer — no runtime needed.
+The CLI is a single native binary, `lexi`. Download the archive for your platform
+from [GitHub Releases](https://github.com/badscooter23/lexi/releases) (macOS
+universal, Linux x86_64/aarch64, Windows x86_64), or build it from source with
+stable Rust:
 
 ```bash
-# Install everything
-./install.sh
+./install.sh                         # = cargo install --path lexi-cli-rs
 
-# Or install just the CLI
-cd lexi-cli && pip install -e .
-
-# Run
-lexi
+lexi                                 # interactive shell
+lexi providers list                  # or one-off commands
+lexi respond anthropic --text "Explain quicksort in one paragraph"
 ```
 
-On first launch, Lexi seeds `~/.lexi-cli/providers/` with provider configs, API definitions, model metadata, and default command aliases.
+On first run, Lexi seeds `~/.lexi-cli/` (or `$LEXI_HOME`) with provider configs,
+model metadata, and default command aliases. It only fills in missing files;
+your edits are never overwritten.
 
 ## Core Commands
 
-All main commands use **plural forms** and support subcommands. Use `help <command>` for details.
+All main commands use **plural forms** and support subcommands. Use `help <command>` for details,
+and add `--json` to any command for machine-readable output ([spec](docs/spec/cli-machine-v0.md)).
 
 | Command | Description |
 |---|---|
-| `prompts list\|set\|rm` | Manage saved prompts |
-| `providers list\|add\|rename\|rm\|status` | Manage LLM providers |
+| `respond <provider> [prompt] [--text T] [--model M] [--stream] …` | Send a saved prompt or inline text to a provider |
+| `generate <provider> <prompt>` · `upload <provider> <file>` | Generate images to disk · upload to a Files API |
+| `jobs status\|wait` | Background jobs (`respond --background --detach`) |
+| `prompts list\|set\|rm\|activate` | Manage saved prompts |
+| `providers list\|add\|rename\|rm\|status\|api-key` | Manage LLM providers and their keys |
 | `models list\|hosted\|add\|set\|rm\|default\|alias` | Manage models for a provider |
-| `api list\|show\|create\|edit\|rm\|validate` | Manage API definitions |
-| `respond <provider> [prompt] [--model M] [--raw]` | Send a prompt to a provider |
+| `api list\|show\|create\|edit\|save\|rm\|validate\|preview` | Manage API definitions |
 | `alias list\|add\|rm\|reset` | Manage command aliases |
 | `config list\|set\|rm` | View or update settings |
 | `help`, `history`, `sh`, `version`, `exit` | General commands |
@@ -39,12 +44,15 @@ All main commands use **plural forms** and support subcommands. Use `help <comma
 ### Examples
 
 ```bash
-# Set a prompt and send it to Anthropic
+# Save a prompt and send it to Anthropic
 prompts set myq --prompt "Explain quicksort in one paragraph"
 respond anthropic myq
 
-# Use the active prompt ($$) with a specific model
-respond openai --model gpt-4o
+# Send inline text, streaming, with a specific model and a schema flag
+respond openai --text "Hello" --model gpt-4o --stream --temperature 0.2
+
+# Use the active prompt ($$), with web search and citations
+respond openai --tool web_search --cite
 
 # List hosted models from a provider
 models hosted nvidia --table
@@ -77,10 +85,7 @@ All persistent configuration lives in `~/.lexi-cli/`:
 
 ```
 ~/.lexi-cli/
-├── apis/
-│   ├── chat-completions.yaml          # OpenAI-compatible Chat Completions API
-│   ├── messages.yaml                  # Anthropic Messages API
-│   └── responses.yaml                 # OpenAI Responses API
+├── apis/                              # Custom API definitions (shipped ones are built in)
 ├── providers/
 │   ├── providers-config.yaml          # Provider URLs, API key refs, API bindings
 │   ├── anthropic/
@@ -93,12 +98,13 @@ All persistent configuration lives in `~/.lexi-cli/`:
 │       └── ...
 ├── prompts/                           # Saved prompts as JSON files
 ├── aliases.json                       # Command aliases
+├── history                            # Shell history
 └── config.json                        # CLI settings
 ```
 
 ### API Definitions
 
-Each LLM API style (Chat Completions, Messages, Responses) is defined in a standalone YAML file under `~/.lexi-cli/apis/`. An API definition specifies:
+Each LLM API style (Chat Completions, Messages, Responses, Image Generations) is defined in a standalone YAML file. The shipped definitions are built into the binary (`lexi api list`, `lexi api show <name>`); custom ones live in `~/.lexi-cli/apis/` (`lexi api create mine --from messages`). An API definition specifies:
 
 - **`auth`** — Header name, value prefix, and any extra headers
 - **`request`** — HTTP method, path, body template with `{{model}}`/`{{role}}`/`{{prompt}}` variables, typed parameters with ranges and defaults, and optional tools config
@@ -124,7 +130,7 @@ providers:
     api: chat-completions
 ```
 
-Adding a new provider that uses an existing API style requires only a new entry in `providers-config.yaml`. Adding a new API style requires only a new YAML file in `apis/` — no code changes needed.
+Adding a new provider that uses an existing API style requires only a new entry in `providers-config.yaml` (or `lexi providers add`). Adding a new API style requires only a new YAML file in `apis/` — no code changes needed.
 
 Providers can also include inline `auth`, `request`, or `response` overrides that are deep-merged on top of the referenced API definition.
 
@@ -158,24 +164,21 @@ your platform and `pip install ./lexi-*.whl`, then `import lexi`. See
 ## Development
 
 ```bash
-# CLI
-cd lexi-cli
-pip install -e .
-ruff check src/        # Lint
-ruff format src/       # Format
-pytest                 # Test
-pytest --cov=lexi_cli  # Test with coverage
-
 # Rust workspace (engine / runtime / CLI / desktop)
 cargo test             # all crates
 cargo clippy --all-targets
 cargo fmt --all
+cargo run -p lexi-cli-rs -- providers list   # run the CLI from source
+
+# Python wheel (engine bindings)
+pip install ./lexi-python pytest pyyaml && pytest lexi-python/tests
 ```
 
 ## Documentation
 
 - [Getting Started](docs/getting-started.md) — Install, configure, and send your first prompt
-- [CLI Reference](docs/cli-reference.md) — Complete command reference (auto-generated)
+- [CLI Reference](docs/cli-reference.md) — Complete command reference (generated from the CLI)
+- [CLI machine interface](docs/spec/cli-machine-v0.md) — The `--json` contract for scripts and agents
 - [API Definitions](docs/api-definitions.md) — How the config-driven API abstraction works
 - [Architecture](docs/architecture.md) — System design and developer internals
 

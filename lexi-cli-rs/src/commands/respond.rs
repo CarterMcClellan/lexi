@@ -195,7 +195,6 @@ fn load_params(path: &str) -> Result<Map<String, Value>, String> {
     };
     match value {
         Value::Object(m) => Ok(m),
-        Value::Null => Ok(Map::new()),
         _ => Err(format!("--params: {path:?} must contain a mapping")),
     }
 }
@@ -360,6 +359,7 @@ pub(crate) async fn respond(io: &mut Io<'_>, provider: &str, args: &[String]) ->
                 }
                 let _ = out.flush();
             }
+            lexi_host::StreamEvent::Activity("") => {}
             lexi_host::StreamEvent::Activity(label) => {
                 if json_mode {
                     let ev = json!({ "event": "activity", "provider": provider, "message": label });

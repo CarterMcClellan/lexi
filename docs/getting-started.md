@@ -4,50 +4,57 @@ Lexi is a CLI-first tool for working with multiple LLM providers side by side. T
 
 ## Installation
 
-**Requirements:** Python 3.9+
+**Prebuilt binary:** download the `lexi` archive for your platform from [GitHub Releases](https://github.com/badscooter23/lexi/releases) and put the `lexi` binary on your `PATH`:
+
+| Platform | Archive |
+|---|---|
+| macOS (Apple Silicon + Intel) | `lexi-<version>-macos-universal.tar.gz` |
+| Linux x86_64 | `lexi-<version>-linux-x86_64.tar.gz` |
+| Linux aarch64 | `lexi-<version>-linux-aarch64.tar.gz` |
+| Windows x86_64 | `lexi-<version>-windows-x86_64.zip` |
+
+**From source** (requires stable Rust):
 
 ```bash
 # Clone the repo
 git clone https://github.com/badscooter23/lexi.git
 cd lexi
 
-# Install the CLI in editable mode
-cd lexi-cli && pip install -e .
+# Build and install the `lexi` binary
+cargo install --path lexi-cli-rs
 
 # Verify it works
 lexi version
 ```
 
-You can also install with encryption support for API keys:
+Run `lexi` with no command for the interactive shell, or `lexi <command>` for a one-off command:
 
 ```bash
-pip install -e ".[crypto]"
+lexi                      # Interactive shell
+lexi providers list       # One-off command
 ```
 
-Alternative ways to run the CLI:
+The examples below are written as you would type them inside the shell; outside it, prefix them with `lexi`.
 
-```bash
-lexi                    # Installed console script
-python -m lexi_cli      # Module invocation
-./cli                   # Shim script in lexi-cli/
-```
+> Looking for the Python library? The `lexi` wheel (`import lexi`, built from `lexi-python/`) is attached to GitHub Releases. It is a library binding to the engine, not a CLI.
 
 ## First Run
 
-On first launch, Lexi creates `~/.lexi-cli/` and seeds it with:
+Lexi keeps its state in `~/.lexi-cli/` (set `$LEXI_HOME` to use a different directory). On first run it seeds any missing defaults:
 
-- **Provider configs** — Preconfigured entries for OpenAI, Anthropic, and NVIDIA
-- **API definitions** — YAML files describing how to call each provider's API
-- **Model metadata** — Known models, aliases, and defaults for each provider
-- **Default aliases** — Shorthand commands (e.g., `r` for `respond`)
+- **Provider configs** — `providers/providers-config.yaml`, with preconfigured entries for OpenAI, Anthropic, and NVIDIA
+- **Model metadata** — Each provider's `configured-models.yaml`, `default-model.yaml`, and `model-aliases.yaml`
+- **Default aliases** — `aliases.json`, with shorthand commands (e.g., `prov` for `providers`, `q` for `exit`)
 
-You'll land in an interactive shell:
+Existing files are never overwritten. The shipped API definitions (`chat-completions`, `messages`, `responses`, `image-generations`) are built into the binary and are not copied to disk; see [API Definitions](api-definitions.md).
+
+Running `lexi` with no command drops you into an interactive shell:
 
 ```
-lexi cmd>
+cmd>
 ```
 
-Type `help` to see available commands, or `help <command>` for details on a specific command.
+Type `help` (or `?`) to see available commands, `help <command>` for details on a specific command, or `help general|ai|shortcuts` for a topic.
 
 ## Setting Up API Keys
 
@@ -75,14 +82,14 @@ providers api-key set openai --value sk-...
 providers api-key set anthropic --value sk-ant-...
 ```
 
-Stored keys are saved to `~/.lexi-cli/providers/<provider>/api-key` with restricted permissions (chmod 600). If the `cryptography` package is installed, keys are encrypted at rest.
+Stored keys are saved to `~/.lexi-cli/providers/<provider>/api-key` with owner-only permissions (mode 0600). Without `--value`, the key is prompted for (or read from stdin). Keys are stored as plain text — there is no encryption option.
 
 ### Key Resolution Order
 
 When Lexi needs an API key, it checks these sources in order:
 
 1. **Stored key file** — `~/.lexi-cli/providers/<provider>/api-key`
-2. **Environment variable** — The `${VAR}` referenced in `providers-config.yaml` (e.g., `${OPENAI_API_KEY}`)
+2. **Config `api_key`** — Either a `${VAR}` reference to an environment variable (e.g., `${OPENAI_API_KEY}`) or a literal key in `providers-config.yaml`
 
 The first non-empty value wins. This means a stored key file takes precedence over an environment variable.
 
@@ -91,18 +98,19 @@ The first non-empty value wins. This means a stored key file takes precedence ov
 View whether a key is configured and where it comes from:
 
 ```bash
-providers api-key show openai          # Shows if a key file exists
+providers api-key show openai          # Shows the key in use, masked
 providers api-key show openai --reveal # Shows the actual key value
+providers api-key remove openai        # Deletes the stored key file
 ```
 
-To check that the key actually works (makes a test API call):
+To check that the key actually works (makes a live call to the provider's models endpoint):
 
 ```bash
 providers status openai
 ```
 
 `providers status` reports:
-- **Source** — Where the key was found (`file`, `env`, or none)
+- **Source** — Where the key was found (`file`, `env`, `config`, or none)
 - **Status** — `ready` (key works), `no api-key` (no key found), or `invalid api-key` (key was rejected by the provider)
 
 ## Working with Prompts
@@ -122,7 +130,8 @@ This creates a prompt named `myq` and sets it as the **active prompt** (`$$`).
 ```bash
 prompts list                    # List all saved prompts
 prompts list myq                # Show details for a specific prompt
-prompts list --detailed         # Show all prompts with full details
+prompts list --detailed         # Include max_tokens / temperature / role
+prompts activate myq            # Make a saved prompt the active one
 ```
 
 ### Prompt Options
@@ -135,7 +144,7 @@ prompts set creative --prompt "Write a haiku about recursion" --temperature 1.2 
 
 ## Sending Prompts to Providers
 
-The `respond` command sends the active prompt (or a named prompt) to a provider:
+The `respond` command sends the active prompt (or a named prompt, or inline `--text`) to a provider:
 
 ```bash
 # Send the active prompt to Anthropic
@@ -144,15 +153,32 @@ respond anthropic
 # Send a named prompt to OpenAI
 respond openai myq
 
+# Send inline text instead of a saved prompt (`--text -` reads stdin)
+respond anthropic --text "What is a monad?"
+
 # Override the model
 respond anthropic --model claude-sonnet-4-5-20250929
 
 # Override temperature and max tokens
-respond openai --temperature 0.2 --max_tokens 2000
+respond openai --temperature 0.2 --max-tokens 2000
+
+# Stream the response as it arrives
+respond anthropic --stream
 
 # Get raw JSON response
 respond anthropic --raw
 ```
+
+Flags like `--temperature` and `--max-tokens` come from the provider's API definition — `api show <api>` lists them (the `cli=` entries). `respond` also takes `--set path=value` / `--unset path` for arbitrary body fields, `--params FILE`, `--tool <preset>`, `--image URL|PATH`, `--cite`, and `--verbose`. Long-running requests can run with `--background`; add `--detach` to return a job id immediately and check it later with `jobs status <provider> <id>` or `jobs wait <provider> <id>`. See the [CLI Reference](cli-reference.md#respond) for the full list.
+
+Beyond text responses:
+
+```bash
+generate my-images "a lighthouse at dusk" --out ./images   # Image generation, saved to disk
+upload openai ./report.pdf                                 # Files API upload; prints the file id
+```
+
+`generate` needs a provider whose `api` is `image-generations` (none of the preconfigured providers is; add one with `providers add ... --api image-generations`). `upload` works with providers whose API definition has a `files` block (`responses`, `messages`).
 
 ## Managing Providers
 
@@ -167,10 +193,10 @@ providers list --raw         # Raw YAML
 ### Add a New Provider
 
 ```bash
-providers add my-provider --url https://api.example.com/v1 --api_key '${MY_API_KEY}' --default_model my-model
+providers add my-provider --url https://api.example.com/v1 --default_model my-model --api chat-completions
 ```
 
-The provider will need an API definition — see the [API Definitions guide](api-definitions.md) for how to set one up.
+`--api` names the API definition the provider speaks (default: `chat-completions`); see the [API Definitions guide](api-definitions.md). If you pass `--api_key`, the key is written to the provider's key file, not to the config.
 
 ## Managing Models
 
@@ -201,20 +227,20 @@ respond openai --model gpt4
 Create shortcuts for commands you use often:
 
 ```bash
-alias add ra "respond anthropic"
-alias add ro "respond openai"
+alias add ra respond anthropic
+alias add ro respond openai
 
 # Now you can just type:
 ra myq
 ro --model gpt-4o
 ```
 
-View and manage aliases:
+Aliases expand both in the shell and in one-off commands (`lexi ra myq`), and never shadow a real command. View and manage aliases:
 
 ```bash
 alias list          # Show all aliases
 alias rm ra         # Remove an alias
-alias reset         # Reset to defaults
+alias reset         # Reset to the shipped defaults
 ```
 
 ## Configuration
@@ -231,7 +257,7 @@ Default settings:
 
 | Key | Default | Description |
 |---|---|---|
-| `cli_name` | `lexi` | Name shown in the prompt |
+| `cli_name` | `lexi` | CLI name |
 | `prompt` | `cmd` | Prompt label |
 | `prompt_delimiter` | `>` | Character after the prompt label |
 | `edit_mode` | `vi` | Input editing mode (`vi` or `emacs`) |
@@ -245,13 +271,22 @@ sh ls -la                    # Run a shell command
 !echo "hello"                # Shortcut syntax
 ```
 
-Re-run previous commands from history:
+Re-run previous commands from history (stored in `~/.lexi-cli/history`):
 
 ```bash
 history                      # Show command history
 history -n 5                 # Show last 5 commands
 #3                           # Re-run command #3
 #-1                          # Re-run the last command
+history --clear              # Clear the history
+```
+
+## Scripting
+
+Every command accepts the global `--json` flag for machine-readable output, and exits `0` on success, `1` on failure, and `2` on a usage error. See the [machine interface spec](spec/cli-machine-v0.md).
+
+```bash
+lexi --json providers list
 ```
 
 ## Next Steps

@@ -161,6 +161,10 @@ def test_definition(path: Path) -> None:
         assert lexi.cli_flags(definition) == case["expect_flags"], case["name"]
     if "expect_presets" in case:
         assert lexi.tool_preset_names(definition) == case["expect_presets"], case["name"]
+    if "expect_preview" in case:
+        exp = case["expect_preview"]
+        got = lexi.preview_definition(definition, exp["prompt"], exp["model"], exp["role"])
+        assert got.get("body") == exp["body"], case["name"]
 
 
 def test_preview_binding() -> None:

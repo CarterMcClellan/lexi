@@ -390,7 +390,19 @@ pub fn preview_definition(def: &Value, prompt: &str, model: &str, role: &str) ->
         "presets": tool_preset_names(def),
     });
     if errors.is_empty() {
-        let prompt_payload = serde_json::json!({ "prompt": prompt, "role": role });
+        // Bind the sample prompt the way a real request does: as a canonical
+        // message lowered through the definition's `content_mapping`, so
+        // `{{content}}` templates render (the payload keeps prompt/role too).
+        let message = crate::message_ir::message_from_dict(&serde_json::json!({
+            "role": role,
+            "content": [{ "type": "text", "text": prompt }],
+        }));
+        let mut prompt_payload = serde_json::json!({ "prompt": prompt, "role": role });
+        if let Value::Object(lowered) =
+            crate::message_ir::lower_message(&message, def.get("content_mapping"))
+        {
+            prompt_payload.as_object_mut().unwrap().extend(lowered);
+        }
         let overrides = serde_json::json!({ "model": model });
         match crate::compose::compose_request_body(
             def,

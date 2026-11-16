@@ -1,0 +1,32 @@
+{
+  "name": "preview-lowers-content",
+  "description": "preview_definition binds the sample prompt as a canonical message lowered through content_mapping, so a {{content}} template renders the prompt (here as a plain string: text_only_as_string).",
+  "definition": {
+    "name": "demo",
+    "request": {
+      "path": "/chat/completions",
+      "body_schema": {
+        "type": "object",
+        "properties": {
+          "model": { "type": "string", "x-bind": { "from": "model" } },
+          "messages": {
+            "type": "array",
+            "x-render": { "template": [{ "role": "{{role}}", "content": "{{content}}" }] }
+          }
+        }
+      }
+    },
+    "content_mapping": {
+      "text_only_as_string": true,
+      "parts": { "text": { "template": { "type": "text", "text": "{{text}}" } } }
+    },
+    "response": { "text_extract": { "text_path": "choices[0].message.content" } }
+  },
+  "expect_errors": [],
+  "expect_preview": {
+    "prompt": "Hey",
+    "model": "m1",
+    "role": "system",
+    "body": { "model": "m1", "messages": [{ "role": "system", "content": "Hey" }] }
+  }
+}
