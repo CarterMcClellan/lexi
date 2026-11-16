@@ -108,7 +108,7 @@ wiremock for anything that hits the network) and `--json` output for its command
   commands that fully work (no placeholder stubs).
 - Global `--json` flag + a small output module (human table vs JSON).
 - First-run seeding in `lexi-host` (embed packaged `providers/` + `default-aliases.json`).
-- `version`, consistent exit codes (0 / 1 usage / 2 provider error).
+- `version`, consistent exit codes (0 ok / 1 command failed / 2 usage — clap convention).
 
 ### C2 — Read-only admin
 `providers list`, `models list|hosted|default <p>|alias list`, `prompts list`,
