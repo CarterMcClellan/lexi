@@ -35,12 +35,19 @@ Rust-core architecture vs. bundling Chromium + Node + Python.
 
 ## Releases
 
-`.github/workflows/release.yml` builds installers for macOS (universal), Linux
-(`.deb` / `.AppImage`), and Windows (`.msi` / NSIS `.exe`) on a `v*` tag via
-`tauri-action`, attaching them to a draft GitHub Release.
+A `v*` tag runs three workflows that fill **one draft GitHub Release**:
+
+- `release.yml` creates the draft first, then builds installers for macOS
+  (universal), Linux (`.deb` / `.rpm` / `.AppImage`) and Windows (`.msi` / NSIS
+  `.exe`) with `tauri-action`, uploading to that draft by id;
+- `cli.yml` (the `lexi` binaries) and `wheels.yml` (Python wheels + sdist) wait
+  for that draft and upload to it.
+
+All of them resolve the release through `.github/scripts/ensure-release.sh`, so
+a tag never gets two drafts. Review the draft, then publish it.
 
 ```sh
-git tag v0.2.0 && git push origin v0.2.0
+git tag v0.3.0 && git push origin v0.3.0
 ```
 
 ## Signing / notarization (needs your credentials)

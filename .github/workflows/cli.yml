@@ -89,6 +89,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Checkout first: it cleans the workspace, which would remove dist/.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
       - uses: actions/download-artifact@v4
         with:
           pattern: cli-*
@@ -99,7 +103,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release create "$GITHUB_REF_NAME" --draft --title "Lexi $GITHUB_REF_NAME" \
-            --notes "Automated build — CLI, desktop installers and Python wheels." \
-            2>/dev/null || true
-          gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          # The Release workflow creates the draft; wait for it (else create it).
+          id="$(.github/scripts/ensure-release.sh "$GITHUB_REF_NAME" 600)"
+          .github/scripts/upload-assets.sh "$id" dist/*
