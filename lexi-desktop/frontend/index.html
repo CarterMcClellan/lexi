@@ -3174,7 +3174,8 @@
     // filters (right-click a header). Columns:
     //   { key, label, type: 'text'|'number'|'date'|'tags', get?(row), render?(row) → HTML,
     //     cls?, sortable?: false, filterable?: false }
-    // `onRender(shown, total)` reports the visible row count.
+    // `onRender(shown, total)` reports the visible row count. A column with no
+    // value in any row is left out (action columns, `sortable: false`, stay).
     class DataTable {
       constructor(host, { columns = [], emptyText = 'Nothing to show.', rowClass, onRender } = {}) {
         this.host = host;
@@ -3249,12 +3250,22 @@
 
       setSort(key, dir) { this.sort = { key, dir }; this.render(); }
 
+      // Columns with a value in at least one row (plus the action columns).
+      visibleColumns() {
+        const empty = (v) => v == null || v === '' || (Array.isArray(v) && !v.length);
+        return this.columns.filter((c) => c.sortable === false || this.rows.some((r) => !empty(this.raw(c, r))));
+      }
+
       render() {
         const total = this.rows.length;
         if (!total) {
           this.showMessage(esc(this.emptyText));
           return;
         }
+        const cols = this.visibleColumns();
+        const shownKeys = new Set(cols.map((c) => c.key));
+        Object.keys(this.filters).forEach((k) => { if (!shownKeys.has(k)) delete this.filters[k]; });
+        if (this.sort && !shownKeys.has(this.sort.key)) this.sort = null;
         let rows = this.rows.filter((r) => this.matches(r));
         if (this.sort) {
           const col = this.col(this.sort.key);
@@ -3274,7 +3285,7 @@
         const table = document.createElement('table');
         table.className = 'dt-table';
         const headRow = document.createElement('tr');
-        this.columns.forEach((col) => {
+        cols.forEach((col) => {
           const th = document.createElement('th');
           th.textContent = col.label;
           const sortable = col.sortable !== false;
@@ -3314,7 +3325,7 @@
           const tr = document.createElement('tr');
           const rc = this.rowClass ? this.rowClass(row) : '';
           if (rc) tr.className = rc;
-          this.columns.forEach((col) => {
+          cols.forEach((col) => {
             const td = document.createElement('td');
             if (col.cls) td.className = col.cls;
             if (col.render) td.innerHTML = col.render(row);
@@ -3328,7 +3339,7 @@
         if (!rows.length) {
           const tr = document.createElement('tr');
           const td = document.createElement('td');
-          td.colSpan = this.columns.length;
+          td.colSpan = cols.length;
           td.className = 'muted';
           td.textContent = 'No rows match the filters.';
           tr.appendChild(td);
