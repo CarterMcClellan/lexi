@@ -937,21 +937,24 @@
       position: relative;
       z-index: 2;
     }
+    /* The grip is always visible; it lights up on hover. */
     .models-split-divider::after {
       content: '';
       position: absolute;
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
-      width: 3px;
-      height: 40px;
+      width: 4px;
+      height: 48px;
       border-radius: 2px;
-      background: var(--border);
-      transition: background 150ms ease, height 150ms ease;
+      background: var(--muted);
+      opacity: 0.55;
+      transition: background 150ms ease, height 150ms ease, opacity 150ms ease;
     }
     .models-split-divider:hover::after {
       background: var(--accent-2);
-      height: 60px;
+      opacity: 1;
+      height: 64px;
     }
     @media (max-width: 900px) {
       .models-split { flex-direction: column; }
@@ -1342,21 +1345,24 @@
       position: relative;
       z-index: 2;
     }
+    /* The grip is always visible; it lights up on hover. */
     .apis-split-divider::after {
       content: '';
       position: absolute;
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
-      width: 3px;
-      height: 40px;
+      width: 4px;
+      height: 48px;
       border-radius: 2px;
-      background: var(--border);
-      transition: background 150ms ease, height 150ms ease;
+      background: var(--muted);
+      opacity: 0.55;
+      transition: background 150ms ease, height 150ms ease, opacity 150ms ease;
     }
     .apis-split-divider:hover::after {
       background: var(--accent-2);
-      height: 60px;
+      opacity: 1;
+      height: 64px;
     }
     .api-list-items {
       flex: 1 1 0;
@@ -1813,7 +1819,7 @@
           <div class="dt-host" id="hostedTable"></div>
         </section>
 
-        <div class="models-split-divider" id="modelsSplitDivider" data-tip="Drag to resize the two lists"></div>
+        <div class="models-split-divider" id="modelsSplitDivider" data-tip="Drag to give one list more room"></div>
 
         <section class="models-split-pane panel" id="configuredPane">
           <div class="pane-head">
@@ -1840,7 +1846,7 @@
           </div>
         </section>
 
-        <div class="apis-split-divider" id="apisSplitDivider" data-tip="Drag to resize"></div>
+        <div class="apis-split-divider" id="apisSplitDivider" data-tip="Drag to give the list or the details more room"></div>
 
         <section class="apis-split-pane panel" id="apisDetailPane">
           <div class="api-detail-scroll" id="apiDetailScroll">
