@@ -143,14 +143,23 @@ fn models_aliases_get(path: &str) -> Result<Value, String> {
 }
 
 /// `GET /api/models/hosted?provider=X` — models the provider reports via its API
-/// (a live call to the provider's models endpoint).
+/// (a live call to the provider's models endpoint). With `cached=1`, the list
+/// from the last fetch instead (no network), plus its `fetched_at` (Unix secs).
 async fn models_hosted(path: &str) -> Result<Value, String> {
     let provider = require_provider(path)?;
-    // The catalog, each entry with kind / api / tags (and the cache refreshed).
-    let models = lexi_host::models::hosted_summaries(&provider, false, &[])
+    let cached = query_param(path, "cached").is_some_and(|v| v == "1" || v == "true");
+    // The catalog, each entry with kind / api / tags (a live fetch refreshes the cache).
+    let models = lexi_host::models::hosted_summaries(&provider, cached, &[])
         .await
         .map_err(|e| e.to_string())?;
-    Ok(json!({ "provider": provider, "models": models }))
+    let mut out = json!({ "provider": provider, "models": models });
+    if cached {
+        let catalog = lexi_host::hosted::cached_catalog(&provider).map_err(|e| e.to_string())?;
+        out["fetched_at"] = catalog
+            .and_then(|c| c.get("fetched_at").cloned())
+            .unwrap_or(Value::Null);
+    }
+    Ok(out)
 }
 
 /// `POST /api/models/default` — set the provider's default model.
