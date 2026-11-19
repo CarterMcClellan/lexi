@@ -1156,6 +1156,28 @@
       max-width: 520px;
     }
     .dt-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    /* Frozen (sticky: true) columns stay put when the table scrolls sideways;
+       their cells need an opaque background so scrolled cells pass under them. */
+    .dt-table .dt-sticky { position: sticky; left: 0; }
+    .dt-table td.dt-sticky { z-index: 1; background-color: var(--card); }
+    .dt-table th.dt-sticky { z-index: 3; }
+    .dt-table tbody tr:nth-child(even) td.dt-sticky { background-color: var(--input-bg); }
+    .dt-table tbody tr.row-error td.dt-sticky {
+      background: linear-gradient(rgba(239, 68, 68, 0.08), rgba(239, 68, 68, 0.08)), var(--card);
+    }
+    .dt-table .dt-sticky-edge { box-shadow: 6px 0 6px -6px rgba(0, 0, 0, 0.45); }
+    .dt-table td.dt-actions { white-space: nowrap; }
+    .dt-table td.dt-actions .btn-icon + .btn-icon,
+    .dt-table td.dt-actions .btn-icon + .btn-icon-slot,
+    .dt-table td.dt-actions .btn-icon-slot + .btn-icon { margin-left: 4px; }
+    .btn-icon-slot {
+      display: inline-block;
+      padding: 4px 8px;
+      border: 1px solid transparent;
+      font-size: 0.85rem;
+      color: var(--accent-2);
+      cursor: default;
+    }
     .dt-menu {
       position: fixed;
       z-index: 1100;
@@ -3179,7 +3201,8 @@
     // A table with a sticky header, click-to-sort columns and per-column
     // filters (right-click a header). Columns:
     //   { key, label, type: 'text'|'number'|'date'|'tags', get?(row), render?(row) → HTML,
-    //     cls?, sortable?: false, filterable?: false }
+    //     cls?, sortable?: false, filterable?: false, sticky?: true }
+    // `sticky` columns are frozen at the left (they're always drawn first).
     // `onRender(shown, total)` reports the visible row count. A column with no
     // value in any row is left out (action columns, `sortable: false`, stay).
     class DataTable {
@@ -3193,6 +3216,7 @@
         this.sort = null; // { key, dir: 1 | -1 }
         this.filters = {}; // key → { text } | { min, max } | { tags: [] }
         this.menu = null;
+        this.pinObserver = null;
         host.innerHTML = '<div class="dt-chips"></div><div class="dt-scroll"></div>';
         this.chipsEl = host.querySelector('.dt-chips');
         this.scrollEl = host.querySelector('.dt-scroll');
@@ -3259,7 +3283,29 @@
       // Columns with a value in at least one row (plus the action columns).
       visibleColumns() {
         const empty = (v) => v == null || v === '' || (Array.isArray(v) && !v.length);
-        return this.columns.filter((c) => c.sortable === false || this.rows.some((r) => !empty(this.raw(c, r))));
+        const cols = this.columns.filter((c) => c.sortable === false || this.rows.some((r) => !empty(this.raw(c, r))));
+        return [...cols.filter((c) => c.sticky), ...cols.filter((c) => !c.sticky)];
+      }
+
+      // Sets each frozen column's left offset from the widths of the ones
+      // before it; re-run when those widths change (e.g. the tab is shown).
+      pinColumns(table, count) {
+        if (this.pinObserver) { this.pinObserver.disconnect(); this.pinObserver = null; }
+        if (!count) return;
+        const heads = Array.from(table.tHead.rows[0].cells).slice(0, count);
+        const place = () => {
+          let left = 0;
+          const lefts = heads.map((th) => { const l = left; left += th.getBoundingClientRect().width; return l; });
+          Array.from(table.rows).forEach((tr) => {
+            if (tr.cells.length < count) return; // the "no rows match" row
+            for (let i = 0; i < count; i++) tr.cells[i].style.left = `${lefts[i]}px`;
+          });
+        };
+        place();
+        if (typeof ResizeObserver === 'function') {
+          this.pinObserver = new ResizeObserver(place);
+          heads.forEach((th) => this.pinObserver.observe(th));
+        }
       }
 
       render() {
@@ -3291,9 +3337,16 @@
         const table = document.createElement('table');
         table.className = 'dt-table';
         const headRow = document.createElement('tr');
+        const stickyCount = cols.filter((c) => c.sticky).length;
+        const stickyClasses = (cell, col) => {
+          if (!col.sticky) return;
+          cell.classList.add('dt-sticky');
+          if (col === cols[stickyCount - 1]) cell.classList.add('dt-sticky-edge');
+        };
         cols.forEach((col) => {
           const th = document.createElement('th');
           th.textContent = col.label;
+          stickyClasses(th, col);
           const sortable = col.sortable !== false;
           const filterable = col.filterable !== false && sortable;
           if (!sortable) th.classList.add('no-sort');
@@ -3334,6 +3387,7 @@
           cols.forEach((col) => {
             const td = document.createElement('td');
             if (col.cls) td.className = col.cls;
+            stickyClasses(td, col);
             if (col.render) td.innerHTML = col.render(row);
             else td.textContent = this.text(col, row);
             tr.appendChild(td);
@@ -3354,6 +3408,7 @@
         const { scrollTop, scrollLeft } = this.scrollEl;
         this.scrollEl.innerHTML = '';
         this.scrollEl.appendChild(table);
+        this.pinColumns(table, stickyCount);
         this.scrollEl.scrollTop = scrollTop;
         this.scrollEl.scrollLeft = scrollLeft;
         if (this.onRender) this.onRender(rows.length, total);
@@ -3555,7 +3610,15 @@
       rowClass: (m) => (isNotHosted(m) ? 'row-error' : ''),
       columns: [
         {
-          key: 'id', label: 'Model ID',
+          key: '_actions', label: '', sortable: false, filterable: false, sticky: true, cls: 'dt-actions',
+          render: (m) => `<button type="button" class="btn-icon mt-edit" data-id="${esc(m.id)}" aria-label="Edit ${esc(m.id)}" data-tip="Edit this model's name, limits and aliases">&#9998;</button>`
+            + (m.id !== mtDefault
+              ? `<button type="button" class="btn-icon mt-setdef" data-id="${esc(m.id)}" aria-label="Make ${esc(m.id)} the default" data-tip="Make this the default model for ${esc(mtProvider)}">&#9734;</button>`
+              : `<span class="btn-icon-slot" data-tip="This is the default model for ${esc(mtProvider)}">&#9733;</span>`)
+            + `<button type="button" class="btn-icon danger mt-rm" data-id="${esc(m.id)}" aria-label="Remove ${esc(m.id)}" data-tip="Remove this model from your configured models">&#10005;</button>`,
+        },
+        {
+          key: 'id', label: 'Model ID', sticky: true,
           render: (m) => `${esc(m.id)}${m.id === mtDefault ? ' <span class="badge-default" data-tip="Used when you don\'t name a model">default</span>' : ''}${isNotHosted(m) ? ' <span class="badge-error" data-tip="This provider\'s model list doesn\'t include this id">not hosted</span>' : ''}`,
         },
         { key: 'name', label: 'Name' },
@@ -3567,13 +3630,6 @@
         {
           key: 'aliases', label: 'Aliases', get: (m) => aliasesFor(m.id),
           render: (m) => aliasesFor(m.id).map((a) => `<span class="alias-tag">${esc(a)}</span>`).join(' '),
-        },
-        {
-          key: '_actions', label: '', sortable: false, filterable: false,
-          render: (m) => `
-            <button type="button" class="btn-icon mt-edit" data-id="${esc(m.id)}" aria-label="Edit ${esc(m.id)}" data-tip="Edit this model's name, limits and aliases">&#9998;</button>
-            ${m.id !== mtDefault ? `<button type="button" class="btn-icon mt-setdef" data-id="${esc(m.id)}" aria-label="Make ${esc(m.id)} the default" data-tip="Make this the default model for ${esc(mtProvider)}">&#9733;</button>` : ''}
-            <button type="button" class="btn-icon danger mt-rm" data-id="${esc(m.id)}" aria-label="Remove ${esc(m.id)}" data-tip="Remove this model from your configured models">&#10005;</button>`,
         },
       ],
     });
@@ -3613,7 +3669,7 @@
       const cols = ordered.map((k) => {
         const values = models.map((m) => m[k]).filter((v) => v != null);
         const numeric = values.length > 0 && values.every((v) => typeof v === 'number');
-        const col = { key: k, label: humanize(k) };
+        const col = { key: k, label: humanize(k), sticky: k === 'id' };
         if (numeric && /^created/.test(k)) col.type = 'date';
         else if (numeric) { col.type = 'number'; col.cls = 'num'; }
         if (k === 'api') col.render = apiCell;
@@ -3622,13 +3678,13 @@
       if (models.some((m) => Array.isArray(m.tags))) {
         cols.push({ key: 'tags', label: 'Tags', type: 'tags', cls: 'dt-wrap', get: tagsWithoutKind, render: (m) => tagChips(m.tags) });
       }
-      cols.push({
-        key: '_add', label: '', sortable: false, filterable: false,
+      cols.unshift({
+        key: '_add', label: '', sortable: false, filterable: false, sticky: true, cls: 'dt-actions',
         render: (m) => {
           const id = m.id || m.model;
           return mtModels.some((c) => c.id === id)
             ? '<span class="badge-exists" data-tip="Already in your configured models">added</span>'
-            : `<button type="button" class="btn-icon hosted-add" data-id="${esc(id)}" aria-label="Add ${esc(id)}" data-tip="Add this model to your configured models">+</button>`;
+            : `<button type="button" class="btn-icon hosted-add" data-id="${esc(id)}" aria-label="Add ${esc(id)}" data-tip="Add this hosted model to your configured models, making it usable for chat, image generation, etc.">+</button>`;
         },
       });
       return cols;
@@ -3637,7 +3693,7 @@
     function renderModelsTable() {
       modelsDefaultLineEl.innerHTML = mtDefault
         ? `Default: <strong>${esc(mtDefault)}</strong>`
-        : 'No default model set. Use ★ on a model to choose one.';
+        : 'No default model set. Use ☆ on a model to choose one.';
       renderOrphanAliases();
       configuredTable.setRows(mtModels);
     }
