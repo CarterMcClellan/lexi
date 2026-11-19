@@ -910,6 +910,10 @@
       flex-direction: column;
       overflow: hidden;
     }
+    .models-top-bar .btn {
+      padding: 6px 12px;
+      font-size: 0.85rem;
+    }
     .models-split {
       display: flex;
       flex: 1 1 0;
@@ -920,20 +924,10 @@
     .models-split-pane {
       display: flex;
       flex-direction: column;
-      min-width: 0;
-      overflow: hidden;
-    }
-    #hostedPane {
-      flex: var(--hosted-flex, 1);
-    }
-    #configuredPane {
-      flex: var(--configured-flex, 1);
-    }
-    .models-scroll-area {
       flex: 1 1 0;
+      min-width: 0;
       min-height: 0;
-      overflow-y: auto;
-      overflow-x: auto;
+      overflow: hidden;
     }
     .models-split-divider {
       flex-shrink: 0;
@@ -943,59 +937,104 @@
       position: relative;
       z-index: 2;
     }
+    /* The grip is always visible; it lights up on hover. */
     .models-split-divider::after {
       content: '';
       position: absolute;
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
-      width: 3px;
-      height: 40px;
+      width: 4px;
+      height: 48px;
       border-radius: 2px;
-      background: var(--border);
-      transition: background 150ms ease, height 150ms ease;
+      background: var(--muted);
+      opacity: 0.55;
+      transition: background 150ms ease, height 150ms ease, opacity 150ms ease;
     }
     .models-split-divider:hover::after {
       background: var(--accent-2);
-      height: 60px;
+      opacity: 1;
+      height: 64px;
     }
     @media (max-width: 900px) {
       .models-split { flex-direction: column; }
       .models-split-divider {
         width: auto;
         height: 7px;
-        cursor: ns-resize;
+        cursor: row-resize;
       }
       .models-split-divider::after {
         width: 40px;
         height: 3px;
       }
     }
-    .models-feedback {
-      margin-top: 8px;
-      font-size: 0.9rem;
-      min-height: 1.2em;
-    }
-    .inline-form-row {
+    .pane-head {
       display: flex;
-      gap: 8px;
-      align-items: flex-end;
-      margin-top: 10px;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      flex-shrink: 0;
     }
-    .inline-form-row .field {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      flex: 1;
-    }
-    .inline-form-row .field label {
-      margin: 0;
+    .pane-head h2 { margin: 0; }
+    .pane-meta {
+      flex-shrink: 0;
+      margin-top: 4px;
       font-size: 0.85rem;
+      color: var(--muted);
     }
-    .inline-form-row .field input,
-    .inline-form-row .field select {
-      width: 100%;
+    .pane-meta strong { color: var(--text); font-weight: 600; }
+    .link-btn {
+      background: none;
+      border: none;
+      padding: 0;
+      color: var(--accent-2);
+      font: inherit;
+      font-size: 0.85rem;
+      cursor: pointer;
+      white-space: nowrap;
     }
+    .link-btn:hover { text-decoration: underline; }
+    .models-feedback {
+      flex-shrink: 0;
+      font-size: 0.85rem;
+      margin-top: 4px;
+    }
+    .models-feedback:empty { display: none; }
+    .pane-notice {
+      flex-shrink: 0;
+      margin-top: 8px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      border: 1px solid var(--border);
+      background: var(--input-bg);
+    }
+    .pane-notice:empty { display: none; }
+    .pane-notice.error { border-color: var(--danger); }
+    .pane-notice .error-text { color: var(--danger); }
+    .pane-notice.warn { border-color: #f59e0b; }
+    .pane-notice .notice-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .alias-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .alias-chip .chip-x {
+      background: none;
+      border: none;
+      color: inherit;
+      cursor: pointer;
+      padding: 0 2px;
+      font-size: 0.9rem;
+      line-height: 1;
+      opacity: 0.7;
+    }
+    .alias-chip .chip-x:hover { opacity: 1; color: var(--danger); }
     .btn-icon {
       background: transparent;
       border: 1px solid var(--border);
@@ -1014,38 +1053,6 @@
       color: var(--danger);
       border-color: var(--danger);
     }
-    .data-table th.sortable {
-      cursor: pointer;
-      user-select: none;
-      position: relative;
-      padding-right: 18px;
-    }
-    .data-table th.sortable:hover {
-      color: var(--accent-2);
-    }
-    .sort-arrow {
-      position: absolute;
-      right: 4px;
-      top: 50%;
-      transform: translateY(-50%);
-      font-size: 0.7rem;
-      opacity: 0.7;
-    }
-    .hosted-filter {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      margin: 8px 0;
-    }
-    .hosted-filter input {
-      flex: 1;
-      min-width: 0;
-    }
-    .filter-active {
-      background: var(--accent) !important;
-      color: #fff !important;
-      border-color: var(--accent) !important;
-    }
     .badge-exists {
       display: inline-block;
       padding: 2px 8px;
@@ -1055,19 +1062,277 @@
       color: var(--success);
       border: 1px solid var(--success);
     }
-    .model-edit-form {
+
+    /* --- DataTable: sticky header, sort, per-column filters --- */
+    .dt-host {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 0;
+      min-height: 0;
+      min-width: 0;
+      margin-top: 8px;
+    }
+    .dt-chips {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      margin-bottom: 8px;
+      font-size: 0.8rem;
+    }
+    .dt-chips:empty { display: none; }
+    .dt-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 4px 2px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--accent);
+      color: var(--text);
+      background: rgba(124, 58, 237, 0.12);
+    }
+    .dt-chip button {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.95rem;
+      line-height: 1;
+      padding: 0 4px;
+    }
+    .dt-chip button:hover { color: var(--danger); }
+    .dt-count { color: var(--muted); }
+    .dt-scroll {
+      flex: 1 1 0;
+      min-height: 0;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .dt-empty { padding: 12px; }
+    table.dt-table {
+      border-collapse: separate;
+      border-spacing: 0;
+      width: max-content;
+      min-width: 100%;
+      font-size: 0.9rem;
+    }
+    .dt-table th,
+    .dt-table td {
+      padding: 7px 10px;
+      text-align: left;
+      vertical-align: top;
+      white-space: nowrap;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .dt-table th:last-child,
+    .dt-table td:last-child { border-right: none; }
+    .dt-table tbody tr:last-child td { border-bottom: none; }
+    .dt-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: var(--card);
+      color: var(--muted);
+      font-weight: 700;
+      cursor: pointer;
+      user-select: none;
+    }
+    .dt-table th.no-sort { cursor: default; }
+    .dt-table th:not(.no-sort):hover { color: var(--accent-2); }
+    .dt-table th.filtered { color: var(--accent-2); }
+    .dt-table th .dt-ind {
+      margin-left: 6px;
+      font-size: 0.7rem;
+      opacity: 0.85;
+    }
+    .dt-table tbody tr:nth-child(even) td { background: var(--input-bg); }
+    .dt-table tbody tr.row-error td { background: rgba(239, 68, 68, 0.08); }
+    .dt-table td.dt-wrap {
+      white-space: normal;
+      min-width: 260px;
+      max-width: 520px;
+    }
+    .dt-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    /* Frozen (sticky: true) columns stay put when the table scrolls sideways;
+       their cells need an opaque background so scrolled cells pass under them. */
+    .dt-table .dt-sticky { position: sticky; left: 0; }
+    .dt-table td.dt-sticky { z-index: 1; background-color: var(--card); }
+    .dt-table th.dt-sticky { z-index: 3; }
+    .dt-table tbody tr:nth-child(even) td.dt-sticky { background-color: var(--input-bg); }
+    .dt-table tbody tr.row-error td.dt-sticky {
+      background: linear-gradient(rgba(239, 68, 68, 0.08), rgba(239, 68, 68, 0.08)), var(--card);
+    }
+    .dt-table .dt-sticky-edge { box-shadow: 6px 0 6px -6px rgba(0, 0, 0, 0.45); }
+    .dt-table td.dt-actions { white-space: nowrap; }
+    .dt-table td.dt-actions .btn-icon + .btn-icon,
+    .dt-table td.dt-actions .btn-icon + .btn-icon-slot,
+    .dt-table td.dt-actions .btn-icon-slot + .btn-icon { margin-left: 4px; }
+    .btn-icon-slot {
+      display: inline-block;
+      padding: 4px 8px;
+      border: 1px solid transparent;
+      font-size: 0.85rem;
+      color: var(--accent-2);
+      cursor: default;
+    }
+    .dt-menu {
+      position: fixed;
+      z-index: 1100;
+      min-width: 220px;
+      max-width: 320px;
+      background: var(--card);
+      color: var(--text);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 12px;
-      background: var(--input-bg);
-      margin-top: 10px;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+      padding: 6px;
+      font-size: 0.85rem;
     }
-    .model-edit-form .field-grid {
+    .dt-menu .dt-menu-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      color: var(--text);
+      padding: 6px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      font: inherit;
+    }
+    .dt-menu .dt-menu-item:hover { background: rgba(255, 255, 255, 0.06); }
+    .dt-menu hr { border: none; border-top: 1px solid var(--border); margin: 6px 0; }
+    .dt-menu .dt-menu-title {
+      padding: 4px 8px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+    .dt-menu .dt-menu-body { padding: 4px 8px; }
+    .dt-menu input[type="text"],
+    .dt-menu input[type="number"] {
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+    .dt-menu .dt-range { display: flex; gap: 6px; }
+    .dt-menu .dt-tag-list {
+      max-height: 220px;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .dt-menu .dt-tag-list label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0;
+      font-weight: 400;
+      cursor: pointer;
+    }
+    .dt-menu .dt-tag-list .count { margin-left: auto; color: var(--muted); }
+    .dt-menu .dt-menu-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      padding: 6px 8px 2px;
+    }
+    .dt-menu .btn { padding: 5px 12px; font-size: 0.8rem; }
+
+    /* --- Modal dialogs --- */
+    dialog.lexi-dialog {
+      width: min(560px, calc(100vw - 32px));
+      max-height: calc(100vh - 48px);
+      padding: 0;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--card);
+      color: var(--text);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+    }
+    dialog.lexi-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+    dialog.lexi-dialog form {
+      display: flex;
+      flex-direction: column;
+      max-height: calc(100vh - 50px);
+    }
+    .lexi-dialog-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .lexi-dialog-head h3 { margin: 0; font-size: 1rem; }
+    .lexi-dialog-body {
+      padding: 4px 16px 12px;
+      overflow: auto;
+    }
+    .lexi-dialog-body p { margin: 12px 0 0; line-height: 1.45; }
+    .lexi-dialog-body .field-grid {
+      display: grid;
       grid-template-columns: 1fr 1fr;
+      gap: 0 12px;
     }
-    .model-edit-form .actions {
-      margin-top: 10px;
+    .lexi-dialog-body .span-2 { grid-column: 1 / -1; }
+    .lexi-dialog-body .hint {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 4px;
     }
+    .lexi-dialog-body .alias-editor {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      min-height: 28px;
+    }
+    .lexi-dialog-body .alias-add { display: flex; gap: 8px; margin-top: 8px; }
+    .lexi-dialog-body .alias-add input { flex: 1; }
+    .lexi-dialog-body .check-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 400;
+    }
+    .lexi-dialog-body .check-row input { width: auto; }
+    .lexi-dialog-error {
+      color: var(--danger);
+      font-size: 0.85rem;
+      padding: 0 16px;
+    }
+    .lexi-dialog-error:empty { display: none; }
+    .lexi-dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* --- Hover help (data-tip) --- */
+    .lexi-tip {
+      position: fixed;
+      z-index: 2000;
+      max-width: 280px;
+      padding: 6px 9px;
+      border-radius: 6px;
+      background: #0b0f1a;
+      color: #e2e8f0;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+      font-size: 0.78rem;
+      font-weight: 400;
+      line-height: 1.35;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 90ms ease;
+      white-space: normal;
+    }
+    .lexi-tip.show { opacity: 1; }
     /* --- APIs tab --- */
     #tab-apis.active {
       display: flex;
@@ -1102,21 +1367,24 @@
       position: relative;
       z-index: 2;
     }
+    /* The grip is always visible; it lights up on hover. */
     .apis-split-divider::after {
       content: '';
       position: absolute;
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
-      width: 3px;
-      height: 40px;
+      width: 4px;
+      height: 48px;
       border-radius: 2px;
-      background: var(--border);
-      transition: background 150ms ease, height 150ms ease;
+      background: var(--muted);
+      opacity: 0.55;
+      transition: background 150ms ease, height 150ms ease, opacity 150ms ease;
     }
     .apis-split-divider:hover::after {
       background: var(--accent-2);
-      height: 60px;
+      opacity: 1;
+      height: 64px;
     }
     .api-list-items {
       flex: 1 1 0;
@@ -1462,15 +1730,15 @@
           </div>
 
           <div class="actions">
-            <button class="btn btn-primary" id="saveActive">Save as Active ($$)</button>
-            <button class="btn btn-ghost" id="saveNamed">Save Named Prompt</button>
+            <button class="btn btn-primary" id="saveActive" data-tip="Save these settings as the active prompt ($$), the one used when you don't name a prompt">Save as Active ($$)</button>
+            <button class="btn btn-ghost" id="saveNamed" data-tip="Save these settings as a named prompt you can load later">Save Named Prompt</button>
           </div>
         </section>
 
         <section class="panel">
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <h2>Saved Prompts</h2>
-            <button class="btn btn-ghost" id="refresh">Refresh</button>
+            <button class="btn btn-ghost" id="refresh" data-tip="Reload the saved prompts from disk">Refresh</button>
           </div>
           <div class="inline-field">
             <input type="checkbox" id="showDetails">
@@ -1488,32 +1756,32 @@
         <textarea id="chatPrompt" placeholder="Enter prompt"></textarea>
         <div class="inline-field" style="justify-content: space-between; align-items: center;">
           <div style="display:flex; align-items:center; gap:8px;">
-            <button class="btn btn-ghost" id="loadPromptBtn">Load Prompt</button>
+            <button class="btn btn-ghost" id="loadPromptBtn" data-tip="Put the selected saved prompt's text in the box above">Load Prompt</button>
             <select id="chatPromptSelect" style="width:auto; min-width:180px; max-width:300px;">
               <option value="">-- select prompt --</option>
             </select>
           </div>
           <div style="display:flex; gap:8px; align-items:center;">
-            <button class="btn btn-ghost" id="saveChatNamed">Save</button>
+            <button class="btn btn-ghost" id="saveChatNamed" data-tip="Save this prompt text as a named prompt">Save</button>
           </div>
         </div>
       </div>
-      <div class="chat-resize-bar" id="chatResizeBar"></div>
+      <div class="chat-resize-bar" id="chatResizeBar" data-tip="Drag to resize the prompt and response areas"></div>
       <div class="chat-response-section" id="chatResponseSection">
         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
           <div class="provider-list" id="providerList" style="margin:0;">
             <span class="muted" style="font-size:0.95rem;">Providers:</span>
           </div>
           <div style="display:flex; gap:8px;">
-            <button class="btn btn-ghost" id="generateResponseBtn" disabled>Generate Response</button>
-            <button class="btn btn-ghost" id="stopResponseBtn" disabled>Stop</button>
+            <button class="btn btn-ghost" id="generateResponseBtn" disabled data-tip="Send the prompt to each ticked provider">Generate Response</button>
+            <button class="btn btn-ghost" id="stopResponseBtn" disabled data-tip="Stop the responses in progress">Stop</button>
           </div>
         </div>
         <div class="respond-controls" id="respondControls">
-          <label class="respond-toggle">
+          <label class="respond-toggle" data-tip="Show each response as it arrives instead of all at once">
             <input type="checkbox" id="respondStream"> <span>Stream</span>
           </label>
-          <label class="respond-toggle">
+          <label class="respond-toggle" data-tip="Ask for sources with the answer, where the provider supports it">
             <input type="checkbox" id="respondCite"> <span>Cite sources</span>
           </label>
           <label class="respond-toggle">
@@ -1542,14 +1810,14 @@
         </div>
         <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-top:10px;">
           <span>Current API Key</span>
-          <button class="btn btn-ghost" id="apiKeyRevealBtn" type="button" disabled>Redacted</button>
-          <button class="btn btn-danger" id="apiKeyRemoveBtn" type="button">Remove</button>
+          <button class="btn btn-ghost" id="apiKeyRevealBtn" type="button" disabled data-tip="Show or hide the saved key">Redacted</button>
+          <button class="btn btn-danger" id="apiKeyRemoveBtn" type="button" data-tip="Delete the saved API key for this provider">Remove</button>
         </div>
         <div class="api-key-status api-key-box" id="apiKeyStatus"></div>
         <label>New API Key</label>
         <input type="password" id="apiKeyInput" placeholder="Enter API key...">
         <div class="btn-row">
-          <button class="btn btn-primary" id="apiKeySaveBtn">Save</button>
+          <button class="btn btn-primary" id="apiKeySaveBtn" data-tip="Save this key for the selected provider (kept in its api-key file, readable only by you)">Save</button>
         </div>
         <div class="api-key-feedback" id="apiKeyFeedback"></div>
       </section>
@@ -1557,49 +1825,33 @@
     <div class="content" id="tab-models">
       <section class="panel" style="flex-shrink:0;">
         <div class="models-top-bar">
-          <label style="margin:0; white-space:nowrap;">Provider:</label>
+          <label for="modelsProvider" style="margin:0; white-space:nowrap;">Provider:</label>
           <select id="modelsProvider"></select>
+          <button class="btn btn-ghost" id="hostedRefreshBtn" type="button" data-tip="Fetch this provider's model list again">Refresh</button>
         </div>
       </section>
 
-      <div class="models-split">
+      <div class="models-split" id="modelsSplit">
         <section class="models-split-pane panel" id="hostedPane">
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
-            <h2 style="margin:0;">Hosted Models</h2>
-            <button class="btn btn-ghost" id="hostedFetchBtn" style="padding:6px 12px;font-size:0.85rem;">Fetch Hosted Models</button>
+          <div class="pane-head">
+            <h2>Hosted Models</h2>
+            <span class="pane-meta" id="hostedCount"></span>
           </div>
-          <div class="hosted-filter" style="flex-shrink:0;">
-            <input id="hostedFilter" type="text" placeholder="Filter models...">
-            <button class="btn btn-ghost" id="hostedFilterBtn">Filter</button>
-          </div>
-          <div class="models-scroll-area" id="hostedTable"><div class="muted">Click "Fetch Hosted Models" to load available models.</div></div>
+          <div class="pane-notice" id="hostedNotice"></div>
+          <div class="dt-host" id="hostedTable"></div>
         </section>
 
-        <div class="models-split-divider" id="modelsSplitDivider"></div>
+        <div class="models-split-divider" id="modelsSplitDivider" data-tip="Drag to give one list more room"></div>
 
         <section class="models-split-pane panel" id="configuredPane">
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
-            <h2 style="margin:0;">Configured Models</h2>
-            <button class="btn btn-ghost" id="modelsAddBtn" style="padding:6px 12px;font-size:0.85rem;">+ Add Model</button>
+          <div class="pane-head">
+            <h2>Configured Models</h2>
+            <button class="link-btn" id="modelsAddByIdBtn" type="button" data-tip="Add a model by its id, for one that isn't in the hosted list">Add by ID…</button>
           </div>
-          <div class="models-scroll-area">
-            <div id="modelsTable"><div class="muted">Select a provider.</div></div>
-            <div id="modelEditForm"></div>
-            <div class="models-feedback" id="modelsFeedback"></div>
-            <div class="inline-form-row" style="margin-top:12px;">
-              <div class="field">
-                <label for="aliasNameInput">Alias</label>
-                <input id="aliasNameInput" type="text" placeholder="e.g. opus">
-              </div>
-              <div class="field">
-                <label for="aliasModelInput">Model</label>
-                <input id="aliasModelInput" type="text" placeholder="model id" list="aliasModelDatalist">
-                <datalist id="aliasModelDatalist"></datalist>
-              </div>
-              <button class="btn btn-primary" id="aliasSetBtn" style="padding:8px 14px;white-space:nowrap;">Set Alias</button>
-            </div>
-            <div class="models-feedback" id="aliasesFeedback"></div>
-          </div>
+          <div class="pane-meta" id="modelsDefaultLine"></div>
+          <div class="models-feedback" id="modelsFeedback"></div>
+          <div class="pane-notice warn" id="orphanAliases"></div>
+          <div class="dt-host" id="modelsTable"></div>
         </section>
       </div>
     </div>
@@ -1611,12 +1863,12 @@
             <div class="muted">Loading...</div>
           </div>
           <div style="display:flex; gap:8px; margin-top:10px;">
-            <button class="btn btn-primary" id="apiNewBtn" style="padding:6px 12px;font-size:0.85rem;">+ New</button>
-            <button class="btn btn-ghost" id="apiCloneBtn" style="padding:6px 12px;font-size:0.85rem;" disabled>Clone</button>
+            <button class="btn btn-primary" id="apiNewBtn" data-tip="Create a new API definition" style="padding:6px 12px;font-size:0.85rem;">+ New</button>
+            <button class="btn btn-ghost" id="apiCloneBtn" data-tip="Start a new API definition from a copy of the selected one" style="padding:6px 12px;font-size:0.85rem;" disabled>Clone</button>
           </div>
         </section>
 
-        <div class="apis-split-divider" id="apisSplitDivider"></div>
+        <div class="apis-split-divider" id="apisSplitDivider" data-tip="Drag to give the list or the details more room"></div>
 
         <section class="apis-split-pane panel" id="apisDetailPane">
           <div class="api-detail-scroll" id="apiDetailScroll">
@@ -1660,7 +1912,7 @@
 
             <div class="config-actions">
               <button class="btn btn-primary" id="cfgSaveBtn">Save</button>
-              <button class="btn btn-ghost" id="cfgResetBtn">Reset to Defaults</button>
+              <button class="btn btn-ghost" id="cfgResetBtn" data-tip="Put every CLI setting on this page back to its default">Reset to Defaults</button>
             </div>
             <div class="config-feedback" id="cfgFeedback"></div>
           </div>
@@ -1672,7 +1924,7 @@
       <div class="float-window" id="genericModal" role="dialog" aria-hidden="true">
         <div class="float-window-header" id="genericModalHeader">
           <div class="float-window-title" id="genericModalTitle" title=""></div>
-          <button class="modal-close" id="genericModalCloseBtn" type="button" aria-label="Close">&times;</button>
+          <button class="modal-close" id="genericModalCloseBtn" type="button" aria-label="Close" data-tip="Close">&times;</button>
         </div>
         <div class="float-window-body">
           <pre id="genericModalBody"></pre>
@@ -1681,9 +1933,9 @@
 
       <!-- CLI Commands Bottom Panel -->
       <div class="cli-panel" id="cliPanel">
-        <div class="cli-panel-resize" id="cliPanelResize"></div>
+        <div class="cli-panel-resize" id="cliPanelResize" data-tip="Drag to resize"></div>
         <div class="cli-panel-bar">
-          <button class="btn btn-ghost cli-panel-toggle" id="toggleCliLog">Show CLI Commands</button>
+          <button class="btn btn-ghost cli-panel-toggle" id="toggleCliLog" data-tip="Show the lexi CLI command for each thing you do in the app">Show CLI Commands</button>
           <div class="cli-panel-output" id="cliLog"></div>
         </div>
       </div>
@@ -1866,6 +2118,7 @@
       presets.forEach((p) => {
         const pill = document.createElement('label');
         pill.className = 'respond-tool-pill' + (respondSelectedTools.has(p.name) ? ' selected' : '');
+        pill.setAttribute('data-tip', `Let the model use the ${p.name} tool`);
         const cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.value = p.name;
@@ -2028,6 +2281,7 @@
         showBtn.className = 'btn btn-ghost';
         showBtn.style.cssText = 'padding:4px 10px; font-size:0.8rem;';
         showBtn.textContent = 'Show';
+        showBtn.setAttribute('data-tip', 'Show the providers config file');
         showBtn.addEventListener('click', showProvidersConfigSource);
         heading.appendChild(showBtn);
       }
@@ -2108,10 +2362,12 @@
         const activateBtn = document.createElement('button');
         activateBtn.className = 'btn btn-ghost';
         activateBtn.textContent = 'Set Active';
+        activateBtn.setAttribute('data-tip', 'Make this the active prompt ($$)');
         activateBtn.onclick = () => setActive(p.name);
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'btn btn-danger';
         deleteBtn.textContent = 'Delete';
+        deleteBtn.setAttribute('data-tip', 'Delete this saved prompt');
         deleteBtn.onclick = () => deletePrompt(p.name);
         actions.appendChild(activateBtn);
         if (!p.isActive) actions.appendChild(deleteBtn);
@@ -2802,7 +3058,7 @@
     apiKeyRemoveBtn.addEventListener('click', async () => {
       const provider = apiKeyProviderEl.value;
       if (!provider) return;
-      if (!confirm(`Are you sure you want to remove the API key for ${provider}?`)) return;
+      if (!await confirmDialog('Remove API key', `Remove the API key for ${provider}?`, 'Remove')) return;
       try {
         await api('/api/providers/api-key', {
           method: 'POST',
@@ -2818,21 +3074,494 @@
       }
     });
 
+    // --- Shared UI: escaping, hover help, dialogs, data tables ---
+
+    // Escape text for HTML content *and* attribute values.
+    function esc(value) {
+      return String(value ?? '').replace(/[&<>"']/g, (c) => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      ));
+    }
+
+    // Hover help: any element with `data-tip="…"` shows that text after a short
+    // delay. Drawn by the page itself (native `title` tooltips don't reliably
+    // show in the app's web view). Inside an open dialog the tip moves into the
+    // dialog so it renders above it.
+    (function initHoverHelp() {
+      const tip = document.createElement('div');
+      tip.className = 'lexi-tip';
+      tip.setAttribute('role', 'tooltip');
+      document.body.appendChild(tip);
+      let target = null;
+      let timer = null;
+
+      function hide() {
+        clearTimeout(timer);
+        timer = null;
+        target = null;
+        tip.classList.remove('show');
+      }
+      function show(el) {
+        const text = el.getAttribute('data-tip');
+        if (!text || !el.isConnected) return;
+        const host = el.closest('dialog[open]') || document.body;
+        if (tip.parentNode !== host) host.appendChild(tip);
+        tip.textContent = text;
+        tip.style.left = '0px';
+        tip.style.top = '0px';
+        tip.classList.add('show');
+        const r = el.getBoundingClientRect();
+        const t = tip.getBoundingClientRect();
+        let left = r.left + r.width / 2 - t.width / 2;
+        left = Math.max(8, Math.min(left, window.innerWidth - t.width - 8));
+        let top = r.bottom + 6;
+        if (top + t.height > window.innerHeight - 8) top = r.top - t.height - 6;
+        tip.style.left = `${Math.round(left)}px`;
+        tip.style.top = `${Math.round(Math.max(8, top))}px`;
+      }
+      document.addEventListener('mouseover', (e) => {
+        const el = e.target.closest ? e.target.closest('[data-tip]') : null;
+        if (el === target) return;
+        hide();
+        if (!el) return;
+        target = el;
+        timer = setTimeout(() => show(el), 450);
+      });
+      document.addEventListener('mouseout', (e) => {
+        if (target && !target.contains(e.relatedTarget)) hide();
+      });
+      document.addEventListener('focusin', (e) => {
+        const el = e.target.closest ? e.target.closest('[data-tip]') : null;
+        if (el && e.target.matches(':focus-visible')) { hide(); target = el; show(el); }
+      });
+      document.addEventListener('focusout', hide);
+      document.addEventListener('mousedown', hide, true);
+      document.addEventListener('keydown', hide, true);
+      document.addEventListener('scroll', hide, true);
+    })();
+
+    // A modal dialog. `body` is HTML or a Node; `onOk(dialog)` runs on OK and
+    // may throw to keep the dialog open with the error shown. Resolves with
+    // onOk's result (or true), or null when cancelled.
+    function openDialog({ title, body, okLabel = 'OK', danger = false, onOk, onOpen }) {
+      return new Promise((resolve) => {
+        const dlg = document.createElement('dialog');
+        dlg.className = 'lexi-dialog';
+        dlg.innerHTML = `
+          <form method="dialog" novalidate>
+            <div class="lexi-dialog-head">
+              <h3></h3>
+              <button type="button" class="modal-close dlg-x" aria-label="Close" data-tip="Close without saving (Esc)">&times;</button>
+            </div>
+            <div class="lexi-dialog-body"></div>
+            <div class="lexi-dialog-error" role="alert"></div>
+            <div class="lexi-dialog-actions">
+              <button type="button" class="btn btn-ghost dlg-cancel">Cancel</button>
+              <button type="submit" class="btn ${danger ? 'btn-danger' : 'btn-primary'} dlg-ok"></button>
+            </div>
+          </form>`;
+        dlg.querySelector('h3').textContent = title;
+        dlg.querySelector('.dlg-ok').textContent = okLabel;
+        const bodyEl = dlg.querySelector('.lexi-dialog-body');
+        if (typeof body === 'string') bodyEl.innerHTML = body; else if (body) bodyEl.appendChild(body);
+        const errEl = dlg.querySelector('.lexi-dialog-error');
+        const okBtn = dlg.querySelector('.dlg-ok');
+        let result = null;
+        const finish = (value) => { result = value; dlg.close(); };
+        dlg.addEventListener('close', () => { dlg.remove(); resolve(result); });
+        dlg.querySelector('.dlg-cancel').addEventListener('click', () => finish(null));
+        dlg.querySelector('.dlg-x').addEventListener('click', () => finish(null));
+        dlg.querySelector('form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          errEl.textContent = '';
+          okBtn.disabled = true;
+          try {
+            const value = onOk ? await onOk(dlg) : true;
+            finish(value === undefined ? true : value);
+          } catch (err) {
+            errEl.textContent = err.message || String(err);
+          } finally {
+            okBtn.disabled = false;
+          }
+        });
+        document.body.appendChild(dlg);
+        dlg.showModal();
+        if (onOpen) onOpen(dlg);
+        const first = dlg.querySelector('.lexi-dialog-body input:not([readonly]):not([type=checkbox]), .lexi-dialog-body select');
+        (first || okBtn).focus();
+      });
+    }
+
+    // Yes/no confirmation in the app's own dialog (resolves true or false).
+    async function confirmDialog(title, message, okLabel = 'OK', danger = true) {
+      const r = await openDialog({ title, body: `<p>${esc(message)}</p>`, okLabel, danger });
+      return r === true;
+    }
+
+    // A table with a sticky header, click-to-sort columns and per-column
+    // filters (right-click a header). Columns:
+    //   { key, label, type: 'text'|'number'|'date'|'tags', get?(row), render?(row) → HTML,
+    //     cls?, sortable?: false, filterable?: false, sticky?: true }
+    // `sticky` columns are frozen at the left (they're always drawn first).
+    // `onRender(shown, total)` reports the visible row count. A column with no
+    // value in any row is left out (action columns, `sortable: false`, stay).
+    class DataTable {
+      constructor(host, { columns = [], emptyText = 'Nothing to show.', rowClass, onRender } = {}) {
+        this.host = host;
+        this.columns = columns;
+        this.emptyText = emptyText;
+        this.rowClass = rowClass;
+        this.onRender = onRender;
+        this.rows = [];
+        this.sort = null; // { key, dir: 1 | -1 }
+        this.filters = {}; // key → { text } | { min, max } | { tags: [] }
+        this.menu = null;
+        this.pinObserver = null;
+        host.innerHTML = '<div class="dt-chips"></div><div class="dt-scroll"></div>';
+        this.chipsEl = host.querySelector('.dt-chips');
+        this.scrollEl = host.querySelector('.dt-scroll');
+      }
+
+      setColumns(columns) {
+        this.columns = columns;
+        const keys = new Set(columns.map((c) => c.key));
+        Object.keys(this.filters).forEach((k) => { if (!keys.has(k)) delete this.filters[k]; });
+        if (this.sort && !keys.has(this.sort.key)) this.sort = null;
+      }
+
+      setRows(rows) { this.rows = rows || []; this.render(); }
+
+      reset() { this.sort = null; this.filters = {}; this.scrollEl.scrollTop = 0; this.scrollEl.scrollLeft = 0; }
+
+      showMessage(html) {
+        this.closeMenu();
+        this.chipsEl.innerHTML = '';
+        this.scrollEl.innerHTML = `<div class="muted dt-empty">${html}</div>`;
+        if (this.onRender) this.onRender(0, 0);
+      }
+
+      col(key) { return this.columns.find((c) => c.key === key); }
+      raw(col, row) { return col.get ? col.get(row) : row[col.key]; }
+
+      text(col, row) {
+        const v = this.raw(col, row);
+        if (v == null) return '';
+        if (col.type === 'date') return formatDate(v);
+        if (Array.isArray(v)) return v.join(' ');
+        return String(v);
+      }
+
+      matches(row) {
+        return Object.entries(this.filters).every(([key, f]) => {
+          const col = this.col(key);
+          if (!col) return true;
+          if (col.type === 'tags') {
+            const have = new Set(this.raw(col, row) || []);
+            return f.tags.every((t) => have.has(t));
+          }
+          if (col.type === 'number') {
+            const v = this.raw(col, row);
+            if (typeof v !== 'number') return false;
+            return (f.min == null || v >= f.min) && (f.max == null || v <= f.max);
+          }
+          return this.text(col, row).toLowerCase().includes(f.text.toLowerCase());
+        });
+      }
+
+      compare(col, a, b) {
+        const va = this.raw(col, a);
+        const vb = this.raw(col, b);
+        const ea = va == null || va === '';
+        const eb = vb == null || vb === '';
+        if (ea || eb) return ea && eb ? 0 : ea ? 1 : -1; // empties last
+        if (typeof va === 'number' && typeof vb === 'number') return va - vb;
+        return this.text(col, a).localeCompare(this.text(col, b), undefined, { numeric: true, sensitivity: 'base' });
+      }
+
+      setSort(key, dir) { this.sort = { key, dir }; this.render(); }
+
+      // Columns with a value in at least one row (plus the action columns).
+      visibleColumns() {
+        const empty = (v) => v == null || v === '' || (Array.isArray(v) && !v.length);
+        const cols = this.columns.filter((c) => c.sortable === false || this.rows.some((r) => !empty(this.raw(c, r))));
+        return [...cols.filter((c) => c.sticky), ...cols.filter((c) => !c.sticky)];
+      }
+
+      // Sets each frozen column's left offset from the widths of the ones
+      // before it; re-run when those widths change (e.g. the tab is shown).
+      pinColumns(table, count) {
+        if (this.pinObserver) { this.pinObserver.disconnect(); this.pinObserver = null; }
+        if (!count) return;
+        const heads = Array.from(table.tHead.rows[0].cells).slice(0, count);
+        const place = () => {
+          let left = 0;
+          const lefts = heads.map((th) => { const l = left; left += th.getBoundingClientRect().width; return l; });
+          Array.from(table.rows).forEach((tr) => {
+            if (tr.cells.length < count) return; // the "no rows match" row
+            for (let i = 0; i < count; i++) tr.cells[i].style.left = `${lefts[i]}px`;
+          });
+        };
+        place();
+        if (typeof ResizeObserver === 'function') {
+          this.pinObserver = new ResizeObserver(place);
+          heads.forEach((th) => this.pinObserver.observe(th));
+        }
+      }
+
+      render() {
+        const total = this.rows.length;
+        if (!total) {
+          this.showMessage(esc(this.emptyText));
+          return;
+        }
+        const cols = this.visibleColumns();
+        const shownKeys = new Set(cols.map((c) => c.key));
+        Object.keys(this.filters).forEach((k) => { if (!shownKeys.has(k)) delete this.filters[k]; });
+        if (this.sort && !shownKeys.has(this.sort.key)) this.sort = null;
+        let rows = this.rows.filter((r) => this.matches(r));
+        if (this.sort) {
+          const col = this.col(this.sort.key);
+          const dir = this.sort.dir;
+          if (col) {
+            // Empty values stay last in both directions.
+            rows = rows.slice().sort((a, b) => {
+              const ea = this.raw(col, a) == null || this.raw(col, a) === '';
+              const eb = this.raw(col, b) == null || this.raw(col, b) === '';
+              if (ea || eb) return ea && eb ? 0 : ea ? 1 : -1;
+              return dir * this.compare(col, a, b);
+            });
+          }
+        }
+        this.renderChips(rows.length, total);
+
+        const table = document.createElement('table');
+        table.className = 'dt-table';
+        const headRow = document.createElement('tr');
+        const stickyCount = cols.filter((c) => c.sticky).length;
+        const stickyClasses = (cell, col) => {
+          if (!col.sticky) return;
+          cell.classList.add('dt-sticky');
+          if (col === cols[stickyCount - 1]) cell.classList.add('dt-sticky-edge');
+        };
+        cols.forEach((col) => {
+          const th = document.createElement('th');
+          th.textContent = col.label;
+          stickyClasses(th, col);
+          const sortable = col.sortable !== false;
+          const filterable = col.filterable !== false && sortable;
+          if (!sortable) th.classList.add('no-sort');
+          if (this.filters[col.key]) th.classList.add('filtered');
+          const ind = [];
+          if (this.sort && this.sort.key === col.key) ind.push(this.sort.dir === 1 ? '▲' : '▼');
+          if (this.filters[col.key]) ind.push('⧩');
+          if (ind.length) {
+            const s = document.createElement('span');
+            s.className = 'dt-ind';
+            s.textContent = ind.join(' ');
+            th.appendChild(s);
+          }
+          if (sortable) {
+            th.setAttribute('data-tip', filterable
+              ? 'Click to sort; click again to reverse. Right-click to filter.'
+              : 'Click to sort; click again to reverse.');
+            th.addEventListener('click', () => {
+              const same = this.sort && this.sort.key === col.key;
+              this.setSort(col.key, same ? -this.sort.dir : 1);
+            });
+            th.addEventListener('contextmenu', (e) => {
+              e.preventDefault();
+              this.openMenu(col, e.clientX, e.clientY);
+            });
+          }
+          headRow.appendChild(th);
+        });
+        const thead = document.createElement('thead');
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+        rows.forEach((row) => {
+          const tr = document.createElement('tr');
+          const rc = this.rowClass ? this.rowClass(row) : '';
+          if (rc) tr.className = rc;
+          cols.forEach((col) => {
+            const td = document.createElement('td');
+            if (col.cls) td.className = col.cls;
+            stickyClasses(td, col);
+            if (col.render) td.innerHTML = col.render(row);
+            else td.textContent = this.text(col, row);
+            tr.appendChild(td);
+          });
+          tr._row = row;
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        if (!rows.length) {
+          const tr = document.createElement('tr');
+          const td = document.createElement('td');
+          td.colSpan = cols.length;
+          td.className = 'muted';
+          td.textContent = 'No rows match the filters.';
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+        }
+        const { scrollTop, scrollLeft } = this.scrollEl;
+        this.scrollEl.innerHTML = '';
+        this.scrollEl.appendChild(table);
+        this.pinColumns(table, stickyCount);
+        this.scrollEl.scrollTop = scrollTop;
+        this.scrollEl.scrollLeft = scrollLeft;
+        if (this.onRender) this.onRender(rows.length, total);
+      }
+
+      filterSummary(col, f) {
+        if (col.type === 'tags') return f.tags.join(' + ');
+        if (col.type === 'number') {
+          if (f.min != null && f.max != null) return `${f.min}–${f.max}`;
+          return f.min != null ? `≥ ${f.min}` : `≤ ${f.max}`;
+        }
+        return `contains “${f.text}”`;
+      }
+
+      renderChips(shown, total) {
+        const active = Object.entries(this.filters);
+        this.chipsEl.innerHTML = '';
+        if (!active.length) return;
+        active.forEach(([key, f]) => {
+          const col = this.col(key);
+          const chip = document.createElement('span');
+          chip.className = 'dt-chip';
+          chip.appendChild(document.createTextNode(`${col.label}: ${this.filterSummary(col, f)}`));
+          const x = document.createElement('button');
+          x.type = 'button';
+          x.textContent = '×';
+          x.setAttribute('aria-label', `Remove the ${col.label} filter`);
+          x.setAttribute('data-tip', 'Remove this filter');
+          x.addEventListener('click', () => { delete this.filters[key]; this.render(); });
+          chip.appendChild(x);
+          this.chipsEl.appendChild(chip);
+        });
+        if (active.length > 1) {
+          const all = document.createElement('button');
+          all.type = 'button';
+          all.className = 'link-btn';
+          all.textContent = 'Clear all';
+          all.setAttribute('data-tip', 'Remove every filter on this table');
+          all.addEventListener('click', () => { this.filters = {}; this.render(); });
+          this.chipsEl.appendChild(all);
+        }
+        if (!this.onRender) { // a table without its own count shows it here
+          const count = document.createElement('span');
+          count.className = 'dt-count';
+          count.textContent = `${shown} of ${total} shown`;
+          this.chipsEl.appendChild(count);
+        }
+      }
+
+      closeMenu() {
+        if (!this.menu) return;
+        this.menu.remove();
+        this.menu = null;
+        document.removeEventListener('mousedown', this._outside, true);
+        document.removeEventListener('keydown', this._esc, true);
+      }
+
+      openMenu(col, x, y) {
+        this.closeMenu();
+        const menu = document.createElement('div');
+        menu.className = 'dt-menu';
+        menu.setAttribute('role', 'menu');
+        const filterable = col.filterable !== false;
+        const current = this.filters[col.key];
+        let bodyHtml = '';
+        if (filterable) {
+          if (col.type === 'tags') {
+            const counts = {};
+            this.rows.forEach((r) => (this.raw(col, r) || []).forEach((t) => { counts[t] = (counts[t] || 0) + 1; }));
+            const chosen = new Set(current ? current.tags : []);
+            const tags = Object.keys(counts).sort();
+            bodyHtml = tags.length
+              ? `<div class="dt-tag-list">${tags.map((t) => `
+                  <label><input type="checkbox" value="${esc(t)}" ${chosen.has(t) ? 'checked' : ''}>
+                  <span class="model-tag ns-${esc(t.split(':')[0])}">${esc(t)}</span><span class="count">${counts[t]}</span></label>`).join('')}</div>
+                 <div class="hint muted" style="margin-top:6px;font-size:0.75rem;">Shows rows that have every ticked tag.</div>`
+              : '<div class="muted">No tags in this list.</div>';
+          } else if (col.type === 'number') {
+            bodyHtml = `<div class="dt-range">
+                <input type="number" class="dt-min" placeholder="min" value="${current && current.min != null ? current.min : ''}">
+                <input type="number" class="dt-max" placeholder="max" value="${current && current.max != null ? current.max : ''}">
+              </div>`;
+          } else {
+            bodyHtml = `<input type="text" class="dt-text" placeholder="contains…" value="${esc(current ? current.text : '')}">`;
+          }
+        }
+        menu.innerHTML = `
+          <button type="button" class="dt-menu-item" data-act="asc">Sort ascending ▲</button>
+          <button type="button" class="dt-menu-item" data-act="desc">Sort descending ▼</button>
+          ${filterable ? `<hr><div class="dt-menu-title">Filter: ${esc(col.label)}</div>
+            <div class="dt-menu-body">${bodyHtml}</div>
+            <div class="dt-menu-actions">
+              ${current ? '<button type="button" class="btn btn-ghost" data-act="clear">Clear</button>' : ''}
+              <button type="button" class="btn btn-primary" data-act="apply">Apply</button>
+            </div>` : ''}`;
+        document.body.appendChild(menu);
+        const r = menu.getBoundingClientRect();
+        menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - r.width - 8))}px`;
+        menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - r.height - 8))}px`;
+        this.menu = menu;
+
+        const apply = () => {
+          let f = null;
+          if (col.type === 'tags') {
+            const tags = [...menu.querySelectorAll('input[type=checkbox]:checked')].map((i) => i.value);
+            if (tags.length) f = { tags };
+          } else if (col.type === 'number') {
+            const num = (el) => (el.value.trim() === '' ? null : Number(el.value));
+            const min = num(menu.querySelector('.dt-min'));
+            const max = num(menu.querySelector('.dt-max'));
+            if (min != null || max != null) f = { min, max };
+          } else {
+            const text = menu.querySelector('.dt-text').value.trim();
+            if (text) f = { text };
+          }
+          if (f) this.filters[col.key] = f; else delete this.filters[col.key];
+          this.closeMenu();
+          this.render();
+        };
+        menu.addEventListener('click', (e) => {
+          const act = e.target.closest('[data-act]')?.dataset.act;
+          if (act === 'asc' || act === 'desc') { this.closeMenu(); this.setSort(col.key, act === 'asc' ? 1 : -1); }
+          if (act === 'apply') apply();
+          if (act === 'clear') { delete this.filters[col.key]; this.closeMenu(); this.render(); }
+        });
+        menu.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && e.target.matches('input')) { e.preventDefault(); apply(); }
+        });
+        this._outside = (e) => { if (!menu.contains(e.target)) this.closeMenu(); };
+        this._esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); this.closeMenu(); } };
+        document.addEventListener('mousedown', this._outside, true);
+        document.addEventListener('keydown', this._esc, true);
+        const input = menu.querySelector('.dt-menu-body input');
+        if (input) input.focus();
+      }
+    }
+
+    // Unix seconds (or a date string) → YYYY-MM-DD.
+    function formatDate(v) {
+      const d = typeof v === 'number' ? new Date(v * 1000) : new Date(v);
+      return Number.isNaN(d.getTime()) ? String(v) : d.toISOString().slice(0, 10);
+    }
+
     // --- Models Tab ---
     const modelsProviderEl = document.getElementById('modelsProvider');
-    const modelsTableEl = document.getElementById('modelsTable');
-    const modelEditFormEl = document.getElementById('modelEditForm');
     const modelsFeedbackEl = document.getElementById('modelsFeedback');
-    const modelsAddBtn = document.getElementById('modelsAddBtn');
-    const aliasNameInputEl = document.getElementById('aliasNameInput');
-    const aliasModelInputEl = document.getElementById('aliasModelInput');
-    const aliasModelDatalistEl = document.getElementById('aliasModelDatalist');
-    const aliasSetBtn = document.getElementById('aliasSetBtn');
-    const aliasesFeedbackEl = document.getElementById('aliasesFeedback');
-    const hostedFetchBtn = document.getElementById('hostedFetchBtn');
-    const hostedFilterEl = document.getElementById('hostedFilter');
-    const hostedFilterBtn = document.getElementById('hostedFilterBtn');
-    const hostedTableEl = document.getElementById('hostedTable');
+    const modelsDefaultLineEl = document.getElementById('modelsDefaultLine');
+    const orphanAliasesEl = document.getElementById('orphanAliases');
+    const modelsAddByIdBtn = document.getElementById('modelsAddByIdBtn');
+    const hostedRefreshBtn = document.getElementById('hostedRefreshBtn');
+    const hostedNoticeEl = document.getElementById('hostedNotice');
+    const hostedCountEl = document.getElementById('hostedCount');
+    const modelsSplitEl = document.getElementById('modelsSplit');
     const modelsSplitDivider = document.getElementById('modelsSplitDivider');
     const hostedPane = document.getElementById('hostedPane');
     const configuredPane = document.getElementById('configuredPane');
@@ -2841,10 +3570,10 @@
     let mtModels = [];
     let mtAliases = {};
     let mtDefault = null;
-    let mtHosted = null;
-    let mtEditingModel = null;
-    let hostedSortColumn = null;
-    let hostedSortDirection = 'asc';
+    let hostedAllModels = [];
+    let hostedFor = null; // provider the hosted list belongs to
+    let hostedSeq = 0;
+    let feedbackTimer = null;
 
     function populateModelsProviderDropdown() {
       modelsProviderEl.innerHTML = '';
@@ -2854,532 +3583,426 @@
         opt.textContent = name;
         modelsProviderEl.appendChild(opt);
       });
-      if (PROVIDERS.length) {
-        mtProvider = PROVIDERS[0];
-        modelsProviderEl.value = mtProvider;
-      }
+      if (!PROVIDERS.includes(mtProvider)) mtProvider = PROVIDERS[0] || null;
+      if (mtProvider) modelsProviderEl.value = mtProvider;
     }
 
-    function showModelsFeedback(el, msg, tone) {
-      el.textContent = msg;
-      el.style.color = tone === 'error' ? 'var(--danger)' : tone === 'success' ? 'var(--success)' : 'var(--muted)';
+    function showModelsFeedback(msg, tone) {
+      clearTimeout(feedbackTimer);
+      modelsFeedbackEl.textContent = msg;
+      modelsFeedbackEl.style.color = tone === 'error' ? 'var(--danger)' : tone === 'success' ? 'var(--success)' : 'var(--muted)';
+      if (tone !== 'error') feedbackTimer = setTimeout(() => { modelsFeedbackEl.textContent = ''; }, 6000);
     }
 
     // Tag chips; `kind:` is shown in its own column, so it's left out here.
     function tagChips(tags) {
       return (tags || [])
         .filter((t) => !String(t).startsWith('kind:'))
-        .map((t) => {
-          const ns = String(t).split(':')[0];
-          return `<span class="model-tag ns-${escapeHtml(ns)}">${escapeHtml(t)}</span>`;
-        })
+        .map((t) => `<span class="model-tag ns-${esc(String(t).split(':')[0])}">${esc(t)}</span>`)
         .join('');
     }
+    const tagsWithoutKind = (row) => (row.tags || []).filter((t) => !String(t).startsWith('kind:'));
+    const apiCell = (row) => (row.api ? esc(row.api) : '<span class="badge-error" data-tip="No API of this provider serves this kind of model">no API</span>');
 
-    function kindCell(m) {
-      if (!m.kind && !m.api) return '';
-      const api = m.api ? ` <span class="api">· ${escapeHtml(m.api)}</span>` : ' <span class="badge-error">no API</span>';
-      return `<span class="model-kind">${escapeHtml(m.kind || '?')}${api}</span>`;
+    // Configured models table.
+    const configuredTable = new DataTable(document.getElementById('modelsTable'), {
+      emptyText: 'No configured models. Add one with + in Hosted Models, or with Add by ID….',
+      rowClass: (m) => (isNotHosted(m) ? 'row-error' : ''),
+      columns: [
+        {
+          key: '_actions', label: '', sortable: false, filterable: false, sticky: true, cls: 'dt-actions',
+          render: (m) => `<button type="button" class="btn-icon mt-edit" data-id="${esc(m.id)}" aria-label="Edit ${esc(m.id)}" data-tip="Edit this model's name, limits and aliases">&#9998;</button>`
+            + (m.id !== mtDefault
+              ? `<button type="button" class="btn-icon mt-setdef" data-id="${esc(m.id)}" aria-label="Make ${esc(m.id)} the default" data-tip="Make this the default model for ${esc(mtProvider)}">&#9734;</button>`
+              : `<span class="btn-icon-slot" data-tip="This is the default model for ${esc(mtProvider)}">&#9733;</span>`)
+            + `<button type="button" class="btn-icon danger mt-rm" data-id="${esc(m.id)}" aria-label="Remove ${esc(m.id)}" data-tip="Remove this model from your configured models">&#10005;</button>`,
+        },
+        {
+          key: 'id', label: 'Model ID', sticky: true,
+          render: (m) => `${esc(m.id)}${m.id === mtDefault ? ' <span class="badge-default" data-tip="Used when you don\'t name a model">default</span>' : ''}${isNotHosted(m) ? ' <span class="badge-error" data-tip="This provider\'s model list doesn\'t include this id">not hosted</span>' : ''}`,
+        },
+        { key: 'name', label: 'Name' },
+        { key: 'kind', label: 'Kind' },
+        { key: 'api', label: 'API', render: apiCell },
+        { key: 'tags', label: 'Tags', type: 'tags', cls: 'dt-wrap', get: tagsWithoutKind, render: (m) => tagChips(m.tags) },
+        { key: 'max_tokens', label: 'Max tokens', type: 'number', cls: 'num' },
+        { key: 'context_window', label: 'Context', type: 'number', cls: 'num' },
+        {
+          key: 'aliases', label: 'Aliases', get: (m) => aliasesFor(m.id),
+          render: (m) => aliasesFor(m.id).map((a) => `<span class="alias-tag">${esc(a)}</span>`).join(' '),
+        },
+      ],
+    });
+
+    // Hosted models table; columns follow whatever fields the provider lists.
+    const hostedTable = new DataTable(document.getElementById('hostedTable'), {
+      emptyText: 'This provider listed no models.',
+      onRender: (shown, total) => {
+        hostedCountEl.textContent = total ? (shown === total ? `${total} models` : `${shown} of ${total} models`) : '';
+      },
+    });
+
+    function isNotHosted(m) {
+      return hostedFor === mtProvider && hostedAllModels.length > 0 && !hostedAllModels.some((h) => (h.id || h.model) === m.id);
+    }
+
+    function aliasesFor(modelId) {
+      return Object.entries(mtAliases).filter(([, target]) => target === modelId).map(([a]) => a).sort();
+    }
+
+    const HOSTED_FIRST = ['id', 'display_name', 'name', 'kind', 'api'];
+    const HOSTED_HIDE = new Set(['object', 'type', 'tags']);
+    const HOSTED_LABELS = { id: 'Model ID', api: 'API' };
+    const humanize = (k) => HOSTED_LABELS[k] || (k.charAt(0).toUpperCase() + k.slice(1)).replace(/_/g, ' ');
+
+    function hostedColumns(models) {
+      // Every scalar field any entry has (nested objects are skipped).
+      const keys = [];
+      const seen = new Set();
+      models.forEach((m) => Object.entries(m).forEach(([k, v]) => {
+        if (seen.has(k) || (v !== null && typeof v === 'object')) return;
+        seen.add(k);
+        keys.push(k);
+      }));
+      const ordered = [...HOSTED_FIRST.filter((k) => seen.has(k)), ...keys.filter((k) => !HOSTED_FIRST.includes(k))]
+        .filter((k) => !HOSTED_HIDE.has(k));
+      const cols = ordered.map((k) => {
+        const values = models.map((m) => m[k]).filter((v) => v != null);
+        const numeric = values.length > 0 && values.every((v) => typeof v === 'number');
+        const col = { key: k, label: humanize(k), sticky: k === 'id' };
+        if (numeric && /^created/.test(k)) col.type = 'date';
+        else if (numeric) { col.type = 'number'; col.cls = 'num'; }
+        if (k === 'api') col.render = apiCell;
+        return col;
+      });
+      if (models.some((m) => Array.isArray(m.tags))) {
+        cols.push({ key: 'tags', label: 'Tags', type: 'tags', cls: 'dt-wrap', get: tagsWithoutKind, render: (m) => tagChips(m.tags) });
+      }
+      cols.unshift({
+        key: '_add', label: '', sortable: false, filterable: false, sticky: true, cls: 'dt-actions',
+        render: (m) => {
+          const id = m.id || m.model;
+          return mtModels.some((c) => c.id === id)
+            ? '<span class="badge-exists" data-tip="Already in your configured models">added</span>'
+            : `<button type="button" class="btn-icon hosted-add" data-id="${esc(id)}" aria-label="Add ${esc(id)}" data-tip="Add this hosted model to your configured models, making it usable for chat, image generation, etc.">+</button>`;
+        },
+      });
+      return cols;
     }
 
     function renderModelsTable() {
-      if (!mtModels.length) {
-        modelsTableEl.innerHTML = '<div class="muted">No configured models.</div>';
-        return;
-      }
-      // Build reverse alias map: { model_id: [alias1, ...] }
-      const reverseAliases = {};
-      Object.entries(mtAliases).forEach(([alias, modelId]) => {
-        const key = String(modelId);
-        if (!reverseAliases[key]) reverseAliases[key] = [];
-        reverseAliases[key].push(alias);
-      });
-
-      // Build hosted IDs set for cross-checking (null = not yet fetched)
-      const hostedIds = hostedAllModels.length
-        ? new Set(hostedAllModels.map(m => m.id || m.model))
-        : null;
-
-      const table = document.createElement('table');
-      table.className = 'data-table';
-      table.innerHTML = `<thead><tr><th>Model ID</th><th>Name</th><th>Kind · API</th><th>Tags</th><th>Max Tokens</th><th>Context</th><th>Aliases</th><th></th></tr></thead>`;
-      const tbody = document.createElement('tbody');
-      mtModels.forEach((m) => {
-        const tr = document.createElement('tr');
-        const isDefault = m.id === mtDefault;
-        const notHosted = hostedIds && !hostedIds.has(m.id);
-        if (notHosted) tr.classList.add('row-error');
-        const aliases = reverseAliases[m.id] || [];
-        const aliasClass = notHosted ? 'alias-tag error' : 'alias-tag';
-        const aliasTags = aliases.map(a => `<span class="${aliasClass}">${escapeHtml(a)}</span>`).join(' ');
-        const notHostedBadge = notHosted ? ' <span class="badge-error">not hosted</span>' : '';
-        tr.innerHTML = `
-          <td>${escapeHtml(m.id)}${isDefault ? ' <span class="badge-default">default</span>' : ''}${notHostedBadge}</td>
-          <td>${escapeHtml(m.name || '')}</td>
-          <td>${kindCell(m)}</td>
-          <td>${tagChips(m.tags)}</td>
-          <td>${m.max_tokens != null ? m.max_tokens : ''}</td>
-          <td>${m.context_window != null ? m.context_window : ''}</td>
-          <td>${aliasTags}</td>
-          <td style="white-space:nowrap;">
-            <button class="btn-icon mt-edit" data-id="${escapeHtml(m.id)}" title="Edit">&#9998;</button>
-            <button class="btn-icon danger mt-rm" data-id="${escapeHtml(m.id)}" title="Remove">&#10005;</button>
-            ${!isDefault ? `<button class="btn-icon mt-setdef" data-id="${escapeHtml(m.id)}" title="Set as default">&#9733;</button>` : ''}
-          </td>`;
-        tbody.appendChild(tr);
-      });
-      table.appendChild(tbody);
-      modelsTableEl.innerHTML = '';
-      modelsTableEl.appendChild(table);
-
-      // Orphan aliases: aliases pointing to models not in configured list
-      const configuredIds = new Set(mtModels.map(m => m.id));
-      const orphanAliases = Object.entries(mtAliases)
-        .filter(([alias, modelId]) => !configuredIds.has(modelId));
-      if (orphanAliases.length) {
-        const section = document.createElement('div');
-        section.style.marginTop = '12px';
-        section.innerHTML = `<div style="font-size:0.85rem;color:var(--danger);margin-bottom:6px;">Orphan Aliases (target model not configured):</div>`;
-        const oTable = document.createElement('table');
-        oTable.className = 'data-table';
-        oTable.innerHTML = `<thead><tr><th>Alias</th><th>Target Model ID</th></tr></thead>`;
-        const oTbody = document.createElement('tbody');
-        orphanAliases.forEach(([alias, modelId]) => {
-          const otr = document.createElement('tr');
-          otr.classList.add('row-error');
-          otr.innerHTML = `
-            <td><span class="alias-tag error">${escapeHtml(alias)}</span></td>
-            <td>${escapeHtml(String(modelId))} <span class="badge-error">not configured</span></td>`;
-          oTbody.appendChild(otr);
-        });
-        oTable.appendChild(oTbody);
-        section.appendChild(oTable);
-        modelsTableEl.appendChild(section);
-      }
-
-      modelsTableEl.querySelectorAll('.mt-edit').forEach((btn) => {
-        btn.addEventListener('click', () => openModelEditForm(btn.dataset.id));
-      });
-      modelsTableEl.querySelectorAll('.mt-rm').forEach((btn) => {
-        btn.addEventListener('click', () => removeModel(btn.dataset.id));
-      });
-      modelsTableEl.querySelectorAll('.mt-setdef').forEach((btn) => {
-        btn.addEventListener('click', () => setDefaultModel(btn.dataset.id));
-      });
+      modelsDefaultLineEl.innerHTML = mtDefault
+        ? `Default: <strong>${esc(mtDefault)}</strong>`
+        : 'No default model set. Use ☆ on a model to choose one.';
+      renderOrphanAliases();
+      configuredTable.setRows(mtModels);
     }
+
+    function renderHostedTable() {
+      hostedTable.setColumns(hostedColumns(hostedAllModels));
+      hostedTable.setRows(hostedAllModels);
+    }
+
+    // Aliases whose target model isn't configured.
+    function renderOrphanAliases() {
+      const configured = new Set(mtModels.map((m) => m.id));
+      const orphans = Object.entries(mtAliases).filter(([, target]) => !configured.has(target));
+      if (!orphans.length) { orphanAliasesEl.innerHTML = ''; return; }
+      orphanAliasesEl.innerHTML = `<div>${orphans.length === 1 ? 'This alias points' : 'These aliases point'} to a model that isn't configured:</div>`
+        + orphans.map(([alias, target]) => `
+          <div class="notice-row">
+            <span class="alias-tag error">${esc(alias)}</span> → <code>${esc(target)}</code>
+            <button type="button" class="btn-icon danger orphan-rm" data-alias="${esc(alias)}" aria-label="Remove alias ${esc(alias)}" data-tip="Remove this alias">&#10005;</button>
+          </div>`).join('');
+    }
+
+    orphanAliasesEl.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.orphan-rm');
+      if (!btn) return;
+      try {
+        await api('/api/models/aliases/delete', { method: 'POST', body: JSON.stringify({ provider: mtProvider, alias: btn.dataset.alias }) });
+        showModelsFeedback(`Removed alias ${btn.dataset.alias}.`, 'success');
+        await loadConfigured();
+      } catch (err) {
+        showModelsFeedback(err.message, 'error');
+      }
+    });
+
+    document.getElementById('modelsTable').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-id]');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      if (btn.classList.contains('mt-edit')) openModelDialog({ id, existing: mtModels.find((m) => m.id === id) });
+      if (btn.classList.contains('mt-setdef')) setDefaultModel(id);
+      if (btn.classList.contains('mt-rm')) removeModel(id);
+    });
+
+    document.getElementById('hostedTable').addEventListener('click', (e) => {
+      const btn = e.target.closest('.hosted-add');
+      if (!btn) return;
+      const h = hostedAllModels.find((m) => (m.id || m.model) === btn.dataset.id) || {};
+      openModelDialog({ id: btn.dataset.id, name: h.display_name || h.name || '' });
+    });
+
+    modelsAddByIdBtn.addEventListener('click', () => openModelDialog({}));
 
     async function setDefaultModel(modelId) {
       try {
         await api('/api/models/default', { method: 'POST', body: JSON.stringify({ provider: mtProvider, model: modelId }) });
         mtDefault = modelId;
         renderModelsTable();
-        showModelsFeedback(modelsFeedbackEl, `Default set to ${modelId}.`, 'success');
+        showModelsFeedback(`${modelId} is now the default model.`, 'success');
       } catch (err) {
-        showModelsFeedback(modelsFeedbackEl, err.message, 'error');
-      }
-    }
-
-    function openModelEditForm(modelId) {
-      const existing = modelId ? mtModels.find((m) => m.id === modelId) : null;
-      mtEditingModel = modelId || null;
-      modelEditFormEl.innerHTML = `
-        <div class="model-edit-form">
-          <div class="field-grid">
-            <div>
-              <label for="meModelId">Model ID</label>
-              <input id="meModelId" type="text" value="${escapeHtml(existing?.id || '')}" ${existing ? 'readonly style="opacity:0.6;"' : 'placeholder="model-id"'}>
-            </div>
-            <div>
-              <label for="meName">Name</label>
-              <input id="meName" type="text" value="${escapeHtml(existing?.name || '')}" placeholder="Display name">
-            </div>
-            <div>
-              <label for="meDesc">Description</label>
-              <input id="meDesc" type="text" value="${escapeHtml(existing?.description || '')}" placeholder="Optional">
-            </div>
-            <div>
-              <label for="meMaxTokens">Max Tokens</label>
-              <input id="meMaxTokens" type="number" value="${existing?.max_tokens ?? ''}" placeholder="e.g. 4096">
-            </div>
-            <div>
-              <label for="meCtxWindow">Context Window</label>
-              <input id="meCtxWindow" type="number" value="${existing?.context_window ?? ''}" placeholder="e.g. 128000">
-            </div>
-            <div style="display:flex;align-items:flex-end;">
-              <label style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
-                <input id="meSetDefault" type="checkbox"> Set as default
-              </label>
-            </div>
-          </div>
-          <div class="actions">
-            <button class="btn btn-primary" id="meSaveBtn">${existing ? 'Update' : 'Add'} Model</button>
-            <button class="btn btn-ghost" id="meCancelBtn">Cancel</button>
-          </div>
-        </div>`;
-      document.getElementById('meSaveBtn').addEventListener('click', saveModelForm);
-      document.getElementById('meCancelBtn').addEventListener('click', () => { modelEditFormEl.innerHTML = ''; mtEditingModel = null; });
-    }
-
-    async function saveModelForm() {
-      const modelId = document.getElementById('meModelId').value.trim();
-      if (!modelId) {
-        showModelsFeedback(modelsFeedbackEl, 'Model ID is required.', 'error');
-        return;
-      }
-      const payload = {
-        provider: mtProvider,
-        model: modelId,
-        name: document.getElementById('meName').value.trim() || undefined,
-        description: document.getElementById('meDesc').value.trim() || undefined,
-        max_tokens: document.getElementById('meMaxTokens').value ? Number(document.getElementById('meMaxTokens').value) : undefined,
-        context_window: document.getElementById('meCtxWindow').value ? Number(document.getElementById('meCtxWindow').value) : undefined,
-        set_default: document.getElementById('meSetDefault').checked || undefined,
-      };
-      const endpoint = mtEditingModel ? '/api/models/set' : '/api/models/add';
-      try {
-        await api(endpoint, { method: 'POST', body: JSON.stringify(payload) });
-        showModelsFeedback(modelsFeedbackEl, `${mtEditingModel ? 'Updated' : 'Added'} model ${modelId}.`, 'success');
-        modelEditFormEl.innerHTML = '';
-        mtEditingModel = null;
-        await refreshModelsTab();
-      } catch (err) {
-        showModelsFeedback(modelsFeedbackEl, err.message, 'error');
+        showModelsFeedback(err.message, 'error');
       }
     }
 
     async function removeModel(modelId) {
-      if (!confirm(`Remove model ${modelId} from ${mtProvider}?`)) return;
+      const aliases = aliasesFor(modelId);
+      const extra = aliases.length ? ` Its aliases (${aliases.join(', ')}) will point to a model that isn't configured.` : '';
+      if (!await confirmDialog('Remove model', `Remove ${modelId} from your configured ${mtProvider} models?${extra}`, 'Remove')) return;
       try {
         await api('/api/models/delete', { method: 'POST', body: JSON.stringify({ provider: mtProvider, model: modelId }) });
-        showModelsFeedback(modelsFeedbackEl, `Removed ${modelId}.`, 'success');
-        await refreshModelsTab();
+        showModelsFeedback(`Removed ${modelId}.`, 'success');
+        await loadConfigured();
       } catch (err) {
-        showModelsFeedback(modelsFeedbackEl, err.message, 'error');
+        showModelsFeedback(err.message, 'error');
       }
     }
 
-    function updateAliasModelDatalist() {
-      aliasModelDatalistEl.innerHTML = '';
-      mtModels.forEach((m) => {
-        const opt = document.createElement('option');
-        opt.value = m.id;
-        aliasModelDatalistEl.appendChild(opt);
-      });
-    }
+    // Add (no `existing`) or edit a configured model, including its aliases.
+    function openModelDialog({ id = '', name = '', existing = null }) {
+      const provider = mtProvider;
+      const isEdit = !!existing;
+      const m = existing || { id, name };
+      let aliases = isEdit ? aliasesFor(m.id) : [];
+      const original = new Set(aliases);
+      const body = document.createElement('div');
+      body.innerHTML = `
+        <div class="field-grid">
+          <div class="span-2">
+            <label for="meModelId">Model ID</label>
+            <input id="meModelId" type="text" value="${esc(m.id)}" ${isEdit ? 'readonly style="opacity:0.6;"' : 'placeholder="e.g. gpt-4o"'} autocomplete="off" spellcheck="false">
+            ${isEdit ? '' : `<div class="hint">The id ${esc(provider)} uses for the model.</div>`}
+          </div>
+          <div>
+            <label for="meName">Name</label>
+            <input id="meName" type="text" value="${esc(m.name || '')}" placeholder="Display name (optional)">
+          </div>
+          <div>
+            <label for="meDesc">Description</label>
+            <input id="meDesc" type="text" value="${esc(m.description || '')}" placeholder="Optional">
+          </div>
+          <div>
+            <label for="meMaxTokens">Max tokens</label>
+            <input id="meMaxTokens" type="number" min="1" value="${m.max_tokens ?? ''}" placeholder="e.g. 4096">
+          </div>
+          <div>
+            <label for="meCtxWindow">Context window</label>
+            <input id="meCtxWindow" type="number" min="1" value="${m.context_window ?? ''}" placeholder="e.g. 128000">
+          </div>
+          <div class="span-2">
+            <label>Aliases</label>
+            <div class="alias-editor" id="meAliasList"></div>
+            <div class="alias-add">
+              <input id="meAliasInput" type="text" placeholder="New alias, e.g. sonnet" autocomplete="off" spellcheck="false">
+              <button type="button" class="btn btn-ghost" id="meAliasAdd" data-tip="Add this alias (saved when you press ${isEdit ? 'Save' : 'Add model'})">Add alias</button>
+            </div>
+            <div class="hint">Short names you can use in place of the model id.</div>
+          </div>
+          ${m.id === mtDefault && isEdit ? '' : `
+          <div class="span-2">
+            <label class="check-row"><input id="meSetDefault" type="checkbox"> Make this the default model for ${esc(provider)}</label>
+          </div>`}
+        </div>`;
 
-    async function removeAlias(alias) {
-      try {
-        await api('/api/models/aliases/delete', { method: 'POST', body: JSON.stringify({ provider: mtProvider, alias }) });
-        showModelsFeedback(aliasesFeedbackEl, `Removed alias '${alias}'.`, 'success');
-        await loadAliases();
-        renderModelsTable();
-      } catch (err) {
-        showModelsFeedback(aliasesFeedbackEl, err.message, 'error');
-      }
-    }
-
-    aliasSetBtn.addEventListener('click', async () => {
-      const alias = aliasNameInputEl.value.trim();
-      const model = aliasModelInputEl.value.trim();
-      if (!alias || !model) {
-        showModelsFeedback(aliasesFeedbackEl, 'Alias and model are required.', 'error');
-        return;
-      }
-      try {
-        await api('/api/models/aliases', { method: 'POST', body: JSON.stringify({ provider: mtProvider, alias, model }) });
-        showModelsFeedback(aliasesFeedbackEl, `Set alias '${alias}' -> '${model}'.`, 'success');
-        aliasNameInputEl.value = '';
-        aliasModelInputEl.value = '';
-        await loadAliases();
-        renderModelsTable();
-      } catch (err) {
-        showModelsFeedback(aliasesFeedbackEl, err.message, 'error');
-      }
-    });
-
-    modelsAddBtn.addEventListener('click', () => openModelEditForm(null));
-
-    // Hosted models
-    let hostedAllModels = [];
-
-    hostedFetchBtn.addEventListener('click', async () => {
-      hostedTableEl.innerHTML = '<div class="muted">Fetching hosted models...</div>';
-      try {
-        const data = await api(`/api/models/hosted?provider=${encodeURIComponent(mtProvider)}`);
-        hostedAllModels = data.models || [];
-        mtHosted = hostedAllModels;
-        hostedSortColumn = null;
-        hostedSortDirection = 'asc';
-        renderHostedTable();
-      } catch (err) {
-        hostedTableEl.innerHTML = `<div class="muted" style="color:var(--danger);">Failed: ${escapeHtml(err.message)}</div>`;
-      }
-    });
-
-    let hostedFilterActive = false;
-    let hostedFilterText = '';
-
-    function updateFilterButton() {
-      if (hostedFilterActive && hostedFilterText) {
-        hostedFilterBtn.textContent = 'Filtering on';
-        hostedFilterBtn.classList.add('filter-active');
-      } else {
-        hostedFilterBtn.textContent = 'Filter';
-        hostedFilterBtn.classList.remove('filter-active');
-      }
-    }
-
-    hostedFilterBtn.addEventListener('click', () => {
-      const val = hostedFilterEl.value.trim();
-      if (hostedFilterActive) {
-        // Clear filter
-        hostedFilterActive = false;
-        hostedFilterText = '';
-        hostedFilterEl.value = '';
-      } else if (val) {
-        hostedFilterActive = true;
-        hostedFilterText = val;
-      }
-      updateFilterButton();
-      renderHostedTable();
-    });
-
-    hostedFilterEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') hostedFilterBtn.click();
-    });
-
-    function renderHostedTable() {
-      if (!hostedAllModels.length) {
-        hostedTableEl.innerHTML = '<div class="muted">No hosted models found.</div>';
-        return;
-      }
-      // Auto-detect columns from first model's keys (skip object/array values)
-      const sampleModel = hostedAllModels[0];
-      const columns = Object.keys(sampleModel).filter(k => {
-        const v = sampleModel[k];
-        return v === null || v === undefined || typeof v !== 'object';
-      });
-      const hasTags = Array.isArray(sampleModel.tags);
-
-      const filter = hostedFilterActive ? hostedFilterText.toLowerCase() : '';
-      let filtered = filter
-        ? hostedAllModels.filter((m) => {
-            // Matches any column, or a tag (type e.g. out:image or in:image).
-            return columns.some(k => String(m[k] ?? '').toLowerCase().includes(filter))
-              || (m.tags || []).some(t => String(t).toLowerCase().includes(filter));
-          })
-        : [...hostedAllModels];
-
-      if (!filtered.length) {
-        hostedTableEl.innerHTML = '<div class="muted">No models match filter.</div>';
-        return;
-      }
-
-      // Sort
-      if (hostedSortColumn) {
-        const col = hostedSortColumn;
-        const dir = hostedSortDirection === 'asc' ? 1 : -1;
-        filtered.sort((a, b) => {
-          const va = String(a[col] ?? '');
-          const vb = String(b[col] ?? '');
-          return dir * va.localeCompare(vb, undefined, { numeric: true });
-        });
-      }
-
-      const configuredIds = new Set(mtModels.map((m) => m.id));
-      const table = document.createElement('table');
-      table.className = 'data-table';
-
-      // Build header with sortable columns
-      const thead = document.createElement('thead');
-      const headerRow = document.createElement('tr');
-      columns.forEach(col => {
-        const th = document.createElement('th');
-        th.className = 'sortable';
-        th.textContent = col;
-        if (hostedSortColumn === col) {
-          const arrow = document.createElement('span');
-          arrow.className = 'sort-arrow';
-          arrow.textContent = hostedSortDirection === 'asc' ? '\u25B2' : '\u25BC';
-          th.appendChild(arrow);
+      const renderAliases = (dlg) => {
+        const list = dlg.querySelector('#meAliasList');
+        list.innerHTML = aliases.length
+          ? aliases.map((a) => `<span class="alias-tag alias-chip">${esc(a)}<button type="button" class="chip-x" data-alias="${esc(a)}" aria-label="Remove alias ${esc(a)}" data-tip="Remove this alias">&times;</button></span>`).join('')
+          : '<span class="muted" style="font-size:0.85rem;">No aliases.</span>';
+      };
+      const addAlias = (dlg) => {
+        const input = dlg.querySelector('#meAliasInput');
+        const a = input.value.trim();
+        const err = dlg.querySelector('.lexi-dialog-error');
+        err.textContent = '';
+        if (!a) return;
+        if (/\s/.test(a)) { err.textContent = 'An alias can\'t contain spaces.'; return; }
+        const other = mtAliases[a];
+        if (other && other !== m.id && !aliases.includes(a)) {
+          err.textContent = `${a} already points to ${other}; adding it here moves it to this model.`;
         }
-        th.addEventListener('click', () => {
-          if (hostedSortColumn === col) {
-            hostedSortDirection = hostedSortDirection === 'asc' ? 'desc' : 'asc';
-          } else {
-            hostedSortColumn = col;
-            hostedSortDirection = 'asc';
+        if (!aliases.includes(a)) aliases = [...aliases, a].sort();
+        input.value = '';
+        renderAliases(dlg);
+      };
+
+      return openDialog({
+        title: isEdit ? `Edit ${m.id}` : `Add a model to ${provider}`,
+        body,
+        okLabel: isEdit ? 'Save' : 'Add model',
+        onOpen: (dlg) => {
+          renderAliases(dlg);
+          dlg.querySelector('#meAliasAdd').addEventListener('click', () => addAlias(dlg));
+          dlg.querySelector('#meAliasInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); addAlias(dlg); }
+          });
+          dlg.querySelector('#meAliasList').addEventListener('click', (e) => {
+            const x = e.target.closest('.chip-x');
+            if (!x) return;
+            aliases = aliases.filter((a) => a !== x.dataset.alias);
+            renderAliases(dlg);
+          });
+        },
+        onOk: async (dlg) => {
+          const val = (sel) => dlg.querySelector(sel).value.trim();
+          const modelId = val('#meModelId');
+          if (!modelId) throw new Error('Enter the model id.');
+          if (!isEdit && mtModels.some((x) => x.id === modelId)) throw new Error(`${modelId} is already configured; use ✎ to edit it.`);
+          if (val('#meAliasInput')) addAlias(dlg);
+          const num = (sel) => (val(sel) ? Number(val(sel)) : undefined);
+          const setDefault = dlg.querySelector('#meSetDefault')?.checked || undefined;
+          await api(isEdit ? '/api/models/set' : '/api/models/add', {
+            method: 'POST',
+            body: JSON.stringify({
+              provider,
+              model: modelId,
+              name: val('#meName') || undefined,
+              description: val('#meDesc') || undefined,
+              max_tokens: num('#meMaxTokens'),
+              context_window: num('#meCtxWindow'),
+              set_default: setDefault,
+            }),
+          });
+          for (const a of original) {
+            if (!aliases.includes(a)) {
+              await api('/api/models/aliases/delete', { method: 'POST', body: JSON.stringify({ provider, alias: a }) });
+            }
           }
-          renderHostedTable();
-        });
-        headerRow.appendChild(th);
+          for (const a of aliases) {
+            if (!original.has(a)) {
+              await api('/api/models/aliases', { method: 'POST', body: JSON.stringify({ provider, alias: a, model: modelId }) });
+            }
+          }
+          showModelsFeedback(`${isEdit ? 'Saved' : 'Added'} ${modelId}.`, 'success');
+          if (provider === mtProvider) await loadConfigured();
+          if (provider === mtProvider && hostedFor === provider) renderHostedTable();
+        },
       });
-      if (hasTags) {
-        const tagsTh = document.createElement('th');
-        tagsTh.textContent = 'tags';
-        headerRow.appendChild(tagsTh);
-      }
-      const actionTh = document.createElement('th');
-      headerRow.appendChild(actionTh);
-      thead.appendChild(headerRow);
-      table.appendChild(thead);
+    }
 
-      const tbody = document.createElement('tbody');
-      const displayModels = filtered.slice(0, 200);
-      displayModels.forEach((m) => {
-        const id = m.id || m.model || JSON.stringify(m);
-        const exists = configuredIds.has(id);
-        const tr = document.createElement('tr');
-        columns.forEach(col => {
-          const td = document.createElement('td');
-          td.textContent = m[col] != null ? String(m[col]) : '';
-          tr.appendChild(td);
-        });
-        if (hasTags) {
-          const tagsTd = document.createElement('td');
-          tagsTd.innerHTML = tagChips(m.tags);
-          tr.appendChild(tagsTd);
+    async function loadConfigured() {
+      const provider = mtProvider;
+      if (!provider) return;
+      const get = (path) => api(`${path}?provider=${encodeURIComponent(provider)}`).catch(() => ({}));
+      const [models, def, aliases] = await Promise.all([get('/api/models'), get('/api/models/default'), get('/api/models/aliases')]);
+      if (provider !== mtProvider) return; // the provider changed meanwhile
+      mtModels = models.models || [];
+      mtDefault = def.default_model || null;
+      mtAliases = aliases.aliases || {};
+      renderModelsTable();
+    }
+
+    // Always a live fetch from the provider; if that fails, the last cached list
+    // (if any) is shown under the error.
+    async function loadHosted() {
+      const provider = mtProvider;
+      if (!provider) return;
+      const seq = ++hostedSeq;
+      const q = `provider=${encodeURIComponent(provider)}`;
+      hostedRefreshBtn.disabled = true;
+      hostedNoticeEl.className = 'pane-notice';
+      hostedNoticeEl.textContent = `Fetching the model list from ${provider}…`;
+      if (hostedFor !== provider) {
+        hostedTable.reset();
+        hostedAllModels = [];
+        hostedTable.showMessage('Loading…');
+      }
+      let notice = '';
+      let models = [];
+      try {
+        const data = await api(`/api/models/hosted?${q}`);
+        models = data.models || [];
+      } catch (err) {
+        notice = `<span class="error-text">Couldn't fetch the model list from ${esc(provider)}: ${esc(err.message)}</span>`;
+        try {
+          const cached = await api(`/api/models/hosted?${q}&cached=1`);
+          models = cached.models || [];
+          const when = cached.fetched_at ? new Date(cached.fetched_at * 1000).toLocaleString() : 'earlier';
+          notice += `<div style="margin-top:4px;">Showing the list cached ${esc(when)}.</div>`;
+        } catch {
+          models = [];
         }
-        const actionTd = document.createElement('td');
-        if (exists) {
-          actionTd.innerHTML = '<span class="badge-exists">added</span>';
-        } else {
-          actionTd.innerHTML = `<button class="btn-icon hosted-add" data-id="${escapeHtml(id)}" title="Add to configured models">+</button>`;
-        }
-        tr.appendChild(actionTd);
-        tbody.appendChild(tr);
-      });
-      table.appendChild(tbody);
-      hostedTableEl.innerHTML = '';
-      if (filtered.length > 200) {
-        const note = document.createElement('div');
-        note.className = 'muted';
-        note.style.marginBottom = '6px';
-        note.textContent = `Showing 200 of ${filtered.length} models. Use filter to narrow results.`;
-        hostedTableEl.appendChild(note);
       }
-      hostedTableEl.appendChild(table);
-
-      hostedTableEl.querySelectorAll('.hosted-add').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          openModelEditForm(null);
-          setTimeout(() => {
-            const idField = document.getElementById('meModelId');
-            if (idField) idField.value = btn.dataset.id;
-          }, 0);
-        });
-      });
-    }
-
-    async function loadModelsForTab() {
-      try {
-        const data = await api(`/api/models?provider=${encodeURIComponent(mtProvider)}`);
-        mtModels = data.models || [];
-      } catch {
-        mtModels = [];
-      }
-    }
-
-    async function loadDefault() {
-      try {
-        const data = await api(`/api/models/default?provider=${encodeURIComponent(mtProvider)}`);
-        mtDefault = data.default_model || null;
-      } catch {
-        mtDefault = null;
-      }
-    }
-
-    async function loadAliases() {
-      try {
-        const data = await api(`/api/models/aliases?provider=${encodeURIComponent(mtProvider)}`);
-        mtAliases = data.aliases || {};
-      } catch {
-        mtAliases = {};
-      }
+      if (seq !== hostedSeq) return; // a newer fetch started
+      hostedRefreshBtn.disabled = false;
+      hostedNoticeEl.className = notice ? 'pane-notice error' : 'pane-notice';
+      hostedNoticeEl.innerHTML = notice;
+      hostedAllModels = models;
+      hostedFor = provider;
+      if (!models.length && notice) hostedTable.showMessage('No model list available.');
+      else renderHostedTable();
+      renderModelsTable(); // refresh the "not hosted" marks
     }
 
     async function refreshModelsTab() {
       if (!mtProvider) return;
-      modelsFeedbackEl.textContent = '';
-      aliasesFeedbackEl.textContent = '';
-      await Promise.all([loadModelsForTab(), loadDefault(), loadAliases()]);
-      renderModelsTable();
-      updateAliasModelDatalist();
-      if (hostedAllModels.length) {
-        renderHostedTable();
-      } else {
-        // Auto-fetch hosted models for cross-checking if not already loaded
-        hostedTableEl.innerHTML = '<div class="muted">Fetching hosted models...</div>';
-        try {
-          const data = await api(`/api/models/hosted?provider=${encodeURIComponent(mtProvider)}`);
-          hostedAllModels = data.models || [];
-          mtHosted = hostedAllModels;
-          hostedSortColumn = null;
-          hostedSortDirection = 'asc';
-          renderHostedTable();
-          renderModelsTable(); // Re-render with cross-check data
-        } catch (err) {
-          hostedTableEl.innerHTML = `<div class="muted" style="color:var(--danger);">Failed to fetch hosted models: ${escapeHtml(err.message)}</div>`;
-        }
-      }
+      await loadConfigured();
+      if (hostedFor !== mtProvider) await loadHosted();
     }
+
+    hostedRefreshBtn.addEventListener('click', () => loadHosted());
 
     modelsProviderEl.addEventListener('change', () => {
       mtProvider = modelsProviderEl.value;
-      mtHosted = null;
-      hostedAllModels = [];
-      hostedSortColumn = null;
-      hostedSortDirection = 'asc';
-      hostedFilterEl.value = '';
-      hostedFilterActive = false;
-      hostedFilterText = '';
-      updateFilterButton();
-      modelEditFormEl.innerHTML = '';
-      mtEditingModel = null;
-      refreshModelsTab(); // Will auto-fetch hosted models
+      modelsFeedbackEl.textContent = '';
+      configuredTable.reset();
+      loadConfigured();
+      loadHosted();
     });
 
-    // --- Split Divider Drag ---
+    // --- Split divider: drag to share the space; the split is kept as a
+    // ratio, so both panes follow window resizes. Side by side it splits the
+    // width, stacked (narrow windows) the height.
     (function initSplitDivider() {
-      let dragging = false;
-      let startX = 0;
-      let startHostedW = 0;
-      let startConfiguredW = 0;
-
+      const KEY = 'lexi.models.split';
+      let ratio = 0.5;
+      try { const v = parseFloat(localStorage.getItem(KEY)); if (v > 0 && v < 1) ratio = v; } catch {}
+      const apply = () => {
+        hostedPane.style.flex = `${ratio} 1 0`;
+        configuredPane.style.flex = `${1 - ratio} 1 0`;
+      };
+      apply();
+      let drag = null;
       modelsSplitDivider.addEventListener('mousedown', (e) => {
         e.preventDefault();
-        dragging = true;
-        startX = e.clientX;
-        const splitRect = hostedPane.parentElement.getBoundingClientRect();
-        startHostedW = hostedPane.getBoundingClientRect().width;
-        startConfiguredW = configuredPane.getBoundingClientRect().width;
-        document.body.style.cursor = 'col-resize';
+        const stacked = getComputedStyle(modelsSplitEl).flexDirection === 'column';
+        const a = hostedPane.getBoundingClientRect();
+        const b = configuredPane.getBoundingClientRect();
+        drag = {
+          stacked,
+          start: stacked ? e.clientY : e.clientX,
+          first: stacked ? a.height : a.width,
+          total: stacked ? a.height + b.height : a.width + b.width,
+        };
+        document.body.style.cursor = stacked ? 'row-resize' : 'col-resize';
         document.body.style.userSelect = 'none';
       });
-
       document.addEventListener('mousemove', (e) => {
-        if (!dragging) return;
-        const dx = e.clientX - startX;
-        const totalW = startHostedW + startConfiguredW;
-        const minW = 200;
-        let newHosted = startHostedW + dx;
-        let newConfigured = startConfiguredW - dx;
-        if (newHosted < minW) { newHosted = minW; newConfigured = totalW - minW; }
-        if (newConfigured < minW) { newConfigured = minW; newHosted = totalW - minW; }
-        const splitContainer = hostedPane.parentElement;
-        splitContainer.style.setProperty('--hosted-flex', 'none');
-        splitContainer.style.setProperty('--configured-flex', 'none');
-        hostedPane.style.width = newHosted + 'px';
-        hostedPane.style.flex = 'none';
-        configuredPane.style.width = newConfigured + 'px';
-        configuredPane.style.flex = 'none';
+        if (!drag) return;
+        const pos = drag.stacked ? e.clientY : e.clientX;
+        const min = Math.min(drag.stacked ? 120 : 220, drag.total / 2);
+        const first = Math.max(min, Math.min(drag.total - min, drag.first + pos - drag.start));
+        ratio = first / drag.total;
+        apply();
       });
-
       document.addEventListener('mouseup', () => {
-        if (!dragging) return;
-        dragging = false;
+        if (!drag) return;
+        drag = null;
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
+        try { localStorage.setItem(KEY, String(ratio)); } catch {}
       });
     })();
 
@@ -3463,6 +4086,7 @@
         const card = document.createElement('div');
         card.className = 'theme-card' + (id === currentTheme ? ' selected' : '');
         card.dataset.theme = id;
+        card.setAttribute('data-tip', `Use the ${theme.name} theme`);
         card.innerHTML = `<div class="theme-swatch" style="background:${theme.swatch};"></div><div class="theme-label">${theme.name}</div>`;
         card.addEventListener('click', () => {
           applyTheme(id);
@@ -3642,9 +4266,9 @@
             ${usedBy.length ? `<div class="muted" style="font-size:0.85rem;margin-top:4px;">Used by: ${usedBy.map((p) => `<span class="api-used-by-tag">${escapeHtml(p)}</span>`).join(' ')}</div>` : ''}
           </div>
           <div class="api-actions" style="margin-top:0;">
-            <button class="btn btn-primary" id="apiSaveBtn">Save</button>
-            <button class="btn btn-ghost" id="apiResetBtn">Reset</button>
-            <button class="btn btn-danger" id="apiDeleteBtn">Delete</button>
+            <button class="btn btn-primary" id="apiSaveBtn" data-tip="Save your changes to this definition">Save</button>
+            <button class="btn btn-ghost" id="apiResetBtn" data-tip="Discard your changes and reload the definition from disk">Reset</button>
+            <button class="btn btn-danger" id="apiDeleteBtn" data-tip="Delete this API definition">Delete</button>
           </div>
         </div>
         <textarea class="api-yaml-editor" id="apiYamlTextarea">${escapeHtml(yamlText)}</textarea>
@@ -3655,7 +4279,7 @@
           <input id="apiPreviewPrompt" type="text" placeholder="Sample prompt" value="hello world">
           <input id="apiPreviewModel" type="text" placeholder="Model" value="sample-model" style="max-width:180px;">
           <input id="apiPreviewRole" type="text" placeholder="Role" value="user" style="max-width:100px;">
-          <button class="btn btn-ghost" id="apiPreviewRefreshBtn" style="padding:6px 12px;font-size:0.85rem;">Refresh Preview</button>
+          <button class="btn btn-ghost" id="apiPreviewRefreshBtn" data-tip="Rebuild the request preview from the definition as it is now" style="padding:6px 12px;font-size:0.85rem;">Refresh Preview</button>
         </div>
         <div class="api-preview-block">
           <div class="muted" style="font-size:0.8rem;margin-bottom:4px;">Composed request body</div>
@@ -3715,7 +4339,7 @@
       });
 
       document.getElementById('apiResetBtn').addEventListener('click', async () => {
-        if (!confirm('Discard unsaved changes and reload from disk?')) return;
+        if (!await confirmDialog('Discard changes', 'Discard unsaved changes and reload from disk?', 'Discard')) return;
         await selectApi(name);
       });
 
@@ -3797,7 +4421,7 @@
 
     // --- Delete ---
     window.deleteApiDef = async function(name) {
-      if (!confirm(`Delete API definition "${name}"? This cannot be undone.`)) return;
+      if (!await confirmDialog('Delete API definition', `Delete API definition "${name}"? This can't be undone.`, 'Delete')) return;
       try {
         await api('/api/definitions/delete', {
           method: 'POST',

@@ -78,6 +78,7 @@ On every run, `lexi_host::ensure_home` fills in missing defaults (embedded from 
 
 ## File Locations
 - Rust engine / runtime / CLI / desktop: `lexi-core/`, `lexi-host/`, `lexi-cli-rs/`, `lexi-desktop/`
+- Desktop frontend shared UI (in `index.html`): `DataTable` (sticky header, click-to-sort, right-click column filters), `openDialog` / `confirmDialog` (modal dialogs; don't use `window.confirm`), and `data-tip="…"` hover help (give every icon-only or non-obvious control one; native `title` tooltips don't reliably show in the app)
 - Shipped API definitions: `lexi-core/apis/` (embedded by `lexi-host`)
 - Default provider configs: `providers/` (embedded; seeded into `~/.lexi-cli/providers/`)
 - Python wheel: `lexi-python/` (PyO3 over lexi-core + lexi-host; Python API in `lexi-python/python/lexi/`)
