@@ -19,6 +19,7 @@ pub async fn handle(method: &str, path: &str, body: Option<Value>) -> Result<Val
     match (method, base) {
         ("GET", "/api/providers") | ("GET", "/api/providers/") => providers(),
         ("GET", "/api/config") | ("GET", "/api/config/") => Ok(config_get()),
+        ("GET", "/api/themes") => Ok(themes()),
         ("GET", "/api/prompts") => prompts_list(),
         ("GET", p) if p.starts_with("/api/models/default") => models_default_get(path),
         ("GET", p) if p.starts_with("/api/models/aliases") => models_aliases_get(path),
@@ -286,6 +287,93 @@ fn config_get() -> Value {
         }
     }
     cfg
+}
+
+/// The shipped GUI themes; copied to `themes.json` in the Lexi home on first
+/// use, where the user can edit them.
+const SHIPPED_THEMES: &str = include_str!("../themes.json");
+
+/// `GET /api/themes` — the GUI themes from `themes.json` in the Lexi home, the
+/// default theme, and the selected one (`theme` in `config.json`).
+fn themes() -> Value {
+    let selected = config_get()
+        .get("theme")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    themes_in(&config::lexi_home(), selected.as_deref())
+}
+
+/// The themes in `<home>/themes.json`, writing the shipped file there first
+/// when there is none. An unreadable or empty file falls back to the shipped
+/// themes, with a `warning`. `selected` is used when it names a theme, else
+/// the file's `default`, else its first theme.
+fn themes_in(home: &std::path::Path, selected: Option<&str>) -> Value {
+    let path = home.join("themes.json");
+    let shipped: Value =
+        serde_json::from_str(SHIPPED_THEMES).expect("the shipped themes.json is valid JSON");
+    let mut warning: Option<String> = None;
+    let file = if path.exists() {
+        let parsed = std::fs::read_to_string(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string()));
+        match parsed {
+            Ok(v)
+                if v.get("themes")
+                    .and_then(Value::as_array)
+                    .is_some_and(|t| !t.is_empty()) =>
+            {
+                v
+            }
+            Ok(_) => {
+                warning = Some(format!(
+                    "{} lists no themes; using the built-in ones.",
+                    path.display()
+                ));
+                shipped.clone()
+            }
+            Err(e) => {
+                warning = Some(format!(
+                    "Couldn't read {} ({e}); using the built-in themes.",
+                    path.display()
+                ));
+                shipped.clone()
+            }
+        }
+    } else {
+        if let Err(e) =
+            std::fs::create_dir_all(home).and_then(|_| std::fs::write(&path, SHIPPED_THEMES))
+        {
+            warning = Some(format!("Couldn't create {} ({e}).", path.display()));
+        }
+        shipped.clone()
+    };
+    let themes: Vec<Value> = file["themes"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|t| t.get("id").and_then(Value::as_str).is_some() && t["vars"].is_object())
+        .collect();
+    let has = |id: &str| themes.iter().any(|t| t["id"] == id);
+    let first = themes.first().and_then(|t| t["id"].as_str()).unwrap_or("");
+    let default = file
+        .get("default")
+        .and_then(Value::as_str)
+        .filter(|d| has(d))
+        .unwrap_or(first)
+        .to_string();
+    let selected = selected
+        .filter(|s| has(s))
+        .map(str::to_string)
+        .unwrap_or_else(|| default.clone());
+    json!({
+        "path": path.display().to_string(),
+        "default": default,
+        "selected": selected,
+        "themes": themes,
+        "elements": file.get("elements").cloned().unwrap_or(Value::Null),
+        "warning": warning,
+    })
 }
 
 /// `GET /api/prompts` — the saved prompt library. Flattens each prompt's body
@@ -876,6 +964,50 @@ mod tests {
         );
         assert_eq!(query_param("/api/models", "provider"), None);
         assert_eq!(query_param("/api/models?other=1", "provider"), None);
+    }
+
+    #[test]
+    fn themes_are_seeded_and_the_selection_falls_back_to_the_default() {
+        use super::themes_in;
+        let home = tempfile::tempdir().unwrap();
+        // First use writes the shipped file; an unknown theme falls back to the default.
+        let t = themes_in(home.path(), Some("dark-green"));
+        assert!(home.path().join("themes.json").exists());
+        assert_eq!(t["default"], "dark-cyan");
+        assert_eq!(t["selected"], "dark-cyan");
+        assert!(t["warning"].is_null());
+        let ids: Vec<&str> = t["themes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            ids,
+            ["dark-cyan", "dark-purple", "nvidia-dark", "nvidia-light"]
+        );
+        // A saved choice that exists is kept.
+        assert_eq!(
+            themes_in(home.path(), Some("nvidia-dark"))["selected"],
+            "nvidia-dark"
+        );
+        // The user's file is what's read: an added theme shows up.
+        std::fs::write(
+            home.path().join("themes.json"),
+            r##"{"default":"mine","themes":[{"id":"mine","name":"Mine","vars":{"--bg":"#000"}}]}"##,
+        )
+        .unwrap();
+        let t = themes_in(home.path(), None);
+        assert_eq!(t["selected"], "mine");
+        assert_eq!(t["themes"].as_array().unwrap().len(), 1);
+        // A broken file falls back to the shipped themes, with a warning.
+        std::fs::write(home.path().join("themes.json"), "{not json").unwrap();
+        let t = themes_in(home.path(), Some("nvidia-light"));
+        assert_eq!(t["selected"], "nvidia-light");
+        assert!(t["warning"]
+            .as_str()
+            .unwrap()
+            .contains("using the built-in themes"));
     }
 
     #[test]

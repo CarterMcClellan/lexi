@@ -1,0 +1,113 @@
+{
+  "default": "dark-cyan",
+  "elements": {
+    "--bg": "Page background behind the panels",
+    "--card": "Panels and dialogs",
+    "--input-bg": "Text boxes, drop-downs, table stripes and inset areas",
+    "--shell-bg": "The window frame (may be translucent)",
+    "--text": "Body text",
+    "--muted": "Secondary text, hints and placeholders",
+    "--heading": "Headings and labels in the open tab",
+    "--accent": "Primary colour: main buttons, selected items, focus",
+    "--accent-2": "Highlight colour: links, hover, active markers (primary buttons blend --accent into it)",
+    "--border": "Borders and dividers",
+    "--success": "Success messages and badges",
+    "--danger": "Errors, delete actions and failure badges",
+    "--warning": "Warnings and partial results",
+    "background": "CSS background for the whole window (a colour or gradient)",
+    "swatch": "CSS background of the theme's sample in Configure → Theme",
+    "scheme": "\"dark\" or \"light\" (light themes put the logo on a dark badge)"
+  },
+  "themes": [
+    {
+      "id": "dark-cyan",
+      "name": "Dark Cyan",
+      "scheme": "dark",
+      "vars": {
+        "--bg": "#0a1628",
+        "--card": "#0f1f36",
+        "--input-bg": "#0c1a2e",
+        "--shell-bg": "rgba(12, 26, 46, 0.9)",
+        "--text": "#e0f2fe",
+        "--muted": "#8badc4",
+        "--heading": "#22c55e",
+        "--accent": "#06b6d4",
+        "--accent-2": "#22d3ee",
+        "--border": "#164e63",
+        "--success": "#22c55e",
+        "--danger": "#ef4444",
+        "--warning": "#f59e0b"
+      },
+      "background": "radial-gradient(circle at 10% 20%, rgba(6, 182, 212, 0.2), transparent 35%), radial-gradient(circle at 90% 10%, rgba(34, 211, 238, 0.15), transparent 30%), #0a1628",
+      "swatch": "linear-gradient(135deg, #06b6d4, #22d3ee)"
+    },
+    {
+      "id": "dark-purple",
+      "name": "Dark Purple",
+      "scheme": "dark",
+      "vars": {
+        "--bg": "#0b1020",
+        "--card": "#11182c",
+        "--input-bg": "#0f172a",
+        "--shell-bg": "rgba(17, 24, 44, 0.9)",
+        "--text": "#e2e8f0",
+        "--muted": "#9fb3c8",
+        "--heading": "#22c55e",
+        "--accent": "#7c3aed",
+        "--accent-2": "#06b6d4",
+        "--border": "#1f2937",
+        "--success": "#22c55e",
+        "--danger": "#ef4444",
+        "--warning": "#f59e0b"
+      },
+      "background": "radial-gradient(circle at 10% 20%, rgba(124, 58, 237, 0.18), transparent 35%), radial-gradient(circle at 90% 10%, rgba(6, 182, 212, 0.18), transparent 30%), #0b1020",
+      "swatch": "linear-gradient(135deg, #7c3aed, #06b6d4)"
+    },
+    {
+      "id": "nvidia-dark",
+      "name": "NVIDIA Dark",
+      "scheme": "dark",
+      "source": "NVIDIA Elements dark theme tokens (github.com/NVIDIA/elements, projects/themes), converted from OKLCH; success/danger/warning use the shade of each Elements scale that reads as text on the panels",
+      "vars": {
+        "--bg": "#0b0c0f",
+        "--card": "#191a1f",
+        "--input-bg": "#24262d",
+        "--shell-bg": "rgba(0, 0, 0, 0.92)",
+        "--text": "#c6cde2",
+        "--muted": "#979eb2",
+        "--heading": "#7eb600",
+        "--accent": "#6fa200",
+        "--accent-2": "#7eb600",
+        "--border": "#2f333c",
+        "--success": "#14cc61",
+        "--danger": "#ff465d",
+        "--warning": "#fdd506"
+      },
+      "background": "#0b0c0f",
+      "swatch": "linear-gradient(135deg, #76b900 0 45%, #191a1f 45%)"
+    },
+    {
+      "id": "nvidia-light",
+      "name": "NVIDIA Light",
+      "scheme": "light",
+      "source": "NVIDIA Elements light theme tokens (github.com/NVIDIA/elements, projects/themes), converted from OKLCH; success/danger/warning use the shade of each Elements scale that reads as text on the panels",
+      "vars": {
+        "--bg": "#ebeff2",
+        "--card": "#ffffff",
+        "--input-bg": "#f5f9fc",
+        "--shell-bg": "rgba(255, 255, 255, 0.95)",
+        "--text": "#141619",
+        "--muted": "#696c6f",
+        "--heading": "#518200",
+        "--accent": "#6aa700",
+        "--accent-2": "#518200",
+        "--border": "#c1c4c8",
+        "--success": "#287c39",
+        "--danger": "#c82d45",
+        "--warning": "#86700a"
+      },
+      "background": "#ebeff2",
+      "swatch": "linear-gradient(135deg, #76b900 0 45%, #ebeff2 45%)"
+    }
+  ]
+}
