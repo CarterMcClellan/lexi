@@ -2573,9 +2573,7 @@
       setStatus('Loading prompts...');
       try {
         const data = await api('/api/prompts', { method: 'GET' });
-        const prompts = data.prompts || [];
-        renderPrompts(prompts);
-        populateChatPromptSelect(prompts);
+        promptsChanged(data.prompts || []);
         setStatus('Prompts loaded');
       } catch (err) {
         setStatus(err.message, 'error');
@@ -2618,7 +2616,7 @@
           method: 'POST',
           body: JSON.stringify(payload),
         });
-        renderPrompts(data.prompts || []);
+        promptsChanged(data.prompts || []);
         setStatus('Saved', 'success');
       } catch (err) {
         setStatus(err.message, 'error');
@@ -2632,7 +2630,7 @@
           method: 'POST',
           body: JSON.stringify({ name }),
         });
-        renderPrompts(data.prompts || []);
+        promptsChanged(data.prompts || []);
         setStatus('Active prompt updated', 'success');
       } catch (err) {
         setStatus(err.message, 'error');
@@ -2646,85 +2644,158 @@
           method: 'POST',
           body: JSON.stringify({ name }),
         });
-        renderPrompts(data.prompts || []);
+        promptsChanged(data.prompts || []);
         setStatus('Deleted', 'success');
       } catch (err) {
         setStatus(err.message, 'error');
       }
     }
 
-    async function loadSelectedPromptIntoChat() {
-      const selected = chatPromptSelectEl.value;
-      if (!selected) {
-        setStatus('Select a prompt first.', 'error');
-        return;
-      }
-      setStatus('Loading prompt...');
-      try {
-        const data = await api('/api/prompts', { method: 'GET' });
-        const prompts = data.prompts || [];
-        const match = selected === '$$'
-          ? prompts.find((p) => p.isActive)
-          : prompts.find((p) => p.name === selected);
-        if (match) {
-          chatPromptEl.value = match.prompt || '';
-          setStatus(`Loaded prompt "${selected}".`, 'success');
-        } else {
-          setStatus(`Prompt "${selected}" not found.`, 'error');
-        }
-      } catch (err) {
-        setStatus(err.message, 'error');
-      }
+    // --- Prompt box Load / Save (shared by Chat and Images) ---
+    // Load is highlighted while a prompt is picked but not loaded yet; Save
+    // while the text differs from what was last loaded or saved. Picking
+    // another prompt while there are unsaved changes asks to save them first.
+    let savedPromptList = [];   // the latest list from /api/prompts
+
+    function setButtonHighlight(btn, on) {
+      btn.classList.toggle('btn-primary', on);
+      btn.classList.toggle('btn-ghost', !on);
     }
 
-    async function saveChatPromptNamed() {
-      const prompt = chatPromptEl.value.trim();
-      if (!prompt) {
-        setStatus('Prompt text is required.', 'error');
-        return;
-      }
-      const name = window.prompt('Save prompt as:');
-      if (!name) {
-        setStatus('Save cancelled.', 'muted');
-        return;
-      }
-      try {
-        const data = await api('/api/prompts', {
-          method: 'POST',
-          body: JSON.stringify({ name, prompt }),
-        });
-        renderPrompts(data.prompts || []);
-        populateChatPromptSelect(data.prompts || []);
-        setStatus(`Prompt saved as "${name}".`, 'success');
-        saveChatNamedBtn.classList.remove('btn-primary');
-        saveChatNamedBtn.classList.add('btn-ghost');
-      } catch (err) {
-        setStatus(err.message, 'error');
-      }
+    // Every prompt list (Prompts tab, Chat and Images pickers) follows a new list.
+    function promptsChanged(prompts) {
+      savedPromptList = prompts;
+      renderPrompts(prompts);
+      populateChatPromptSelect(prompts);
+      if (typeof renderImgPromptSelect === 'function') renderImgPromptSelect();
     }
+
+    // Name a prompt and save it; resolves {name, prompts} or null if cancelled.
+    function savePromptDialog(prompt, suggested) {
+      return openDialog({
+        title: 'Save prompt',
+        okLabel: 'Save',
+        body: `<label for="savePromptName" style="margin-top:0;">Name</label>
+          <input id="savePromptName" type="text" autocomplete="off" spellcheck="false">
+          <p class="hint" id="savePromptHint">Saved prompts can be loaded in Chat or Images, or used with <code>lexi respond --prompt NAME</code>.</p>`,
+        onOpen: (dlg) => {
+          const input = dlg.querySelector('#savePromptName');
+          const hint = dlg.querySelector('#savePromptHint');
+          const ok = dlg.querySelector('.dlg-ok');
+          const base = hint.innerHTML;
+          const check = () => {
+            const name = input.value.trim();
+            const taken = savedPromptList.some((x) => x.name === name);
+            ok.textContent = taken ? 'Replace' : 'Save';
+            hint.innerHTML = taken ? `A saved prompt named <strong>${esc(name)}</strong> already exists; saving replaces it.` : base;
+          };
+          input.addEventListener('input', check);
+          if (suggested) { input.value = suggested; input.select(); check(); }
+        },
+        onOk: async (dlg) => {
+          const name = dlg.querySelector('#savePromptName').value.trim();
+          if (!name) throw new Error('Give the prompt a name.');
+          const data = await api('/api/prompts', { method: 'POST', body: JSON.stringify({ name, prompt }) });
+          return { name, prompts: data.prompts || [] };
+        },
+      });
+    }
+
+    // Asked when picking another prompt with unsaved changes:
+    // resolves 'save', 'discard' or 'cancel'.
+    async function askSaveChanges() {
+      let discard = false;
+      const save = await openDialog({
+        title: 'Save your changes?',
+        okLabel: 'Save…',
+        body: "<p style=\"margin:0;\">The prompt has changes that haven't been saved. Save them before picking another prompt?</p>",
+        onOpen: (dlg) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'btn btn-ghost dlg-discard';
+          b.textContent = "Don't Save";
+          b.addEventListener('click', () => { discard = true; dlg.close(); });
+          dlg.querySelector('.dlg-cancel').before(b);
+        },
+      });
+      return save ? 'save' : discard ? 'discard' : 'cancel';
+    }
+
+    function attachPromptEditor({ textarea, select, loadBtn, saveBtn, setMsg, onTextChange }) {
+      const ed = { baseline: textarea.value, loadedName: '', lastSel: select.value, pending: false };
+      const dirty = () => textarea.value.trim() !== '' && textarea.value !== ed.baseline;
+      ed.isDirty = dirty;
+      ed.refresh = () => {
+        setButtonHighlight(saveBtn, dirty());
+        setButtonHighlight(loadBtn, ed.pending && !!select.value);
+      };
+      const changed = () => { ed.refresh(); if (onTextChange) onTextChange(); };
+
+      async function save() {
+        const text = textarea.value.trim();
+        if (!text) { setMsg('Write a prompt first.', 'error'); textarea.focus(); return null; }
+        const saved = await savePromptDialog(text, ed.loadedName === '$$' ? '' : ed.loadedName);
+        if (!saved) return null;
+        ed.baseline = textarea.value;
+        ed.loadedName = saved.name;
+        promptsChanged(saved.prompts);
+        changed();
+        setMsg(`Saved the prompt as "${saved.name}".`, 'success');
+        return saved.name;
+      }
+
+      textarea.addEventListener('input', changed);
+      select.addEventListener('change', async () => {
+        const picked = select.value;
+        if (picked && dirty()) {
+          const choice = await askSaveChanges();
+          if (choice === 'cancel' || (choice === 'save' && !(await save()))) {
+            select.value = ed.lastSel;
+            ed.refresh();
+            return;
+          }
+          select.value = picked;   // saving redraws the pickers
+        }
+        ed.lastSel = picked;
+        ed.pending = !!picked;
+        ed.refresh();
+      });
+      loadBtn.addEventListener('click', async () => {
+        const name = select.value;
+        if (!name) { setMsg('Select a prompt first.', 'error'); return; }
+        try {
+          // Fresh from disk, so prompts saved by the CLI show up too.
+          const data = await api('/api/prompts', { method: 'GET' });
+          promptsChanged(data.prompts || []);
+        } catch { /* use the list we have */ }
+        const p = savedPromptList.find((x) => x.name === name);
+        if (!p) { setMsg(`Prompt "${name}" not found.`, 'error'); return; }
+        textarea.value = p.prompt || '';
+        ed.baseline = textarea.value;
+        ed.loadedName = name;
+        ed.pending = false;
+        changed();
+        setMsg(`Loaded prompt "${name}".`, 'success');
+      });
+      saveBtn.addEventListener('click', save);
+      ed.refresh();
+      return ed;
+    }
+
+    const chatEditor = attachPromptEditor({
+      textarea: chatPromptEl,
+      select: chatPromptSelectEl,
+      loadBtn: loadPromptBtn,
+      saveBtn: saveChatNamedBtn,
+      setMsg: setStatus,
+      onTextChange: () => updateGenerateBtn(),
+    });
 
     document.getElementById('refresh').addEventListener('click', loadPrompts);
     document.getElementById('saveActive').addEventListener('click', () => savePrompt(true));
     document.getElementById('saveNamed').addEventListener('click', () => savePrompt(false));
     showDetailsEl.addEventListener('change', loadPrompts);
 
-    chatPromptSelectEl.addEventListener('change', () => {
-      if (chatPromptSelectEl.value) {
-        loadPromptBtn.classList.remove('btn-ghost');
-        loadPromptBtn.classList.add('btn-primary');
-      } else {
-        loadPromptBtn.classList.remove('btn-primary');
-        loadPromptBtn.classList.add('btn-ghost');
-      }
-    });
-
-    loadPromptBtn.addEventListener('click', () => {
-      loadSelectedPromptIntoChat().then(() => {
-        loadPromptBtn.classList.remove('btn-primary');
-        loadPromptBtn.classList.add('btn-ghost');
-      });
-    });
-    saveChatNamedBtn.addEventListener('click', saveChatPromptNamed);
 
     // Generate Response
     // --- Response state & per-tab rendering --------------------------------
@@ -3066,17 +3137,6 @@
       }
     });
 
-    // Highlight Save button when prompt is modified
-    chatPromptEl.addEventListener('input', () => {
-      if (chatPromptEl.value.trim()) {
-        saveChatNamedBtn.classList.remove('btn-ghost');
-        saveChatNamedBtn.classList.add('btn-primary');
-      } else {
-        saveChatNamedBtn.classList.remove('btn-primary');
-        saveChatNamedBtn.classList.add('btn-ghost');
-      }
-      updateGenerateBtn();
-    });
 
     // --- Prompt / Response Resize (Chat and Images) ---
     function initPromptResize(barId, topId, tabId) {
@@ -4209,7 +4269,6 @@
     const IMG_OPTION_LABELS = { n: 'Count' };
 
     let imgProviders = [];    // from /api/images/providers, in config order
-    let imgPrompts = [];
     // Per provider: {checked, model, models, defaultModel, options, values, seq, error}.
     // `values` (setting path → value) is kept when the model changes.
     const imgState = {};
@@ -4239,8 +4298,7 @@
         ]);
         imgProviders = prov.providers || [];
         imgDirEl.textContent = prov.images_dir || '';
-        imgPrompts = prompts.prompts || [];
-        renderImgPromptSelect();
+        promptsChanged(prompts.prompts || []);
         imgProviders.forEach((p) => {
           if (!imgState[p.name]) imgState[p.name] = { checked: false, model: '', models: null, defaultModel: p.default_model, options: null, values: {}, seq: 0, error: '' };
           imgState[p.name].defaultModel = p.default_model;
@@ -4261,7 +4319,7 @@
 
     function renderImgPromptSelect() {
       const prev = imgPromptSelectEl.value;
-      const sorted = [...imgPrompts].sort((a, b) => (b.isActive ? 1 : 0) - (a.isActive ? 1 : 0));
+      const sorted = [...savedPromptList].sort((a, b) => (b.isActive ? 1 : 0) - (a.isActive ? 1 : 0));
       imgPromptSelectEl.innerHTML = '<option value="">-- select prompt --</option>'
         + sorted.map((p) => `<option value="${esc(p.name)}">${esc(p.isActive ? '$$ (active)' : p.name)}</option>`).join('');
       if (sorted.some((p) => p.name === prev)) imgPromptSelectEl.value = prev;
@@ -4551,58 +4609,16 @@
     }
 
     imgGenerateBtn.addEventListener('click', generateImages);
-    const imgSavePromptBtn = document.getElementById('imgSavePromptBtn');
-    // Like Chat's Save: highlighted while the box has text.
-    function imgUpdateSaveBtn() {
-      const has = imgPromptEl.value.trim().length > 0;
-      imgSavePromptBtn.classList.toggle('btn-primary', has);
-      imgSavePromptBtn.classList.toggle('btn-ghost', !has);
-    }
-    imgPromptEl.addEventListener('input', () => { imgUpdateGenerateBtn(); imgUpdateSaveBtn(); });
-    imgSavePromptBtn.addEventListener('click', async () => {
-      const prompt = imgPromptEl.value.trim();
-      if (!prompt) { imgSetStatus('Write a prompt first.', 'error'); imgPromptEl.focus(); return; }
-      const saved = await openDialog({
-        title: 'Save prompt',
-        okLabel: 'Save',
-        body: `<label for="imgSaveName" style="margin-top:0;">Name</label>
-          <input id="imgSaveName" type="text" autocomplete="off" spellcheck="false">
-          <p class="hint" id="imgSaveHint">Saved prompts can be loaded here, in Chat, or with <code>lexi respond --prompt NAME</code>.</p>`,
-        onOpen: (dlg) => {
-          const input = dlg.querySelector('#imgSaveName');
-          const hint = dlg.querySelector('#imgSaveHint');
-          const ok = dlg.querySelector('.dlg-ok');
-          const base = hint.innerHTML;
-          input.addEventListener('input', () => {
-            const taken = imgPrompts.some((x) => x.name === input.value.trim());
-            ok.textContent = taken ? 'Replace' : 'Save';
-            hint.innerHTML = taken ? `A saved prompt named <strong>${esc(input.value.trim())}</strong> already exists; saving replaces it.` : base;
-          });
-        },
-        onOk: async (dlg) => {
-          const name = dlg.querySelector('#imgSaveName').value.trim();
-          if (!name) throw new Error('Give the prompt a name.');
-          const data = await api('/api/prompts', { method: 'POST', body: JSON.stringify({ name, prompt }) });
-          return { name, prompts: data.prompts || [] };
-        },
-      });
-      if (!saved) return;
-      // Keep every prompt list in step: this tab's, Chat's and the Prompts tab.
-      imgPrompts = saved.prompts;
-      renderImgPromptSelect();
-      imgPromptSelectEl.value = saved.name;
-      renderPrompts(saved.prompts);
-      populateChatPromptSelect(saved.prompts);
-      imgSavePromptBtn.classList.replace('btn-primary', 'btn-ghost');
-      imgSetStatus(`Saved the prompt as "${saved.name}".`);
+    const imgEditor = attachPromptEditor({
+      textarea: imgPromptEl,
+      select: imgPromptSelectEl,
+      loadBtn: document.getElementById('imgLoadPromptBtn'),
+      saveBtn: document.getElementById('imgSavePromptBtn'),
+      setMsg: (text, tone) => imgSetStatus(text, tone === 'error' ? 'error' : undefined),
+      onTextChange: () => imgUpdateGenerateBtn(),
     });
     imgPromptEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !imgGenerateBtn.disabled) { e.preventDefault(); generateImages(); }
-    });
-    document.getElementById('imgLoadPromptBtn').addEventListener('click', () => {
-      const p = imgPrompts.find((x) => x.name === imgPromptSelectEl.value);
-      if (p) imgPromptEl.value = p.prompt || '';
-      imgUpdateGenerateBtn();
     });
     document.getElementById('imgClearBtn').addEventListener('click', () => {
       imgResults = imgResults.filter((r) => r.status === 'pending');
@@ -4642,6 +4658,7 @@
         // ticked, with the model it used.
         const r = imgResults[+retry.dataset.r];
         imgPromptEl.value = r.prompt;
+        imgEditor.refresh();
         if (imgUsable().some((p) => p.name === r.provider)) {
           imgUsable().forEach((p) => { imgState[p.name].checked = p.name === r.provider; });
           const st = imgState[r.provider];
