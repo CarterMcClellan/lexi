@@ -78,10 +78,57 @@
       color: var(--muted);
       font-size: 0.95rem;
     }
+    /* --- Message area (top right): every action reports here --- */
+    .msg-area {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      min-width: 260px;
+      max-width: min(560px, 55vw);
+    }
     .status {
+      font: inherit;
       font-size: 0.95rem;
       color: var(--muted);
+      background: none;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      padding: 4px 8px;
+      cursor: pointer;
+      text-align: right;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      overflow-wrap: anywhere;
     }
+    .status:hover, .status[aria-expanded="true"] { border-color: var(--border); background: var(--input-bg); }
+    .status[data-tone="success"], .msg-log .tone-success { color: var(--success); }
+    .status[data-tone="error"], .msg-log .tone-error { color: var(--danger); }
+    .status[data-tone="warn"], .msg-log .tone-warn { color: var(--warning, #f59e0b); }
+    .status[data-tone="busy"] { animation: lexi-pulse 1.6s ease-in-out infinite; }
+    .msg-log {
+      position: absolute;
+      top: calc(100% + 4px);
+      right: 0;
+      z-index: 60;
+      width: min(480px, 90vw);
+      max-height: 340px;
+      overflow: auto;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      padding: 6px 0;
+      font-size: 0.85rem;
+      text-align: left;
+    }
+    .msg-log-head { display: flex; justify-content: space-between; align-items: center; padding: 4px 12px 6px; color: var(--muted); }
+    .msg-log-row { display: flex; gap: 10px; padding: 5px 12px; border-top: 1px solid var(--border); }
+    .msg-log-row time { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .msg-log-row span { overflow-wrap: anywhere; color: var(--text); }
+    .msg-log-empty { padding: 6px 12px; color: var(--muted); }
     .tabs {
       display: flex;
       gap: 8px;
@@ -778,10 +825,6 @@
       word-break: break-all;
       overflow-wrap: anywhere;
     }
-    .api-key-feedback {
-      margin-top: 8px;
-      font-size: 0.9rem;
-    }
     input[type="password"] {
       width: 100%;
       padding: 10px 12px;
@@ -843,11 +886,6 @@
       display: flex;
       gap: 10px;
       margin-top: 16px;
-    }
-    .config-feedback {
-      margin-top: 8px;
-      font-size: 0.9rem;
-      min-height: 1.2em;
     }
     /* --- Models Tab --- */
     .models-top-bar {
@@ -1010,12 +1048,6 @@
       white-space: nowrap;
     }
     .link-btn:hover { text-decoration: underline; }
-    .models-feedback {
-      flex-shrink: 0;
-      font-size: 0.85rem;
-      margin-top: 4px;
-    }
-    .models-feedback:empty { display: none; }
     .pane-notice {
       flex-shrink: 0;
       margin-top: 8px;
@@ -1369,8 +1401,6 @@
     .img-prov-error { flex-basis: 100%; font-size: 0.85rem; color: var(--danger); }
     .img-prov-error:empty { display: none; }
     #imgProviderNote:empty { display: none; }
-    .img-status { margin-top: 6px; font-size: 0.9rem; min-height: 1.2em; }
-    .img-status.error { color: var(--danger); }
     .img-results-head {
       display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px;
       margin: 4px 0 8px;
@@ -1648,11 +1678,6 @@
       padding: 10px 12px;
       tab-size: 2;
     }
-    .apis-feedback {
-      margin-top: 8px;
-      font-size: 0.9rem;
-      min-height: 1.2em;
-    }
     .api-actions {
       display: flex;
       gap: 8px;
@@ -1823,8 +1848,9 @@
         <h1 class="brand">
           <img class="brand-logo" src="lexi-mark.png" alt="Lexi" width="174" height="180">
         </h1>
-        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px; min-width:260px;">
-          <div class="status" id="status">Ready</div>
+        <div class="msg-area">
+          <button class="status" id="status" type="button" data-tone="muted" aria-live="polite" data-tip="Lexi's messages: what it just did. Click to see the recent ones.">Ready</button>
+          <div class="msg-log" id="msgLog" hidden></div>
         </div>
       </header>
       <div class="tabs">
@@ -1951,7 +1977,6 @@
         <div class="btn-row">
           <button class="btn btn-primary" id="apiKeySaveBtn" data-tip="Save this key for the selected provider (kept in its api-key file, readable only by you)">Save</button>
         </div>
-        <div class="api-key-feedback" id="apiKeyFeedback"></div>
       </section>
     </div>
     <div class="content" id="tab-models">
@@ -1981,7 +2006,6 @@
             <button class="link-btn" id="modelsAddByIdBtn" type="button" data-tip="Add a model by its id, for one that isn't in the hosted list">Add by ID…</button>
           </div>
           <div class="pane-meta" id="modelsDefaultLine"></div>
-          <div class="models-feedback" id="modelsFeedback"></div>
           <div class="pane-notice warn" id="orphanAliases"></div>
           <div class="dt-host" id="modelsTable"></div>
         </section>
@@ -2008,7 +2032,6 @@
             <div id="apiDetailContent" style="display:none;"></div>
             <div id="apiCreateFormContainer" style="display:none;"></div>
           </div>
-          <div class="apis-feedback" id="apisFeedback"></div>
         </section>
       </div>
     </div>
@@ -2038,7 +2061,6 @@
         </div>
         <div class="pane-notice warn" id="imgProviderNote"></div>
         <div class="img-settings" id="imgSettings"></div>
-        <div class="img-status" id="imgStatus" role="status"></div>
         <div class="img-results-head">
           <label style="margin:0;">Results</label>
           <div class="img-folder">
@@ -2088,7 +2110,6 @@
               <button class="btn btn-primary" id="cfgSaveBtn">Save</button>
               <button class="btn btn-ghost" id="cfgResetBtn" data-tip="Put every CLI setting on this page back to its default">Reset to Defaults</button>
             </div>
-            <div class="config-feedback" id="cfgFeedback"></div>
           </div>
         </section>
       </div>
@@ -2185,7 +2206,6 @@
     const apiKeyProviderEl = document.getElementById('apiKeyProvider');
     const apiKeyInputEl = document.getElementById('apiKeyInput');
     const apiKeyStatusEl = document.getElementById('apiKeyStatus');
-    const apiKeyFeedbackEl = document.getElementById('apiKeyFeedback');
     const apiKeySaveBtn = document.getElementById('apiKeySaveBtn');
     const apiKeyRevealBtn = document.getElementById('apiKeyRevealBtn');
     const apiKeyRemoveBtn = document.getElementById('apiKeyRemoveBtn');
@@ -2215,10 +2235,43 @@
       return div.innerHTML;
     }
 
+    // The message area (top right). Every action reports what happened here.
+    // Tones: 'success', 'error', 'warn', 'muted' (information) and 'busy'
+    // (work in progress — shown, but not kept in the recent-messages list).
+    const msgLogEl = document.getElementById('msgLog');
+    const messageLog = [];   // newest first: {text, tone, at}
     function setStatus(text, tone = 'muted') {
+      if (!text) return;
       statusEl.textContent = text;
-      statusEl.style.color = tone === 'error' ? '#ef4444' : tone === 'success' ? '#22c55e' : 'var(--muted)';
+      statusEl.dataset.tone = tone;
+      if (tone !== 'busy') {
+        const last = messageLog[0];
+        if (last && last.text === text && last.tone === tone) last.at = new Date();
+        else messageLog.unshift({ text, tone, at: new Date() });
+        if (messageLog.length > 100) messageLog.length = 100;
+        if (!msgLogEl.hidden) renderMessageLog();
+      }
     }
+    function renderMessageLog() {
+      const time = (d) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      msgLogEl.innerHTML = '<div class="msg-log-head"><strong>Recent messages</strong><button type="button" class="link-btn" id="msgLogClear">Clear</button></div>'
+        + (messageLog.length
+          ? messageLog.map((m) => `<div class="msg-log-row"><time>${time(m.at)}</time><span class="tone-${m.tone}">${escapeHtml(m.text)}</span></div>`).join('')
+          : '<div class="msg-log-empty">No messages yet.</div>');
+    }
+    function toggleMessageLog(open) {
+      msgLogEl.hidden = !open;
+      statusEl.setAttribute('aria-expanded', String(open));
+      if (open) renderMessageLog();
+    }
+    statusEl.addEventListener('click', () => toggleMessageLog(msgLogEl.hidden));
+    msgLogEl.addEventListener('click', (e) => {
+      if (e.target.id === 'msgLogClear') { messageLog.length = 0; renderMessageLog(); }
+    });
+    document.addEventListener('click', (e) => {
+      if (!msgLogEl.hidden && !e.target.closest('.msg-area')) toggleMessageLog(false);
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !msgLogEl.hidden) toggleMessageLog(false); });
 
     let providerModelCache = {};
 
@@ -2420,6 +2473,7 @@
         renderProviderSelector();
       } catch (err) {
         providerTableEl.innerHTML = `<div class="muted">Failed to load providers: ${err.message}</div>`;
+        setStatus(`Couldn't load the providers: ${err.message}`, 'error');
       }
     }
 
@@ -2572,11 +2626,12 @@
     }
 
     async function loadPrompts() {
-      setStatus('Loading prompts...');
+      setStatus('Loading prompts...', 'busy');
       try {
         const data = await api('/api/prompts', { method: 'GET' });
         promptsChanged(data.prompts || []);
-        setStatus('Prompts loaded');
+        const n = (data.prompts || []).length;
+        setStatus(`Loaded ${n} saved prompt${n === 1 ? '' : 's'}.`);
       } catch (err) {
         setStatus(err.message, 'error');
       }
@@ -2609,45 +2664,45 @@
     async function savePrompt(forceActive = false) {
       const payload = collectPayload(forceActive);
       if (!payload.prompt) {
-        setStatus('Prompt text is required', 'error');
+        setStatus('Prompt text is required.', 'error');
         return;
       }
-      setStatus('Saving prompt...');
+      setStatus('Saving prompt...', 'busy');
       try {
         const data = await api('/api/prompts', {
           method: 'POST',
           body: JSON.stringify(payload),
         });
         promptsChanged(data.prompts || []);
-        setStatus('Saved', 'success');
+        setStatus(payload.name ? `Saved prompt "${payload.name}".` : 'Saved the active prompt ($$).', 'success');
       } catch (err) {
         setStatus(err.message, 'error');
       }
     }
 
     async function setActive(name) {
-      setStatus('Setting active prompt...');
+      setStatus('Setting active prompt...', 'busy');
       try {
         const data = await api('/api/prompts/active', {
           method: 'POST',
           body: JSON.stringify({ name }),
         });
         promptsChanged(data.prompts || []);
-        setStatus('Active prompt updated', 'success');
+        setStatus(`"${name}" is now the active prompt ($$).`, 'success');
       } catch (err) {
         setStatus(err.message, 'error');
       }
     }
 
     async function deletePrompt(name) {
-      setStatus(`Deleting ${name}...`);
+      setStatus(`Deleting ${name}...`, 'busy');
       try {
         const data = await api('/api/prompts/delete', {
           method: 'POST',
           body: JSON.stringify({ name }),
         });
         promptsChanged(data.prompts || []);
-        setStatus('Deleted', 'success');
+        setStatus(`Deleted prompt "${name}".`, 'success');
       } catch (err) {
         setStatus(err.message, 'error');
       }
@@ -3100,7 +3155,7 @@
 
       generateResponseBtn.disabled = true;
       generateResponseBtn.textContent = 'Generating...';
-      setStatus(stream ? 'Streaming responses...' : 'Generating responses...', 'muted');
+      setStatus(`${stream ? 'Streaming' : 'Generating'} responses from ${providers.join(', ')}...`, 'busy');
 
       // Reset per-provider state and rebuild tabs.
       respondState = {};
@@ -3118,7 +3173,9 @@
         } else {
           await runRespondBlocked(payload, providers, respondAbortController.signal);
         }
-        setStatus('Responses received.', 'success');
+        const failed = providers.filter((p) => respondState[p] && respondState[p].status === 'error');
+        if (failed.length) setStatus(`Responses received; ${failed.join(', ')} failed (see ${failed.length === 1 ? 'its tab' : 'their tabs'}).`, 'warn');
+        else setStatus(`Responses received from ${providers.join(', ')}.`, 'success');
       } catch (err) {
         const wasAborted = err && (err.name === 'AbortError' || respondAbortController.signal.aborted);
         providers.forEach((p) => {
@@ -3129,7 +3186,7 @@
               : { status: 'error', error: err.message });
           }
         });
-        setStatus(wasAborted ? 'Cancelled.' : err.message, wasAborted ? 'muted' : 'error');
+        setStatus(wasAborted ? 'Stopped the responses.' : err.message, wasAborted ? 'muted' : 'error');
       } finally {
         respondAbortController = null;
         refreshStopButton();
@@ -3239,7 +3296,6 @@
 
     async function fetchApiKeyStatus(provider) {
       apiKeyStatusEl.textContent = 'Checking...';
-      apiKeyFeedbackEl.textContent = '';
       apiKeyRevealBtn.disabled = true;
       try {
         const data = await api('/api/providers/api-key', {
@@ -3277,8 +3333,7 @@
       const value = apiKeyInputEl.value.trim();
       if (!provider) return;
       if (!value) {
-        apiKeyFeedbackEl.textContent = 'Please enter an API key.';
-        apiKeyFeedbackEl.style.color = 'var(--danger)';
+        setStatus('Enter an API key first.', 'error');
         return;
       }
       try {
@@ -3286,14 +3341,12 @@
           method: 'POST',
           body: JSON.stringify({ action: 'set', provider, value }),
         });
-        apiKeyFeedbackEl.textContent = 'API key saved.';
-        apiKeyFeedbackEl.style.color = 'var(--success)';
+        setStatus(`Saved the API key for ${provider}.`, 'success');
         apiKeyInputEl.value = '';
         fetchApiKeyStatus(provider);
         fetchProvidersList();
       } catch (err) {
-        apiKeyFeedbackEl.textContent = err.message;
-        apiKeyFeedbackEl.style.color = 'var(--danger)';
+        setStatus(err.message, 'error');
       }
     });
 
@@ -3306,13 +3359,11 @@
           method: 'POST',
           body: JSON.stringify({ action: 'remove', provider }),
         });
-        apiKeyFeedbackEl.textContent = 'API key removed.';
-        apiKeyFeedbackEl.style.color = 'var(--success)';
+        setStatus(`Removed the API key for ${provider}.`, 'success');
         fetchApiKeyStatus(provider);
         fetchProvidersList();
       } catch (err) {
-        apiKeyFeedbackEl.textContent = err.message;
-        apiKeyFeedbackEl.style.color = 'var(--danger)';
+        setStatus(err.message, 'error');
       }
     });
 
@@ -3796,7 +3847,6 @@
 
     // --- Models Tab ---
     const modelsProviderEl = document.getElementById('modelsProvider');
-    const modelsFeedbackEl = document.getElementById('modelsFeedback');
     const modelsDefaultLineEl = document.getElementById('modelsDefaultLine');
     const orphanAliasesEl = document.getElementById('orphanAliases');
     const modelsAddByIdBtn = document.getElementById('modelsAddByIdBtn');
@@ -3830,10 +3880,7 @@
     }
 
     function showModelsFeedback(msg, tone) {
-      clearTimeout(feedbackTimer);
-      modelsFeedbackEl.textContent = msg;
-      modelsFeedbackEl.style.color = tone === 'error' ? 'var(--danger)' : tone === 'success' ? 'var(--success)' : 'var(--muted)';
-      if (tone !== 'error') feedbackTimer = setTimeout(() => { modelsFeedbackEl.textContent = ''; }, 6000);
+      setStatus(msg, tone);
     }
 
     // Tag chips; `kind:` is shown in its own column, so it's left out here.
@@ -4163,10 +4210,13 @@
       }
       let notice = '';
       let models = [];
+      setStatus(`Fetching the model list from ${provider}...`, 'busy');
       try {
         const data = await api(`/api/models/hosted?${q}`);
         models = data.models || [];
+        setStatus(`Fetched ${models.length} model${models.length === 1 ? '' : 's'} from ${provider}.`, 'success');
       } catch (err) {
+        setStatus(`Couldn't fetch the model list from ${provider}: ${err.message}`, 'error');
         notice = `<span class="error-text">Couldn't fetch the model list from ${esc(provider)}: ${esc(err.message)}</span>`;
         try {
           const cached = await api(`/api/models/hosted?${q}&cached=1`);
@@ -4198,7 +4248,6 @@
 
     modelsProviderEl.addEventListener('change', () => {
       mtProvider = modelsProviderEl.value;
-      modelsFeedbackEl.textContent = '';
       configuredTable.reset();
       loadConfigured();
       loadHosted();
@@ -4259,7 +4308,6 @@
     const imgSettingsEl = document.getElementById('imgSettings');
     const imgProviderNoteEl = document.getElementById('imgProviderNote');
     const imgGenerateBtn = document.getElementById('imgGenerateBtn');
-    const imgStatusEl = document.getElementById('imgStatus');
     const imgDirEl = document.getElementById('imgDir');
     const imgGalleryEl = document.getElementById('imgGallery');
     const IS_MAC = /Mac/i.test(navigator.platform || navigator.userAgent);
@@ -4278,9 +4326,9 @@
     let imgBusy = false;
     let imgResults = [];      // newest first: {status, prompt, provider, model, images?, error?, started}
 
+    // Images messages go to the message area like every other action.
     function imgSetStatus(text, tone) {
-      imgStatusEl.textContent = text || '';
-      imgStatusEl.classList.toggle('error', tone === 'error');
+      setStatus(text, tone);
     }
 
     function imgUsable() { return imgProviders.filter((p) => p.images); }
@@ -4558,6 +4606,7 @@
     async function revealImage(path) {
       try {
         await api('/api/images/reveal', { method: 'POST', body: JSON.stringify(path ? { path } : {}) });
+        setStatus(path ? `Showing ${path.split(/[\\/]/).pop()} in ${FILE_MANAGER}.` : `Opened the images folder in ${FILE_MANAGER}.`);
       } catch (err) {
         imgSetStatus(err.message, 'error');
       }
@@ -4576,8 +4625,7 @@
       imgBusy = true;
       imgUpdateGenerateBtn();
       imgGenerateBtn.textContent = 'Generating...';
-      imgSetStatus(`Generating with ${providers.join(', ')}…`);
-      setStatus('Generating images...');
+      setStatus(`Generating images with ${providers.join(', ')}...`, 'busy');
       renderImgGallery();
       const ticker = setInterval(() => { if (entries.some((e) => e.status === 'pending')) renderImgGallery(); }, 1000);
       await Promise.all(entries.map(async (entry) => {
@@ -4598,14 +4646,14 @@
       imgUpdateGenerateBtn();
       const saved = entries.reduce((n, e) => n + (e.images ? e.images.length : 0), 0);
       const failed = entries.filter((e) => e.status === 'failed');
-      const msg = `Saved ${saved} image${saved === 1 ? '' : 's'}.`;
+      const ok = entries.filter((e) => e.status === 'done').map((e) => e.provider);
+      const msg = `Saved ${saved} image${saved === 1 ? '' : 's'} from ${ok.join(', ')}`;
       if (failed.length) {
         const which = failed.map((e) => e.provider).join(', ');
-        imgSetStatus(failed.length === entries.length && failed.length === 1 ? failed[0].error : `${msg} Failed: ${which} (see its card).`, 'error');
-        setStatus('Image generation failed', 'error');
+        if (failed.length === entries.length) setStatus(failed.length === 1 ? `${failed[0].provider}: ${failed[0].error}` : `Image generation failed for ${which} (see the cards).`, 'error');
+        else setStatus(`${msg}; ${which} failed (see ${failed.length === 1 ? 'its card' : 'their cards'}).`, 'warn');
       } else {
-        imgSetStatus(msg);
-        setStatus(`Generated ${saved} image${saved === 1 ? '' : 's'}`, 'success');
+        setStatus(`${msg}.`, 'success');
       }
       renderImgGallery();
     }
@@ -4616,7 +4664,7 @@
       select: imgPromptSelectEl,
       loadBtn: document.getElementById('imgLoadPromptBtn'),
       saveBtn: document.getElementById('imgSavePromptBtn'),
-      setMsg: (text, tone) => imgSetStatus(text, tone === 'error' ? 'error' : undefined),
+      setMsg: setStatus,
       onTextChange: () => imgUpdateGenerateBtn(),
     });
     imgPromptEl.addEventListener('keydown', (e) => {
@@ -4637,6 +4685,7 @@
         onOk: async (dlg) => {
           const dir = dlg.querySelector('#imgDirInput').value.trim();
           await api('/api/config', { method: 'POST', body: JSON.stringify({ images_dir: dir }) });
+          setStatus(dir ? `Images will be saved to ${dir}.` : 'Images will be saved to the default folder, ~/Pictures/Lexi.', 'success');
           return true;
         },
       });
@@ -4650,7 +4699,7 @@
       const copy = e.target.closest('.img-copy');
       if (copy) {
         navigator.clipboard.writeText(copy.dataset.path)
-          .then(() => imgSetStatus('Copied the file path.'))
+          .then(() => setStatus(`Copied ${copy.dataset.path}`, 'success'))
           .catch(() => imgSetStatus(copy.dataset.path));
         return;
       }
@@ -4760,11 +4809,9 @@
         card.innerHTML = `<div class="theme-swatch" style="background:${theme.swatch};"></div><div class="theme-label">${theme.name}</div>`;
         card.addEventListener('click', () => {
           applyTheme(id);
-          fetch('/api/config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ theme: id }),
-          }).catch(() => {});
+          api('/api/config', { method: 'POST', body: JSON.stringify({ theme: id }) })
+            .then(() => setStatus(`Theme set to ${theme.name}.`, 'success'))
+            .catch((err) => setStatus(`Couldn't save the theme: ${err.message}`, 'error'));
         });
         grid.appendChild(card);
       });
@@ -4777,7 +4824,6 @@
     const cfgEditModeEl = document.getElementById('cfgEditMode');
     const cfgSaveBtn = document.getElementById('cfgSaveBtn');
     const cfgResetBtn = document.getElementById('cfgResetBtn');
-    const cfgFeedbackEl = document.getElementById('cfgFeedback');
 
     const CONFIG_DEFAULTS = {
       cli_name: 'lexi',
@@ -4808,7 +4854,6 @@
     }
 
     cfgSaveBtn.addEventListener('click', async () => {
-      cfgFeedbackEl.textContent = '';
       try {
         const payload = {
           cli_name: cfgCliNameEl.value.trim() || CONFIG_DEFAULTS.cli_name,
@@ -4820,27 +4865,22 @@
           method: 'POST',
           body: JSON.stringify(payload),
         });
-        cfgFeedbackEl.textContent = 'Configuration saved.';
-        cfgFeedbackEl.style.color = 'var(--success)';
+        setStatus('Saved the CLI configuration.', 'success');
       } catch (err) {
-        cfgFeedbackEl.textContent = err.message;
-        cfgFeedbackEl.style.color = 'var(--danger)';
+        setStatus(err.message, 'error');
       }
     });
 
     cfgResetBtn.addEventListener('click', async () => {
-      cfgFeedbackEl.textContent = '';
       try {
         await api('/api/config', {
           method: 'POST',
           body: JSON.stringify({ ...CONFIG_DEFAULTS }),
         });
         populateConfigForm(CONFIG_DEFAULTS);
-        cfgFeedbackEl.textContent = 'Reset to defaults.';
-        cfgFeedbackEl.style.color = 'var(--success)';
+        setStatus('Reset the CLI configuration to its defaults.', 'success');
       } catch (err) {
-        cfgFeedbackEl.textContent = err.message;
-        cfgFeedbackEl.style.color = 'var(--danger)';
+        setStatus(err.message, 'error');
       }
     });
 
@@ -4849,7 +4889,6 @@
     const apiDetailPlaceholder = document.getElementById('apiDetailPlaceholder');
     const apiDetailContent = document.getElementById('apiDetailContent');
     const apiCreateFormContainer = document.getElementById('apiCreateFormContainer');
-    const apisFeedbackEl = document.getElementById('apisFeedback');
     const apiNewBtn = document.getElementById('apiNewBtn');
     const apiCloneBtn = document.getElementById('apiCloneBtn');
 
@@ -4858,9 +4897,7 @@
     let apisProvidersMap = {}; // api name -> [provider names]
 
     function showApiFeedback(msg, tone = 'muted') {
-      apisFeedbackEl.textContent = msg;
-      apisFeedbackEl.style.color = tone === 'success' ? 'var(--success)' : tone === 'danger' ? 'var(--danger)' : 'var(--muted)';
-      if (msg) setTimeout(() => { if (apisFeedbackEl.textContent === msg) apisFeedbackEl.textContent = ''; }, 5000);
+      setStatus(msg, tone === 'danger' ? 'error' : tone);
     }
 
     function showApiView(view) {
@@ -5000,7 +5037,7 @@
           if (result.valid) {
             showApiFeedback(`Saved "${name}".`, 'success');
           } else {
-            showApiFeedback('Saved, but validation warnings: ' + (result.validation || ''), 'danger');
+            showApiFeedback(`Saved "${name}", with validation warnings: ` + (result.validation || ''), 'warn');
           }
           await fetchApiList();
         } catch (err) {
