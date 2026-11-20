@@ -35,6 +35,7 @@ Surface principle (`docs/cli-consolidation-plan.md` §3): library, language bind
 - Main provider config: `providers/providers-config.yaml`
 - Per-provider: `providers/<provider>/configured-models.yaml`, `model-aliases.yaml`, `default-model.yaml`, `model-tags.yaml` (your tags), `catalog.json` (cached listing), `api-key` (0600)
 - Command aliases: `aliases.json`; CLI settings: `config.json`; shell history: `history`
+- Desktop themes: `themes.json` (every theme's colours; copied from the shipped `lexi-desktop/themes.json` on first use, then the user's copy is what's read); the chosen theme is `theme` in `config.json` (default `dark-cyan`)
 - Prompts: individual JSON files in `prompts/` (the active prompt is `$$`)
 - API definitions: shipped ones are embedded in the binary (`lexi-core/apis/`) and always win; `apis/` holds custom definitions only
 
@@ -78,10 +79,11 @@ On every run, `lexi_host::ensure_home` fills in missing defaults (embedded from 
 
 ## File Locations
 - Rust engine / runtime / CLI / desktop: `lexi-core/`, `lexi-host/`, `lexi-cli-rs/`, `lexi-desktop/`
-- Desktop frontend shared UI (in `index.html`): `DataTable` (sticky header, click-to-sort, right-click column filters), `openDialog` / `confirmDialog` (modal dialogs; don't use `window.confirm`), and `data-tip="…"` hover help (give every icon-only or non-obvious control one; native `title` tooltips don't reliably show in the app)
+- Desktop frontend shared UI (in `index.html`): `DataTable` (sticky header, click-to-sort, right-click column filters), `openDialog` / `confirmDialog` (modal dialogs; don't use `window.confirm`), and `data-tip="…"` hover help (give every icon-only or non-obvious control one; native `title` tooltips don't reliably show in the app), and `setStatus(text, tone)` — the message area at the top right, with a recent-messages list on click: every action reports what it did there (tones `success`/`error`/`warn`/`muted`, and `busy` for work in progress, which isn't kept in the list); don't add per-tab status lines
 - Shipped API definitions: `lexi-core/apis/` (embedded by `lexi-host`)
 - Default provider configs: `providers/` (embedded; seeded into `~/.lexi-cli/providers/`)
 - Python wheel: `lexi-python/` (PyO3 over lexi-core + lexi-host; Python API in `lexi-python/python/lexi/`)
 - Desktop `/api/*` backend: `lexi-desktop/src/backend.rs`; frontend: `lexi-desktop/frontend/index.html`
+- Desktop Images tab: `/api/images/*` in `backend.rs`, the `respond --output image` pipeline sent to each ticked provider (each with its own model and settings — the image API's `x-cli` flags); the Chat tab's model pickers list only `kind: chat` models; images are saved to `images_dir` in `config.json` (default `~/Pictures/Lexi`)
 - Cross-language conformance oracle: `conformance/`
 - Docs: `docs/cli-reference.md` (generated), `docs/spec/` (API definition, message IR, CLI machine interface), `docs/surface-matrix.md`

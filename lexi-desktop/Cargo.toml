@@ -11,7 +11,15 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+lexi-core = { path = "../lexi-core" }
 lexi-host = { path = "../lexi-host" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 futures-util = "0.3"
+base64 = "0.22"
+dirs = "5"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
+wiremock = "0.6"
+tempfile = "3"

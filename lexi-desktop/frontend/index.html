@@ -5,21 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lexi Studio</title>
   <style>
+    /* Dark Cyan, the default theme, until the themes load (themes.json). */
     :root {
-      --bg: #0b1020;
-      --card: #11182c;
-      --input-bg: #0f172a;
-      --shell-bg: rgba(17, 24, 44, 0.9);
-      --muted: #9fb3c8;
-      --accent: #7c3aed;
-      --accent-2: #06b6d4;
-      --text: #e2e8f0;
-      --border: #1f2937;
+      --bg: #0a1628;
+      --card: #0f1f36;
+      --input-bg: #0c1a2e;
+      --shell-bg: rgba(12, 26, 46, 0.9);
+      --muted: #8badc4;
+      --accent: #06b6d4;
+      --accent-2: #22d3ee;
+      --text: #e0f2fe;
+      --border: #164e63;
       --success: #22c55e;
       --danger: #ef4444;
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      background: radial-gradient(circle at 10% 20%, rgba(124, 58, 237, 0.18), transparent 35%),
-                  radial-gradient(circle at 90% 10%, rgba(6, 182, 212, 0.18), transparent 30%),
+      background: radial-gradient(circle at 10% 20%, rgba(6, 182, 212, 0.2), transparent 35%),
+                  radial-gradient(circle at 90% 10%, rgba(34, 211, 238, 0.15), transparent 30%),
                   var(--bg);
       color: var(--text);
     }
@@ -57,17 +58,19 @@
       font-size: 1.4rem;
       letter-spacing: -0.01em;
     }
-    header h1.brand { line-height: 0; }
-    /* The logo's background is transparent; the light theme puts it on a
-       dark badge, since its wordmark is white. */
+    header h1.brand { margin: 0; font-size: 1rem; font-weight: 400; line-height: normal; }
+    /* The logo mark is as tall as three lines of the header's text. Its
+       background is transparent; light themes put it on a dark badge,
+       since its glow is drawn for a dark background. */
     .brand-logo {
       display: block;
-      height: 96px;
+      height: 3.6em;
+      height: 3lh;
       width: auto;
       user-select: none;
       -webkit-user-drag: none;
     }
-    :root[data-theme="light"] .brand-logo {
+    :root[data-scheme="light"] .brand-logo {
       background: #00060f;
       border-radius: 12px;
     }
@@ -76,10 +79,57 @@
       color: var(--muted);
       font-size: 0.95rem;
     }
+    /* --- Message area (top right): every action reports here --- */
+    .msg-area {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      min-width: 260px;
+      max-width: min(560px, 55vw);
+    }
     .status {
+      font: inherit;
       font-size: 0.95rem;
       color: var(--muted);
+      background: none;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      padding: 4px 8px;
+      cursor: pointer;
+      text-align: right;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      overflow-wrap: anywhere;
     }
+    .status:hover, .status[aria-expanded="true"] { border-color: var(--border); background: var(--input-bg); }
+    .status[data-tone="success"], .msg-log .tone-success { color: var(--success); }
+    .status[data-tone="error"], .msg-log .tone-error { color: var(--danger); }
+    .status[data-tone="warn"], .msg-log .tone-warn { color: var(--warning, #f59e0b); }
+    .status[data-tone="busy"] { animation: lexi-pulse 1.6s ease-in-out infinite; }
+    .msg-log {
+      position: absolute;
+      top: calc(100% + 4px);
+      right: 0;
+      z-index: 60;
+      width: min(480px, 90vw);
+      max-height: 340px;
+      overflow: auto;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      padding: 6px 0;
+      font-size: 0.85rem;
+      text-align: left;
+    }
+    .msg-log-head { display: flex; justify-content: space-between; align-items: center; padding: 4px 12px 6px; color: var(--muted); }
+    .msg-log-row { display: flex; gap: 10px; padding: 5px 12px; border-top: 1px solid var(--border); }
+    .msg-log-row time { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .msg-log-row span { overflow-wrap: anywhere; color: var(--text); }
+    .msg-log-empty { padding: 6px 12px; color: var(--muted); }
     .tabs {
       display: flex;
       gap: 8px;
@@ -263,7 +313,7 @@
     .btn-primary {
       background: linear-gradient(135deg, var(--accent), var(--accent-2));
       color: #0b1020;
-      box-shadow: 0 12px 30px rgba(124, 58, 237, 0.3);
+      box-shadow: 0 12px 30px color-mix(in srgb, var(--accent) 30%, transparent);
     }
     .btn-ghost {
       background: transparent;
@@ -399,6 +449,9 @@
       color: var(--success);
       border-color: var(--success);
     }
+    /* Headings and labels in the open tab inherit this; a theme can set
+       --heading (the NVIDIA themes use their brand green). */
+    .content.active { color: var(--heading, var(--success)); }
     .muted {
       color: var(--muted);
       font-size: 0.95rem;
@@ -546,7 +599,7 @@
     }
     .respond-tool-pill.selected {
       border-color: var(--accent);
-      background: linear-gradient(135deg, rgba(124, 58, 237, 0.15), rgba(6, 182, 212, 0.10));
+      background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 15%, transparent), color-mix(in srgb, var(--accent-2) 10%, transparent));
     }
     .respond-tool-providers {
       color: var(--muted);
@@ -611,7 +664,7 @@
       padding: 0.2em 12px;
       border-left: 3px solid var(--accent);
       color: var(--muted);
-      background: rgba(124, 58, 237, 0.06);
+      background: color-mix(in srgb, var(--accent) 6%, transparent);
     }
     .markdown-body table {
       border-collapse: collapse;
@@ -725,7 +778,7 @@
       border-radius: 999px;
       font-size: 0.8rem;
       font-weight: 700;
-      background: rgba(34, 197, 94, 0.15);
+      background: color-mix(in srgb, var(--success) 15%, transparent);
       color: var(--success);
       border: 1px solid var(--success);
     }
@@ -776,10 +829,6 @@
       word-break: break-all;
       overflow-wrap: anywhere;
     }
-    .api-key-feedback {
-      margin-top: 8px;
-      font-size: 0.9rem;
-    }
     input[type="password"] {
       width: 100%;
       padding: 10px 12px;
@@ -820,7 +869,7 @@
     }
     .theme-card.selected {
       border-color: var(--accent);
-      box-shadow: 0 0 12px rgba(124, 58, 237, 0.4);
+      box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 40%, transparent);
     }
     .theme-swatch {
       height: 48px;
@@ -842,11 +891,6 @@
       gap: 10px;
       margin-top: 16px;
     }
-    .config-feedback {
-      margin-top: 8px;
-      font-size: 0.9rem;
-      min-height: 1.2em;
-    }
     /* --- Models Tab --- */
     .models-top-bar {
       display: flex;
@@ -867,7 +911,7 @@
       padding: 2px 8px;
       border-radius: 999px;
       font-size: 0.7rem;
-      background: rgba(34, 197, 94, 0.1);
+      background: color-mix(in srgb, var(--success) 10%, transparent);
       color: var(--success);
       border: 1px solid var(--success);
       margin-left: 6px;
@@ -878,7 +922,7 @@
       padding: 2px 8px;
       border-radius: 999px;
       font-size: 0.7rem;
-      background: rgba(124, 58, 237, 0.1);
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
       color: var(--accent);
       border: 1px solid var(--accent);
       margin: 1px 2px;
@@ -1008,12 +1052,6 @@
       white-space: nowrap;
     }
     .link-btn:hover { text-decoration: underline; }
-    .models-feedback {
-      flex-shrink: 0;
-      font-size: 0.85rem;
-      margin-top: 4px;
-    }
-    .models-feedback:empty { display: none; }
     .pane-notice {
       flex-shrink: 0;
       margin-top: 8px;
@@ -1072,7 +1110,7 @@
       padding: 2px 8px;
       border-radius: 999px;
       font-size: 0.75rem;
-      background: rgba(34, 197, 94, 0.1);
+      background: color-mix(in srgb, var(--success) 10%, transparent);
       color: var(--success);
       border: 1px solid var(--success);
     }
@@ -1104,7 +1142,7 @@
       border-radius: 999px;
       border: 1px solid var(--accent);
       color: var(--text);
-      background: rgba(124, 58, 237, 0.12);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
     }
     .dt-chip button {
       background: none;
@@ -1292,6 +1330,8 @@
       gap: 0 12px;
     }
     .lexi-dialog-body .span-2 { grid-column: 1 / -1; }
+    #themeFileHint { margin: 12px 0 0; font-size: 0.85rem; color: var(--muted); }
+    #themeFileHint:empty { display: none; }
     .lexi-dialog-body .hint {
       font-size: 0.8rem;
       color: var(--muted);
@@ -1347,6 +1387,120 @@
       white-space: normal;
     }
     .lexi-tip.show { opacity: 1; }
+    /* --- Images tab (laid out like Chat: prompt, drag bar, providers + results) --- */
+    #tab-images.active {
+      display: flex;
+      flex-direction: column;
+    }
+    .img-settings { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+    .img-settings:empty { display: none; }
+    .img-settings .respond-controls { margin-top: 0; gap: 8px 14px; }
+    .img-settings-provider { font-weight: 700; min-width: 64px; }
+    .img-opt { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 0.85rem; font-weight: 500; color: var(--muted); }
+    .img-opt input,
+    .img-opt select {
+      width: auto; padding: 4px 6px; font-size: 0.85rem; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    }
+    .img-opt input[type="number"] { width: 80px; }
+    .img-opt input[type="text"] { width: 120px; }
+    .img-prov-error { flex-basis: 100%; font-size: 0.85rem; color: var(--danger); }
+    .img-prov-error:empty { display: none; }
+    #imgProviderNote:empty { display: none; }
+    .img-results-head {
+      display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px;
+      margin: 4px 0 8px;
+    }
+    .img-folder { font-size: 0.85rem; overflow-wrap: anywhere; }
+    .img-folder code { font-size: 0.8rem; }
+    .img-folder-actions { display: inline-flex; gap: 12px; margin-left: 6px; }
+    .img-gallery {
+      flex: 1 1 0;
+      min-height: 0;
+      overflow: auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      align-content: start;
+      gap: 14px;
+      padding: 2px;
+    }
+    .img-gallery > .muted { grid-column: 1 / -1; }
+    /* Cards keep their full size, so a long list scrolls instead of squashing
+       them. The scrollbar is styled so it stays visible (macOS otherwise hides
+       it until you scroll); it only appears when the results overflow. */
+    .img-gallery { grid-auto-rows: max-content; scrollbar-gutter: auto; }
+    .img-card > * { flex-shrink: 0; }
+    .img-gallery::-webkit-scrollbar { width: 10px; height: 10px; }
+    .img-gallery::-webkit-scrollbar-track { background: transparent; }
+    .img-gallery::-webkit-scrollbar-thumb {
+      background: color-mix(in srgb, var(--muted) 45%, transparent);
+      border-radius: 6px;
+      border: 2px solid var(--card);
+    }
+    .img-gallery::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+    .img-card {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--input-bg);
+    }
+    .img-card .img-thumb {
+      display: block;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: contain;
+      background: repeating-conic-gradient(rgba(128, 128, 128, 0.12) 0% 25%, transparent 0% 50%) 50% / 16px 16px;
+      cursor: zoom-in;
+      border: none;
+      padding: 0;
+    }
+    .img-card figcaption { padding: 8px 10px 10px; font-size: 0.85rem; color: var(--text); }
+    .img-card .img-caption {
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .img-card .img-meta { margin-top: 4px; color: var(--muted); font-size: 0.78rem; }
+    .img-card .img-note { margin-top: 4px; color: var(--warning, #f59e0b); font-size: 0.78rem; }
+    .img-card .img-actions { display: flex; gap: 6px; margin-top: 8px; }
+    .img-card.pending .img-thumb,
+    .img-card.failed .img-thumb {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: default;
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-align: center;
+      padding: 12px;
+    }
+    .img-card.pending .img-thumb { animation: lexi-pulse 1.6s ease-in-out infinite; }
+    .img-card.failed { border-color: var(--danger); }
+    .img-card.failed .img-thumb { color: var(--danger); overflow-wrap: anywhere; }
+    dialog.img-viewer {
+      max-width: 92vw;
+      max-height: 92vh;
+      padding: 0;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--card);
+      color: var(--text);
+    }
+    dialog.img-viewer::backdrop { background: rgba(0, 0, 0, 0.7); }
+    dialog.img-viewer img { display: block; max-width: 90vw; max-height: 80vh; margin: 0 auto; }
+    dialog.img-viewer .img-viewer-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      font-size: 0.85rem;
+    }
+    dialog.img-viewer .img-viewer-bar .grow { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+
     /* --- APIs tab --- */
     #tab-apis.active {
       display: flex;
@@ -1413,10 +1567,10 @@
       transition: background 120ms ease;
     }
     .api-list-item:hover {
-      background: rgba(124, 58, 237, 0.08);
+      background: color-mix(in srgb, var(--accent) 8%, transparent);
     }
     .api-list-item.selected {
-      background: rgba(124, 58, 237, 0.15);
+      background: color-mix(in srgb, var(--accent) 15%, transparent);
       border-left: 3px solid var(--accent);
     }
     .api-list-item .api-item-name {
@@ -1511,7 +1665,7 @@
       padding: 2px 10px;
       border-radius: 999px;
       font-size: 0.8rem;
-      background: rgba(6, 182, 212, 0.1);
+      background: color-mix(in srgb, var(--accent-2) 10%, transparent);
       color: var(--accent-2);
       border: 1px solid var(--accent-2);
       margin: 2px 4px 2px 0;
@@ -1530,11 +1684,6 @@
       padding: 10px 12px;
       tab-size: 2;
     }
-    .apis-feedback {
-      margin-top: 8px;
-      font-size: 0.9rem;
-      min-height: 1.2em;
-    }
     .api-actions {
       display: flex;
       gap: 8px;
@@ -1551,7 +1700,7 @@
       font-size: 0.85rem;
     }
     .api-status-bar.valid {
-      background: rgba(34, 197, 94, 0.12);
+      background: color-mix(in srgb, var(--success) 12%, transparent);
       color: var(--success);
       border: 1px solid var(--success);
     }
@@ -1703,14 +1852,16 @@
     <div class="shell">
       <header>
         <h1 class="brand">
-          <img class="brand-logo" src="lexi-logo.png" alt="Lexi — Multi-Provider GenAI Client &amp; Studio" width="227" height="96">
+          <img class="brand-logo" src="lexi-mark.png" alt="Lexi" width="174" height="180">
         </h1>
-        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px; min-width:260px;">
-          <div class="status" id="status">Ready</div>
+        <div class="msg-area">
+          <button class="status" id="status" type="button" data-tone="muted" aria-live="polite" data-tip="Lexi's messages: what it just did. Click to see the recent ones.">Ready</button>
+          <div class="msg-log" id="msgLog" hidden></div>
         </div>
       </header>
       <div class="tabs">
         <div class="tab active" data-tab="chat">Chat</div>
+        <div class="tab" data-tab="images">Images</div>
         <div class="tab" data-tab="prompts">Prompts</div>
         <div class="tab" data-tab="providers">Providers</div>
         <div class="tab" data-tab="models">Models</div>
@@ -1832,7 +1983,6 @@
         <div class="btn-row">
           <button class="btn btn-primary" id="apiKeySaveBtn" data-tip="Save this key for the selected provider (kept in its api-key file, readable only by you)">Save</button>
         </div>
-        <div class="api-key-feedback" id="apiKeyFeedback"></div>
       </section>
     </div>
     <div class="content" id="tab-models">
@@ -1862,7 +2012,6 @@
             <button class="link-btn" id="modelsAddByIdBtn" type="button" data-tip="Add a model by its id, for one that isn't in the hosted list">Add by ID…</button>
           </div>
           <div class="pane-meta" id="modelsDefaultLine"></div>
-          <div class="models-feedback" id="modelsFeedback"></div>
           <div class="pane-notice warn" id="orphanAliases"></div>
           <div class="dt-host" id="modelsTable"></div>
         </section>
@@ -1889,10 +2038,50 @@
             <div id="apiDetailContent" style="display:none;"></div>
             <div id="apiCreateFormContainer" style="display:none;"></div>
           </div>
-          <div class="apis-feedback" id="apisFeedback"></div>
         </section>
       </div>
     </div>
+    <div class="content" id="tab-images">
+      <div class="chat-prompt-section" id="imgPromptSection">
+        <label for="imgPrompt">Prompt</label>
+        <textarea id="imgPrompt" placeholder="Describe the image you want"></textarea>
+        <div class="inline-field" style="justify-content: space-between; align-items: center;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button class="btn btn-ghost" id="imgLoadPromptBtn" type="button" data-tip="Put the selected saved prompt's text in the box above">Load Prompt</button>
+            <select id="imgPromptSelect" aria-label="Saved prompt" style="width:auto; min-width:180px; max-width:300px;">
+              <option value="">-- select prompt --</option>
+            </select>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button class="btn btn-ghost" id="imgSavePromptBtn" type="button" data-tip="Save this prompt text as a named prompt">Save</button>
+          </div>
+        </div>
+      </div>
+      <div class="chat-resize-bar" id="imgResizeBar" data-tip="Drag to resize the prompt and results areas"></div>
+      <div class="chat-response-section" id="imgResponseSection">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+          <div class="provider-list" id="imgProviders" style="margin:0;"></div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-ghost" id="imgGenerateBtn" type="button" disabled data-tip="Send the prompt to each ticked provider's image API; every image is saved to the images folder">Generate Images</button>
+          </div>
+        </div>
+        <div class="pane-notice warn" id="imgProviderNote"></div>
+        <div class="img-settings" id="imgSettings"></div>
+        <div class="img-results-head">
+          <label style="margin:0;">Results</label>
+          <div class="img-folder">
+            <span class="muted">Saved to</span> <code id="imgDir"></code>
+            <span class="img-folder-actions">
+              <button class="link-btn" id="imgDirChangeBtn" type="button" data-tip="Choose the folder generated images are saved to">Change…</button>
+              <button class="link-btn" id="imgDirOpenBtn" type="button" data-tip="Open the images folder">Open folder</button>
+              <button class="link-btn" id="imgClearBtn" type="button" data-tip="Clear this list (the saved files stay in the folder)">Clear</button>
+            </span>
+          </div>
+        </div>
+        <div class="img-gallery" id="imgGallery"></div>
+      </div>
+    </div>
+
     <div class="content" id="tab-configure">
       <div class="subtabs" id="configureSubtabs">
         <div class="subtab active" data-subtab="gui">Lexi GUI</div>
@@ -1902,6 +2091,7 @@
         <section class="panel">
           <h2>Theme / Appearance</h2>
           <div class="theme-grid" id="themeGrid"></div>
+          <p class="hint" id="themeFileHint"></p>
         </section>
       </div>
       <div class="subtab-panel" id="subtab-cli">
@@ -1927,7 +2117,6 @@
               <button class="btn btn-primary" id="cfgSaveBtn">Save</button>
               <button class="btn btn-ghost" id="cfgResetBtn" data-tip="Put every CLI setting on this page back to its default">Reset to Defaults</button>
             </div>
-            <div class="config-feedback" id="cfgFeedback"></div>
           </div>
         </section>
       </div>
@@ -2024,7 +2213,6 @@
     const apiKeyProviderEl = document.getElementById('apiKeyProvider');
     const apiKeyInputEl = document.getElementById('apiKeyInput');
     const apiKeyStatusEl = document.getElementById('apiKeyStatus');
-    const apiKeyFeedbackEl = document.getElementById('apiKeyFeedback');
     const apiKeySaveBtn = document.getElementById('apiKeySaveBtn');
     const apiKeyRevealBtn = document.getElementById('apiKeyRevealBtn');
     const apiKeyRemoveBtn = document.getElementById('apiKeyRemoveBtn');
@@ -2038,6 +2226,7 @@
     }
     setApiKeyRevealed(false);
     let PROVIDERS = [];
+    let CHAT_PROVIDERS = [];  // the providers that can chat (the Chat tab lists only these)
     let providerConfigured = {};
     const cliLogEl = document.getElementById('cliLog');
     const toggleCliLogBtn = document.getElementById('toggleCliLog');
@@ -2053,16 +2242,52 @@
       return div.innerHTML;
     }
 
+    // The message area (top right). Every action reports what happened here.
+    // Tones: 'success', 'error', 'warn', 'muted' (information) and 'busy'
+    // (work in progress — shown, but not kept in the recent-messages list).
+    const msgLogEl = document.getElementById('msgLog');
+    const messageLog = [];   // newest first: {text, tone, at}
     function setStatus(text, tone = 'muted') {
+      if (!text) return;
       statusEl.textContent = text;
-      statusEl.style.color = tone === 'error' ? '#ef4444' : tone === 'success' ? '#22c55e' : 'var(--muted)';
+      statusEl.dataset.tone = tone;
+      if (tone !== 'busy') {
+        const last = messageLog[0];
+        if (last && last.text === text && last.tone === tone) last.at = new Date();
+        else messageLog.unshift({ text, tone, at: new Date() });
+        if (messageLog.length > 100) messageLog.length = 100;
+        if (!msgLogEl.hidden) renderMessageLog();
+      }
     }
+    function renderMessageLog() {
+      const time = (d) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      msgLogEl.innerHTML = '<div class="msg-log-head"><strong>Recent messages</strong><button type="button" class="link-btn" id="msgLogClear">Clear</button></div>'
+        + (messageLog.length
+          ? messageLog.map((m) => `<div class="msg-log-row"><time>${time(m.at)}</time><span class="tone-${m.tone}">${escapeHtml(m.text)}</span></div>`).join('')
+          : '<div class="msg-log-empty">No messages yet.</div>');
+    }
+    function toggleMessageLog(open) {
+      msgLogEl.hidden = !open;
+      statusEl.setAttribute('aria-expanded', String(open));
+      if (open) renderMessageLog();
+    }
+    statusEl.addEventListener('click', () => toggleMessageLog(msgLogEl.hidden));
+    msgLogEl.addEventListener('click', (e) => {
+      if (e.target.id === 'msgLogClear') { messageLog.length = 0; renderMessageLog(); }
+    });
+    document.addEventListener('click', (e) => {
+      if (!msgLogEl.hidden && !e.target.closest('.msg-area')) toggleMessageLog(false);
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !msgLogEl.hidden) toggleMessageLog(false); });
 
     let providerModelCache = {};
 
     function renderProviderSelector() {
       providerListEl.innerHTML = '<span class="muted" style="font-size:0.95rem;">Providers:</span>';
-      PROVIDERS.forEach((name, idx) => {
+      if (!CHAT_PROVIDERS.length) {
+        providerListEl.insertAdjacentHTML('beforeend', '<span class="muted" style="font-size:0.9rem;">none of your providers has a chat model</span>');
+      }
+      CHAT_PROVIDERS.forEach((name, idx) => {
         const id = `provider-${idx}`;
         const pill = document.createElement('div');
         pill.className = 'provider-pill';
@@ -2162,7 +2387,8 @@
       }
       try {
         const data = await api(`/api/models?provider=${encodeURIComponent(provider)}`);
-        const models = data.models || [];
+        // Only models the chat API serves: image and embedding models have tabs of their own.
+        const models = (data.models || []).filter((m) => m.kind === 'chat');
         providerModelCache[provider] = models;
         populateModelSelect(selectEl, models);
       } catch {
@@ -2184,7 +2410,7 @@
 
     function getSelectedModels() {
       const models = {};
-      PROVIDERS.forEach((name) => {
+      CHAT_PROVIDERS.forEach((name) => {
         const sel = document.getElementById(`provider-model-${name}`);
         if (sel && sel.value) models[name] = sel.value;
       });
@@ -2245,6 +2471,7 @@
         if (names.length) {
           PROVIDERS = names;
         }
+        CHAT_PROVIDERS = (data.providers || []).filter((p) => p.chat !== false).map((p) => p.name);
         providerModelCache = {};
         (data.providers || []).forEach((p) => {
           providerConfigured[p.name] = p.configured !== false;
@@ -2253,6 +2480,7 @@
         renderProviderSelector();
       } catch (err) {
         providerTableEl.innerHTML = `<div class="muted">Failed to load providers: ${err.message}</div>`;
+        setStatus(`Couldn't load the providers: ${err.message}`, 'error');
       }
     }
 
@@ -2405,13 +2633,12 @@
     }
 
     async function loadPrompts() {
-      setStatus('Loading prompts...');
+      setStatus('Loading prompts...', 'busy');
       try {
         const data = await api('/api/prompts', { method: 'GET' });
-        const prompts = data.prompts || [];
-        renderPrompts(prompts);
-        populateChatPromptSelect(prompts);
-        setStatus('Prompts loaded');
+        promptsChanged(data.prompts || []);
+        const n = (data.prompts || []).length;
+        setStatus(`Loaded ${n} saved prompt${n === 1 ? '' : 's'}.`);
       } catch (err) {
         setStatus(err.message, 'error');
       }
@@ -2444,122 +2671,195 @@
     async function savePrompt(forceActive = false) {
       const payload = collectPayload(forceActive);
       if (!payload.prompt) {
-        setStatus('Prompt text is required', 'error');
+        setStatus('Prompt text is required.', 'error');
         return;
       }
-      setStatus('Saving prompt...');
+      setStatus('Saving prompt...', 'busy');
       try {
         const data = await api('/api/prompts', {
           method: 'POST',
           body: JSON.stringify(payload),
         });
-        renderPrompts(data.prompts || []);
-        setStatus('Saved', 'success');
+        promptsChanged(data.prompts || []);
+        setStatus(payload.name ? `Saved prompt "${payload.name}".` : 'Saved the active prompt ($$).', 'success');
       } catch (err) {
         setStatus(err.message, 'error');
       }
     }
 
     async function setActive(name) {
-      setStatus('Setting active prompt...');
+      setStatus('Setting active prompt...', 'busy');
       try {
         const data = await api('/api/prompts/active', {
           method: 'POST',
           body: JSON.stringify({ name }),
         });
-        renderPrompts(data.prompts || []);
-        setStatus('Active prompt updated', 'success');
+        promptsChanged(data.prompts || []);
+        setStatus(`"${name}" is now the active prompt ($$).`, 'success');
       } catch (err) {
         setStatus(err.message, 'error');
       }
     }
 
     async function deletePrompt(name) {
-      setStatus(`Deleting ${name}...`);
+      setStatus(`Deleting ${name}...`, 'busy');
       try {
         const data = await api('/api/prompts/delete', {
           method: 'POST',
           body: JSON.stringify({ name }),
         });
-        renderPrompts(data.prompts || []);
-        setStatus('Deleted', 'success');
+        promptsChanged(data.prompts || []);
+        setStatus(`Deleted prompt "${name}".`, 'success');
       } catch (err) {
         setStatus(err.message, 'error');
       }
     }
 
-    async function loadSelectedPromptIntoChat() {
-      const selected = chatPromptSelectEl.value;
-      if (!selected) {
-        setStatus('Select a prompt first.', 'error');
-        return;
+    // --- Prompt box Load / Save (shared by Chat and Images) ---
+    // Load is highlighted while a prompt is picked but not loaded yet; Save
+    // while the text differs from what was last loaded or saved. Picking
+    // another prompt while there are unsaved changes asks to save them first.
+    let savedPromptList = [];   // the latest list from /api/prompts
+
+    function setButtonHighlight(btn, on) {
+      btn.classList.toggle('btn-primary', on);
+      btn.classList.toggle('btn-ghost', !on);
+    }
+
+    // Every prompt list (Prompts tab, Chat and Images pickers) follows a new list.
+    function promptsChanged(prompts) {
+      savedPromptList = prompts;
+      renderPrompts(prompts);
+      populateChatPromptSelect(prompts);
+      if (typeof renderImgPromptSelect === 'function') renderImgPromptSelect();
+    }
+
+    // Name a prompt and save it; resolves {name, prompts} or null if cancelled.
+    function savePromptDialog(prompt, suggested) {
+      return openDialog({
+        title: 'Save prompt',
+        okLabel: 'Save',
+        body: `<label for="savePromptName" style="margin-top:0;">Name</label>
+          <input id="savePromptName" type="text" autocomplete="off" spellcheck="false">
+          <p class="hint" id="savePromptHint">Saved prompts can be loaded in Chat or Images, or used with <code>lexi respond --prompt NAME</code>.</p>`,
+        onOpen: (dlg) => {
+          const input = dlg.querySelector('#savePromptName');
+          const hint = dlg.querySelector('#savePromptHint');
+          const ok = dlg.querySelector('.dlg-ok');
+          const base = hint.innerHTML;
+          const check = () => {
+            const name = input.value.trim();
+            const taken = savedPromptList.some((x) => x.name === name);
+            ok.textContent = taken ? 'Replace' : 'Save';
+            hint.innerHTML = taken ? `A saved prompt named <strong>${esc(name)}</strong> already exists; saving replaces it.` : base;
+          };
+          input.addEventListener('input', check);
+          if (suggested) { input.value = suggested; input.select(); check(); }
+        },
+        onOk: async (dlg) => {
+          const name = dlg.querySelector('#savePromptName').value.trim();
+          if (!name) throw new Error('Give the prompt a name.');
+          const data = await api('/api/prompts', { method: 'POST', body: JSON.stringify({ name, prompt }) });
+          return { name, prompts: data.prompts || [] };
+        },
+      });
+    }
+
+    // Asked when picking another prompt with unsaved changes:
+    // resolves 'save', 'discard' or 'cancel'.
+    async function askSaveChanges() {
+      let discard = false;
+      const save = await openDialog({
+        title: 'Save your changes?',
+        okLabel: 'Save…',
+        body: "<p style=\"margin:0;\">The prompt has changes that haven't been saved. Save them before picking another prompt?</p>",
+        onOpen: (dlg) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'btn btn-ghost dlg-discard';
+          b.textContent = "Don't Save";
+          b.addEventListener('click', () => { discard = true; dlg.close(); });
+          dlg.querySelector('.dlg-cancel').before(b);
+        },
+      });
+      return save ? 'save' : discard ? 'discard' : 'cancel';
+    }
+
+    function attachPromptEditor({ textarea, select, loadBtn, saveBtn, setMsg, onTextChange }) {
+      const ed = { baseline: textarea.value, loadedName: '', lastSel: select.value, pending: false };
+      const dirty = () => textarea.value.trim() !== '' && textarea.value !== ed.baseline;
+      ed.isDirty = dirty;
+      ed.refresh = () => {
+        setButtonHighlight(saveBtn, dirty());
+        setButtonHighlight(loadBtn, ed.pending && !!select.value);
+      };
+      const changed = () => { ed.refresh(); if (onTextChange) onTextChange(); };
+
+      async function save() {
+        const text = textarea.value.trim();
+        if (!text) { setMsg('Write a prompt first.', 'error'); textarea.focus(); return null; }
+        const saved = await savePromptDialog(text, ed.loadedName === '$$' ? '' : ed.loadedName);
+        if (!saved) return null;
+        ed.baseline = textarea.value;
+        ed.loadedName = saved.name;
+        promptsChanged(saved.prompts);
+        changed();
+        setMsg(`Saved the prompt as "${saved.name}".`, 'success');
+        return saved.name;
       }
-      setStatus('Loading prompt...');
-      try {
-        const data = await api('/api/prompts', { method: 'GET' });
-        const prompts = data.prompts || [];
-        const match = selected === '$$'
-          ? prompts.find((p) => p.isActive)
-          : prompts.find((p) => p.name === selected);
-        if (match) {
-          chatPromptEl.value = match.prompt || '';
-          setStatus(`Loaded prompt "${selected}".`, 'success');
-        } else {
-          setStatus(`Prompt "${selected}" not found.`, 'error');
+
+      textarea.addEventListener('input', changed);
+      select.addEventListener('change', async () => {
+        const picked = select.value;
+        if (picked && dirty()) {
+          const choice = await askSaveChanges();
+          if (choice === 'cancel' || (choice === 'save' && !(await save()))) {
+            select.value = ed.lastSel;
+            ed.refresh();
+            return;
+          }
+          select.value = picked;   // saving redraws the pickers
         }
-      } catch (err) {
-        setStatus(err.message, 'error');
-      }
+        ed.lastSel = picked;
+        ed.pending = !!picked;
+        ed.refresh();
+      });
+      loadBtn.addEventListener('click', async () => {
+        const name = select.value;
+        if (!name) { setMsg('Select a prompt first.', 'error'); return; }
+        try {
+          // Fresh from disk, so prompts saved by the CLI show up too.
+          const data = await api('/api/prompts', { method: 'GET' });
+          promptsChanged(data.prompts || []);
+        } catch { /* use the list we have */ }
+        const p = savedPromptList.find((x) => x.name === name);
+        if (!p) { setMsg(`Prompt "${name}" not found.`, 'error'); return; }
+        textarea.value = p.prompt || '';
+        ed.baseline = textarea.value;
+        ed.loadedName = name;
+        ed.pending = false;
+        changed();
+        setMsg(`Loaded prompt "${name}".`, 'success');
+      });
+      saveBtn.addEventListener('click', save);
+      ed.refresh();
+      return ed;
     }
 
-    async function saveChatPromptNamed() {
-      const prompt = chatPromptEl.value.trim();
-      if (!prompt) {
-        setStatus('Prompt text is required.', 'error');
-        return;
-      }
-      const name = window.prompt('Save prompt as:');
-      if (!name) {
-        setStatus('Save cancelled.', 'muted');
-        return;
-      }
-      try {
-        const data = await api('/api/prompts', {
-          method: 'POST',
-          body: JSON.stringify({ name, prompt }),
-        });
-        renderPrompts(data.prompts || []);
-        populateChatPromptSelect(data.prompts || []);
-        setStatus(`Prompt saved as "${name}".`, 'success');
-        saveChatNamedBtn.classList.remove('btn-primary');
-        saveChatNamedBtn.classList.add('btn-ghost');
-      } catch (err) {
-        setStatus(err.message, 'error');
-      }
-    }
+    const chatEditor = attachPromptEditor({
+      textarea: chatPromptEl,
+      select: chatPromptSelectEl,
+      loadBtn: loadPromptBtn,
+      saveBtn: saveChatNamedBtn,
+      setMsg: setStatus,
+      onTextChange: () => updateGenerateBtn(),
+    });
 
     document.getElementById('refresh').addEventListener('click', loadPrompts);
     document.getElementById('saveActive').addEventListener('click', () => savePrompt(true));
     document.getElementById('saveNamed').addEventListener('click', () => savePrompt(false));
     showDetailsEl.addEventListener('change', loadPrompts);
 
-    chatPromptSelectEl.addEventListener('change', () => {
-      if (chatPromptSelectEl.value) {
-        loadPromptBtn.classList.remove('btn-ghost');
-        loadPromptBtn.classList.add('btn-primary');
-      } else {
-        loadPromptBtn.classList.remove('btn-primary');
-        loadPromptBtn.classList.add('btn-ghost');
-      }
-    });
-
-    loadPromptBtn.addEventListener('click', () => {
-      loadSelectedPromptIntoChat().then(() => {
-        loadPromptBtn.classList.remove('btn-primary');
-        loadPromptBtn.classList.add('btn-ghost');
-      });
-    });
-    saveChatNamedBtn.addEventListener('click', saveChatPromptNamed);
 
     // Generate Response
     // --- Response state & per-tab rendering --------------------------------
@@ -2862,7 +3162,7 @@
 
       generateResponseBtn.disabled = true;
       generateResponseBtn.textContent = 'Generating...';
-      setStatus(stream ? 'Streaming responses...' : 'Generating responses...', 'muted');
+      setStatus(`${stream ? 'Streaming' : 'Generating'} responses from ${providers.join(', ')}...`, 'busy');
 
       // Reset per-provider state and rebuild tabs.
       respondState = {};
@@ -2880,7 +3180,9 @@
         } else {
           await runRespondBlocked(payload, providers, respondAbortController.signal);
         }
-        setStatus('Responses received.', 'success');
+        const failed = providers.filter((p) => respondState[p] && respondState[p].status === 'error');
+        if (failed.length) setStatus(`Responses received; ${failed.join(', ')} failed (see ${failed.length === 1 ? 'its tab' : 'their tabs'}).`, 'warn');
+        else setStatus(`Responses received from ${providers.join(', ')}.`, 'success');
       } catch (err) {
         const wasAborted = err && (err.name === 'AbortError' || respondAbortController.signal.aborted);
         providers.forEach((p) => {
@@ -2891,7 +3193,7 @@
               : { status: 'error', error: err.message });
           }
         });
-        setStatus(wasAborted ? 'Cancelled.' : err.message, wasAborted ? 'muted' : 'error');
+        setStatus(wasAborted ? 'Stopped the responses.' : err.message, wasAborted ? 'muted' : 'error');
       } finally {
         respondAbortController = null;
         refreshStopButton();
@@ -2901,23 +3203,12 @@
       }
     });
 
-    // Highlight Save button when prompt is modified
-    chatPromptEl.addEventListener('input', () => {
-      if (chatPromptEl.value.trim()) {
-        saveChatNamedBtn.classList.remove('btn-ghost');
-        saveChatNamedBtn.classList.add('btn-primary');
-      } else {
-        saveChatNamedBtn.classList.remove('btn-primary');
-        saveChatNamedBtn.classList.add('btn-ghost');
-      }
-      updateGenerateBtn();
-    });
 
-    // --- Chat Prompt / Response Resize ---
-    (function initChatResize() {
-      const bar = document.getElementById('chatResizeBar');
-      const topSection = document.getElementById('chatPromptSection');
-      const chatTab = document.getElementById('tab-chat');
+    // --- Prompt / Response Resize (Chat and Images) ---
+    function initPromptResize(barId, topId, tabId) {
+      const bar = document.getElementById(barId);
+      const topSection = document.getElementById(topId);
+      const chatTab = document.getElementById(tabId);
       let startY = 0;
       let startH = 0;
 
@@ -2945,7 +3236,9 @@
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
       }
-    })();
+    }
+    initPromptResize('chatResizeBar', 'chatPromptSection', 'tab-chat');
+    initPromptResize('imgResizeBar', 'imgPromptSection', 'tab-images');
 
     toggleCliLogBtn.addEventListener('click', () => {
       showCliLog = !showCliLog;
@@ -3010,7 +3303,6 @@
 
     async function fetchApiKeyStatus(provider) {
       apiKeyStatusEl.textContent = 'Checking...';
-      apiKeyFeedbackEl.textContent = '';
       apiKeyRevealBtn.disabled = true;
       try {
         const data = await api('/api/providers/api-key', {
@@ -3048,8 +3340,7 @@
       const value = apiKeyInputEl.value.trim();
       if (!provider) return;
       if (!value) {
-        apiKeyFeedbackEl.textContent = 'Please enter an API key.';
-        apiKeyFeedbackEl.style.color = 'var(--danger)';
+        setStatus('Enter an API key first.', 'error');
         return;
       }
       try {
@@ -3057,14 +3348,12 @@
           method: 'POST',
           body: JSON.stringify({ action: 'set', provider, value }),
         });
-        apiKeyFeedbackEl.textContent = 'API key saved.';
-        apiKeyFeedbackEl.style.color = 'var(--success)';
+        setStatus(`Saved the API key for ${provider}.`, 'success');
         apiKeyInputEl.value = '';
         fetchApiKeyStatus(provider);
         fetchProvidersList();
       } catch (err) {
-        apiKeyFeedbackEl.textContent = err.message;
-        apiKeyFeedbackEl.style.color = 'var(--danger)';
+        setStatus(err.message, 'error');
       }
     });
 
@@ -3077,13 +3366,11 @@
           method: 'POST',
           body: JSON.stringify({ action: 'remove', provider }),
         });
-        apiKeyFeedbackEl.textContent = 'API key removed.';
-        apiKeyFeedbackEl.style.color = 'var(--success)';
+        setStatus(`Removed the API key for ${provider}.`, 'success');
         fetchApiKeyStatus(provider);
         fetchProvidersList();
       } catch (err) {
-        apiKeyFeedbackEl.textContent = err.message;
-        apiKeyFeedbackEl.style.color = 'var(--danger)';
+        setStatus(err.message, 'error');
       }
     });
 
@@ -3567,7 +3854,6 @@
 
     // --- Models Tab ---
     const modelsProviderEl = document.getElementById('modelsProvider');
-    const modelsFeedbackEl = document.getElementById('modelsFeedback');
     const modelsDefaultLineEl = document.getElementById('modelsDefaultLine');
     const orphanAliasesEl = document.getElementById('orphanAliases');
     const modelsAddByIdBtn = document.getElementById('modelsAddByIdBtn');
@@ -3601,10 +3887,7 @@
     }
 
     function showModelsFeedback(msg, tone) {
-      clearTimeout(feedbackTimer);
-      modelsFeedbackEl.textContent = msg;
-      modelsFeedbackEl.style.color = tone === 'error' ? 'var(--danger)' : tone === 'success' ? 'var(--success)' : 'var(--muted)';
-      if (tone !== 'error') feedbackTimer = setTimeout(() => { modelsFeedbackEl.textContent = ''; }, 6000);
+      setStatus(msg, tone);
     }
 
     // Tag chips; `kind:` is shown in its own column, so it's left out here.
@@ -3934,10 +4217,13 @@
       }
       let notice = '';
       let models = [];
+      setStatus(`Fetching the model list from ${provider}...`, 'busy');
       try {
         const data = await api(`/api/models/hosted?${q}`);
         models = data.models || [];
+        setStatus(`Fetched ${models.length} model${models.length === 1 ? '' : 's'} from ${provider}.`, 'success');
       } catch (err) {
+        setStatus(`Couldn't fetch the model list from ${provider}: ${err.message}`, 'error');
         notice = `<span class="error-text">Couldn't fetch the model list from ${esc(provider)}: ${esc(err.message)}</span>`;
         try {
           const cached = await api(`/api/models/hosted?${q}&cached=1`);
@@ -3969,7 +4255,6 @@
 
     modelsProviderEl.addEventListener('change', () => {
       mtProvider = modelsProviderEl.value;
-      modelsFeedbackEl.textContent = '';
       configuredTable.reset();
       loadConfigured();
       loadHosted();
@@ -4019,75 +4304,475 @@
       });
     })();
 
-    // --- Theme Engine ---
-    const THEMES = {
-      'dark-purple': {
-        name: 'Dark Purple',
-        vars: {
-          '--bg': '#0b1020', '--card': '#11182c', '--input-bg': '#0f172a',
-          '--shell-bg': 'rgba(17, 24, 44, 0.9)', '--muted': '#9fb3c8',
-          '--accent': '#7c3aed', '--accent-2': '#06b6d4', '--text': '#e2e8f0',
-          '--border': '#1f2937', '--success': '#22c55e', '--danger': '#ef4444',
-        },
-        gradient: 'radial-gradient(circle at 10% 20%, rgba(124, 58, 237, 0.18), transparent 35%), radial-gradient(circle at 90% 10%, rgba(6, 182, 212, 0.18), transparent 30%), #0b1020',
-        swatch: 'linear-gradient(135deg, #7c3aed, #06b6d4)',
-      },
-      'dark-cyan': {
-        name: 'Dark Cyan',
-        vars: {
-          '--bg': '#0a1628', '--card': '#0f1f36', '--input-bg': '#0c1a2e',
-          '--shell-bg': 'rgba(12, 26, 46, 0.9)', '--muted': '#8badc4',
-          '--accent': '#06b6d4', '--accent-2': '#22d3ee', '--text': '#e0f2fe',
-          '--border': '#164e63', '--success': '#22c55e', '--danger': '#ef4444',
-        },
-        gradient: 'radial-gradient(circle at 10% 20%, rgba(6, 182, 212, 0.2), transparent 35%), radial-gradient(circle at 90% 10%, rgba(34, 211, 238, 0.15), transparent 30%), #0a1628',
-        swatch: 'linear-gradient(135deg, #06b6d4, #22d3ee)',
-      },
-      'dark-green': {
-        name: 'Dark Green',
-        vars: {
-          '--bg': '#0a1a10', '--card': '#0f2518', '--input-bg': '#0c1e14',
-          '--shell-bg': 'rgba(12, 30, 20, 0.9)', '--muted': '#86b89a',
-          '--accent': '#22c55e', '--accent-2': '#4ade80', '--text': '#dcfce7',
-          '--border': '#166534', '--success': '#22c55e', '--danger': '#ef4444',
-        },
-        gradient: 'radial-gradient(circle at 10% 20%, rgba(34, 197, 94, 0.18), transparent 35%), radial-gradient(circle at 90% 10%, rgba(74, 222, 128, 0.12), transparent 30%), #0a1a10',
-        swatch: 'linear-gradient(135deg, #22c55e, #4ade80)',
-      },
-      'dark-rose': {
-        name: 'Dark Rose',
-        vars: {
-          '--bg': '#1a0a14', '--card': '#25101c', '--input-bg': '#1e0c18',
-          '--shell-bg': 'rgba(30, 12, 24, 0.9)', '--muted': '#c4899e',
-          '--accent': '#e11d48', '--accent-2': '#fb7185', '--text': '#ffe4e6',
-          '--border': '#881337', '--success': '#22c55e', '--danger': '#ef4444',
-        },
-        gradient: 'radial-gradient(circle at 10% 20%, rgba(225, 29, 72, 0.18), transparent 35%), radial-gradient(circle at 90% 10%, rgba(251, 113, 133, 0.12), transparent 30%), #1a0a14',
-        swatch: 'linear-gradient(135deg, #e11d48, #fb7185)',
-      },
-      'light': {
-        name: 'Light',
-        vars: {
-          '--bg': '#f8fafc', '--card': '#ffffff', '--input-bg': '#f1f5f9',
-          '--shell-bg': 'rgba(255, 255, 255, 0.95)', '--muted': '#64748b',
-          '--accent': '#7c3aed', '--accent-2': '#06b6d4', '--text': '#1e293b',
-          '--border': '#e2e8f0', '--success': '#16a34a', '--danger': '#dc2626',
-        },
-        gradient: 'radial-gradient(circle at 10% 20%, rgba(124, 58, 237, 0.08), transparent 35%), radial-gradient(circle at 90% 10%, rgba(6, 182, 212, 0.08), transparent 30%), #f8fafc',
-        swatch: 'linear-gradient(135deg, #f1f5f9, #e2e8f0)',
-      },
-    };
+    // --- Images Tab ---
+    // The same pipeline as `lexi generate` (`respond --output image`), sent to
+    // each ticked provider: that provider's image API and model, the API's
+    // settings (its schema flags), and files saved to the images folder
+    // (`images_dir` in config.json).
+    const imgPromptEl = document.getElementById('imgPrompt');
+    const imgPromptSelectEl = document.getElementById('imgPromptSelect');
+    const imgProvidersEl = document.getElementById('imgProviders');
+    const imgSettingsEl = document.getElementById('imgSettings');
+    const imgProviderNoteEl = document.getElementById('imgProviderNote');
+    const imgGenerateBtn = document.getElementById('imgGenerateBtn');
+    const imgDirEl = document.getElementById('imgDir');
+    const imgGalleryEl = document.getElementById('imgGallery');
+    const IS_MAC = /Mac/i.test(navigator.platform || navigator.userAgent);
+    const FILE_MANAGER = IS_MAC ? 'Finder' : 'the file manager';
 
-    let currentTheme = 'dark-purple';
+    // Settings the tab doesn't offer: it reads either response format itself,
+    // and `user` is an end-user id for the provider's abuse tracking.
+    const IMG_HIDDEN_OPTIONS = new Set(['response_format', 'user']);
+    const IMG_OPTION_LABELS = { n: 'Count' };
+
+    let imgProviders = [];    // from /api/images/providers, in config order
+    // Per provider: {checked, model, models, defaultModel, options, values, seq, error}.
+    // `values` (setting path → value) is kept when the model changes.
+    const imgState = {};
+    let imgFirstLoad = true;
+    let imgBusy = false;
+    let imgResults = [];      // newest first: {status, prompt, provider, model, images?, error?, started}
+
+    // Images messages go to the message area like every other action.
+    function imgSetStatus(text, tone) {
+      setStatus(text, tone);
+    }
+
+    function imgUsable() { return imgProviders.filter((p) => p.images); }
+    function imgChecked() { return imgUsable().filter((p) => imgState[p.name]?.checked).map((p) => p.name); }
+    function imgUpdateGenerateBtn() {
+      const ready = !imgBusy && imgChecked().length > 0 && imgPromptEl.value.trim().length > 0;
+      imgGenerateBtn.disabled = !ready;
+      imgGenerateBtn.classList.toggle('btn-primary', ready);
+      imgGenerateBtn.classList.toggle('btn-ghost', !ready);
+    }
+
+    async function refreshImagesTab() {
+      try {
+        const [prov, prompts] = await Promise.all([
+          api('/api/images/providers', { method: 'GET' }),
+          api('/api/prompts', { method: 'GET' }).catch(() => ({ prompts: [] })),
+        ]);
+        imgProviders = prov.providers || [];
+        imgDirEl.textContent = prov.images_dir || '';
+        promptsChanged(prompts.prompts || []);
+        imgProviders.forEach((p) => {
+          if (!imgState[p.name]) imgState[p.name] = { checked: false, model: '', models: null, defaultModel: p.default_model, options: null, values: {}, seq: 0, error: '' };
+          imgState[p.name].defaultModel = p.default_model;
+          if (!p.images) imgState[p.name].checked = false;
+        });
+        const usable = imgUsable();
+        // The first time, tick the first provider that can make images.
+        if (imgFirstLoad && usable.length) imgState[usable[0].name].checked = true;
+        imgFirstLoad = false;
+        imgProviderNoteEl.textContent = usable.length ? ''
+          : 'None of your providers has an image API. Add one to a provider with `lexi providers api add <provider> image-generations`.';
+        renderImgProviders();
+        await Promise.all(usable.map((p) => loadImgModels(p.name)));
+      } catch (err) {
+        imgSetStatus(err.message, 'error');
+      }
+    }
+
+    function renderImgPromptSelect() {
+      const prev = imgPromptSelectEl.value;
+      const sorted = [...savedPromptList].sort((a, b) => (b.isActive ? 1 : 0) - (a.isActive ? 1 : 0));
+      imgPromptSelectEl.innerHTML = '<option value="">-- select prompt --</option>'
+        + sorted.map((p) => `<option value="${esc(p.name)}">${esc(p.isActive ? '$$ (active)' : p.name)}</option>`).join('');
+      if (sorted.some((p) => p.name === prev)) imgPromptSelectEl.value = prev;
+    }
+
+    // The model picker's options: the default, then the provider's image
+    // models (configured first, then the rest of its cached model list).
+    function imgModelOptions(st) {
+      const label = (m) => (m.name && m.name !== m.id ? `${m.id} — ${m.name}` : m.id);
+      const group = (title, list) => (list.length
+        ? `<optgroup label="${esc(title)}">${list.map((m) => `<option value="${esc(m.id)}">${esc(label(m))}</option>`).join('')}</optgroup>`
+        : '');
+      const models = st.models || [];
+      return `<option value="">Default${st.defaultModel ? ` (${esc(st.defaultModel)})` : ''}</option>`
+        + group('Configured', models.filter((m) => m.configured))
+        + group("In the provider's list", models.filter((m) => !m.configured).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })));
+    }
+
+    // Like the Chat tab: one pill per provider that can make images (tick box
+    // and model picker), and below them a settings row for each ticked one
+    // (that image API's settings). Providers without an image API aren't listed.
+    function renderImgProviders() {
+      imgProvidersEl.innerHTML = '<span class="muted" style="font-size:0.95rem;">Providers:</span>';
+      imgSettingsEl.innerHTML = '';
+      imgUsable().forEach((p, pi) => {
+        const st = imgState[p.name];
+        const pill = document.createElement('div');
+        pill.className = 'provider-pill';
+        pill.dataset.provider = p.name;
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.id = `imgProv${pi}`;
+        cb.className = 'img-prov-check';
+        cb.value = p.name;
+        cb.checked = !!st.checked;
+        cb.addEventListener('change', () => {
+          st.checked = cb.checked;
+          renderImgProviders();
+          if (st.checked && !st.options) loadImgOptions(p.name);
+        });
+        const lbl = document.createElement('label');
+        lbl.htmlFor = cb.id;
+        lbl.style.margin = '0';
+        lbl.style.cursor = 'pointer';
+        lbl.textContent = p.name;
+        const sel = document.createElement('select');
+        sel.className = 'img-prov-model';
+        sel.setAttribute('aria-label', `${p.name} model`);
+        sel.innerHTML = imgModelOptions(st);
+        sel.value = st.model;
+        if (sel.value !== st.model) st.model = '';
+        sel.addEventListener('change', () => {
+          st.model = sel.value;
+          st.options = null;
+          st.error = '';
+          loadImgOptions(p.name);
+        });
+        pill.append(cb, lbl, sel);
+        imgProvidersEl.appendChild(pill);
+
+        if (!st.checked) return;
+        const row = document.createElement('div');
+        row.className = 'respond-controls';
+        row.dataset.provider = p.name;
+        const who = document.createElement('span');
+        who.className = 'img-settings-provider';
+        who.textContent = p.name;
+        row.appendChild(who);
+        const opts = st.options || [];
+        opts.forEach((o, i) => row.appendChild(renderImgOption(pi, i, st, o)));
+        if (st.options && !opts.length && !st.error) {
+          row.insertAdjacentHTML('beforeend', '<span class="muted">no settings</span>');
+        }
+        const err = document.createElement('div');
+        err.className = 'img-prov-error';
+        err.textContent = st.error || '';
+        row.appendChild(err);
+        imgSettingsEl.appendChild(row);
+      });
+      imgUpdateGenerateBtn();
+    }
+
+    async function loadImgModels(provider) {
+      const st = imgState[provider];
+      try {
+        const data = await api(`/api/images/models?provider=${encodeURIComponent(provider)}`, { method: 'GET' });
+        st.models = data.models || [];
+        if (data.default_model) st.defaultModel = data.default_model;
+      } catch (err) {
+        st.models = [];
+        st.error = err.message;
+      }
+      renderImgProviders();
+      if (st.checked) await loadImgOptions(provider);
+    }
+
+    async function loadImgOptions(provider) {
+      const st = imgState[provider];
+      const seq = ++st.seq;
+      try {
+        const q = `provider=${encodeURIComponent(provider)}${st.model ? `&model=${encodeURIComponent(st.model)}` : ''}`;
+        const data = await api(`/api/images/options?${q}`, { method: 'GET' });
+        if (seq !== st.seq) return;
+        st.options = (data.options || []).filter((o) => !IMG_HIDDEN_OPTIONS.has(o.path));
+        st.error = '';
+      } catch (err) {
+        if (seq !== st.seq) return;
+        st.options = [];
+        st.error = err.message;
+      }
+      renderImgProviders();
+    }
+
+    function imgOptionLabel(o) {
+      const key = o.path.split('.').pop();
+      return IMG_OPTION_LABELS[key] || (key.charAt(0).toUpperCase() + key.slice(1)).replace(/_/g, ' ');
+    }
+
+    // One setting as a compact "Label [input]" pair; blank uses the
+    // provider's default.
+    function renderImgOption(pi, i, st, o) {
+      const id = `imgOpt${pi}_${i}`;
+      const lbl = document.createElement('label');
+      lbl.className = 'img-opt';
+      lbl.htmlFor = id;
+      lbl.textContent = imgOptionLabel(o);
+      if (o.description) lbl.setAttribute('data-tip', `${o.description} Leave it blank for the provider's default.`);
+      let input;
+      const choices = Array.isArray(o.enum) ? o.enum : o.type === 'boolean' ? [true, false] : null;
+      if (choices) {
+        input = document.createElement('select');
+        input.innerHTML = '<option value="">default</option>'
+          + choices.map((c) => `<option value="${esc(JSON.stringify(c))}">${esc(c === true ? 'yes' : c === false ? 'no' : c)}</option>`).join('');
+        const v = st.values[o.path];
+        input.value = v === undefined ? '' : JSON.stringify(v);
+      } else {
+        input = document.createElement('input');
+        const numeric = o.type === 'integer' || o.type === 'number';
+        input.type = numeric ? 'number' : 'text';
+        if (o.type === 'integer') { input.step = '1'; input.min = '1'; }
+        input.placeholder = o.default != null ? String(o.default) : 'default';
+        input.value = st.values[o.path] ?? '';
+      }
+      input.id = id;
+      const save = () => {
+        const value = imgReadOption(o, input);
+        if (value === undefined || (typeof value === 'number' && Number.isNaN(value))) delete st.values[o.path];
+        else st.values[o.path] = value;
+      };
+      input.addEventListener('input', save);
+      input.addEventListener('change', save);
+      lbl.appendChild(input);
+      return lbl;
+    }
+
+    // The typed value of one setting's input (undefined when left blank).
+    function imgReadOption(o, input) {
+      const raw = input.value.trim();
+      if (raw === '') return undefined;
+      if (input.tagName === 'SELECT') return JSON.parse(raw);
+      if (o.type === 'integer') return Math.trunc(Number(raw));
+      if (o.type === 'number') return Number(raw);
+      return raw;
+    }
+
+    // The settings to send to one provider: only those its current API has.
+    function imgCollectOptions(provider) {
+      const st = imgState[provider];
+      const out = {};
+      (st.options || []).forEach((o) => {
+        if (st.values[o.path] !== undefined) out[o.path] = st.values[o.path];
+      });
+      return out;
+    }
+
+    function renderImgGallery() {
+      if (!imgResults.length) {
+        imgGalleryEl.innerHTML = '<div class="muted">Images you generate show up here, newest first. Each one is also saved to the folder above.</div>';
+        return;
+      }
+      const cards = [];
+      imgResults.forEach((r, ri) => {
+        const meta = `${esc(r.provider)} · ${esc(r.model || 'default model')}`;
+        if (r.status === 'pending') {
+          const secs = Math.floor((Date.now() - r.started) / 1000);
+          cards.push(`<figure class="img-card pending"><div class="img-thumb">Generating… ${secs}s</div>
+            <figcaption><div class="img-caption">${esc(r.prompt)}</div><div class="img-meta">${meta}</div></figcaption></figure>`);
+          return;
+        }
+        if (r.status === 'failed') {
+          cards.push(`<figure class="img-card failed"><div class="img-thumb">${esc(r.error)}</div>
+            <figcaption><div class="img-caption">${esc(r.prompt)}</div><div class="img-meta">${meta}</div>
+            <div class="img-actions"><button type="button" class="btn-icon img-retry" data-r="${ri}" data-tip="Put this prompt and provider back in the form to try again">&#8634;</button></div></figcaption></figure>`);
+          return;
+        }
+        r.images.forEach((img, ii) => {
+          const name = img.path.split(/[\\/]/).pop();
+          const notes = (r.warnings || []).map((w) => `<div class="img-note">${esc(w)}</div>`).join('');
+          cards.push(`<figure class="img-card">
+            <button type="button" class="img-thumb img-open" data-r="${ri}" data-i="${ii}" data-tip="View larger"><img class="img-thumb" src="${img.data_url || ''}" alt="${esc(r.prompt)}"></button>
+            <figcaption>
+              <div class="img-caption" ${img.revised_prompt ? `data-tip="Revised prompt: ${esc(img.revised_prompt)}"` : ''}>${esc(r.prompt)}</div>
+              <div class="img-meta">${meta} · ${esc(name)}</div>${notes}
+              <div class="img-actions">
+                <button type="button" class="btn-icon img-reveal" data-path="${esc(img.path)}" data-tip="Show this file in ${FILE_MANAGER}">&#128193;</button>
+                <button type="button" class="btn-icon img-copy" data-path="${esc(img.path)}" data-tip="Copy this file's path">&#10697;</button>
+                <button type="button" class="btn-icon img-retry" data-r="${ri}" data-tip="Put this prompt, provider and model back in the form">&#8634;</button>
+              </div>
+            </figcaption></figure>`);
+        });
+      });
+      imgGalleryEl.innerHTML = cards.join('');
+    }
+
+    function openImgViewer(r, img) {
+      const dlg = document.createElement('dialog');
+      dlg.className = 'img-viewer';
+      dlg.innerHTML = `<img src="${img.data_url}" alt="${esc(r.prompt)}">
+        <div class="img-viewer-bar">
+          <div class="grow">${esc(img.revised_prompt || r.prompt)}<div class="muted">${esc(r.provider)} · ${esc(r.model || '')} · ${esc(img.path)}</div></div>
+          <button type="button" class="btn btn-ghost img-reveal" data-path="${esc(img.path)}">Show in ${FILE_MANAGER}</button>
+          <button type="button" class="btn btn-primary img-viewer-close">Close</button>
+        </div>`;
+      dlg.addEventListener('close', () => dlg.remove());
+      dlg.addEventListener('click', (e) => {
+        if (e.target === dlg || e.target.closest('.img-viewer-close')) dlg.close();
+        const reveal = e.target.closest('.img-reveal');
+        if (reveal) revealImage(reveal.dataset.path);
+      });
+      document.body.appendChild(dlg);
+      dlg.showModal();
+    }
+
+    async function revealImage(path) {
+      try {
+        await api('/api/images/reveal', { method: 'POST', body: JSON.stringify(path ? { path } : {}) });
+        setStatus(path ? `Showing ${path.split(/[\\/]/).pop()} in ${FILE_MANAGER}.` : `Opened the images folder in ${FILE_MANAGER}.`);
+      } catch (err) {
+        imgSetStatus(err.message, 'error');
+      }
+    }
+
+    // One request per ticked provider, all at once; each gets its own result
+    // card as soon as it answers.
+    async function generateImages() {
+      const prompt = imgPromptEl.value.trim();
+      if (!prompt) { imgSetStatus('Write a prompt first.', 'error'); imgPromptEl.focus(); return; }
+      const providers = imgChecked();
+      if (!providers.length) { imgSetStatus('Tick at least one provider.', 'error'); return; }
+      const started = Date.now();
+      const entries = providers.map((provider) => ({ status: 'pending', prompt, provider, model: imgState[provider].model, started }));
+      imgResults.unshift(...entries);
+      imgBusy = true;
+      imgUpdateGenerateBtn();
+      imgGenerateBtn.textContent = 'Generating...';
+      setStatus(`Generating images with ${providers.join(', ')}...`, 'busy');
+      renderImgGallery();
+      const ticker = setInterval(() => { if (entries.some((e) => e.status === 'pending')) renderImgGallery(); }, 1000);
+      await Promise.all(entries.map(async (entry) => {
+        try {
+          const data = await api('/api/images/generate', {
+            method: 'POST',
+            body: JSON.stringify({ provider: entry.provider, model: entry.model, prompt, options: imgCollectOptions(entry.provider) }),
+          });
+          Object.assign(entry, { status: 'done', model: data.model, images: data.images || [], warnings: data.warnings || [] });
+        } catch (err) {
+          Object.assign(entry, { status: 'failed', error: err.message });
+        }
+        renderImgGallery();
+      }));
+      clearInterval(ticker);
+      imgBusy = false;
+      imgGenerateBtn.textContent = 'Generate Images';
+      imgUpdateGenerateBtn();
+      const saved = entries.reduce((n, e) => n + (e.images ? e.images.length : 0), 0);
+      const failed = entries.filter((e) => e.status === 'failed');
+      const ok = entries.filter((e) => e.status === 'done').map((e) => e.provider);
+      const msg = `Saved ${saved} image${saved === 1 ? '' : 's'} from ${ok.join(', ')}`;
+      if (failed.length) {
+        const which = failed.map((e) => e.provider).join(', ');
+        if (failed.length === entries.length) setStatus(failed.length === 1 ? `${failed[0].provider}: ${failed[0].error}` : `Image generation failed for ${which} (see the cards).`, 'error');
+        else setStatus(`${msg}; ${which} failed (see ${failed.length === 1 ? 'its card' : 'their cards'}).`, 'warn');
+      } else {
+        setStatus(`${msg}.`, 'success');
+      }
+      renderImgGallery();
+    }
+
+    imgGenerateBtn.addEventListener('click', generateImages);
+    const imgEditor = attachPromptEditor({
+      textarea: imgPromptEl,
+      select: imgPromptSelectEl,
+      loadBtn: document.getElementById('imgLoadPromptBtn'),
+      saveBtn: document.getElementById('imgSavePromptBtn'),
+      setMsg: setStatus,
+      onTextChange: () => imgUpdateGenerateBtn(),
+    });
+    imgPromptEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !imgGenerateBtn.disabled) { e.preventDefault(); generateImages(); }
+    });
+    document.getElementById('imgClearBtn').addEventListener('click', () => {
+      imgResults = imgResults.filter((r) => r.status === 'pending');
+      renderImgGallery();
+    });
+    document.getElementById('imgDirOpenBtn').addEventListener('click', () => revealImage(null));
+    document.getElementById('imgDirChangeBtn').addEventListener('click', async () => {
+      const saved = await openDialog({
+        title: 'Images folder',
+        okLabel: 'Save',
+        body: `<label for="imgDirInput" style="margin-top:0;">Save generated images to</label>
+          <input id="imgDirInput" type="text" value="${esc(imgDirEl.textContent)}">
+          <p class="hint">A path on this computer; <code>~</code> is your home folder. Leave it blank for the default, <code>~/Pictures/Lexi</code>. The folder is created when the first image is saved.</p>`,
+        onOk: async (dlg) => {
+          const dir = dlg.querySelector('#imgDirInput').value.trim();
+          await api('/api/config', { method: 'POST', body: JSON.stringify({ images_dir: dir }) });
+          setStatus(dir ? `Images will be saved to ${dir}.` : 'Images will be saved to the default folder, ~/Pictures/Lexi.', 'success');
+          return true;
+        },
+      });
+      if (saved) refreshImagesTab();
+    });
+    imgGalleryEl.addEventListener('click', (e) => {
+      const open = e.target.closest('.img-open');
+      if (open) { const r = imgResults[+open.dataset.r]; openImgViewer(r, r.images[+open.dataset.i]); return; }
+      const reveal = e.target.closest('.img-reveal');
+      if (reveal) { revealImage(reveal.dataset.path); return; }
+      const copy = e.target.closest('.img-copy');
+      if (copy) {
+        navigator.clipboard.writeText(copy.dataset.path)
+          .then(() => setStatus(`Copied ${copy.dataset.path}`, 'success'))
+          .catch(() => imgSetStatus(copy.dataset.path));
+        return;
+      }
+      const retry = e.target.closest('.img-retry');
+      if (retry) {
+        // Make the form match that result: its prompt, and only its provider
+        // ticked, with the model it used.
+        const r = imgResults[+retry.dataset.r];
+        imgPromptEl.value = r.prompt;
+        imgEditor.refresh();
+        if (imgUsable().some((p) => p.name === r.provider)) {
+          imgUsable().forEach((p) => { imgState[p.name].checked = p.name === r.provider; });
+          const st = imgState[r.provider];
+          const known = (st.models || []).some((m) => m.id === r.model);
+          const model = known && r.model !== st.defaultModel ? r.model : '';
+          if (st.model !== model || !st.options) { st.model = model; st.options = null; loadImgOptions(r.provider); }
+          renderImgProviders();
+        }
+        imgUpdateGenerateBtn();
+        imgPromptEl.focus();
+      }
+    });
+    renderImgGallery();
+
+    // --- Theme Engine ---
+    // Themes are defined in themes.json in the Lexi home (copied from the
+    // shipped lexi-desktop/themes.json on first use); the choice is `theme` in
+    // config.json. GET /api/themes returns both, resolving a missing or
+    // unknown choice to the default theme.
+    let THEMES = {};          // id → {name, scheme, vars, background, swatch}
+    let THEME_ORDER = [];
+    let THEME_VARS = [];      // every variable some theme sets
+    let themesPath = '';
+    let currentTheme = '';
+
+    async function loadThemes() {
+      try {
+        const data = await api('/api/themes', { method: 'GET' });
+        THEMES = {};
+        THEME_ORDER = [];
+        (data.themes || []).forEach((t) => {
+          if (!t || typeof t.id !== 'string' || !t.vars || typeof t.vars !== 'object') return;
+          THEMES[t.id] = t;
+          THEME_ORDER.push(t.id);
+        });
+        THEME_VARS = [...new Set(Object.values(THEMES).flatMap((t) => Object.keys(t.vars)))];
+        themesPath = data.path || '';
+        if (data.selected && THEMES[data.selected]) applyTheme(data.selected);
+        if (data.warning) setStatus(data.warning, 'warn');
+      } catch (err) {
+        setStatus(`Couldn't load the themes: ${err.message}`, 'error');
+      }
+      renderThemeGrid();
+    }
 
     function applyTheme(id) {
       const theme = THEMES[id];
       if (!theme) return;
       currentTheme = id;
       const root = document.documentElement;
-      Object.entries(theme.vars).forEach(([k, v]) => root.style.setProperty(k, v));
+      THEME_VARS.forEach((k) => { if (!(k in theme.vars)) root.style.removeProperty(k); });
+      // Only CSS custom properties: the file can't set arbitrary styles.
+      Object.entries(theme.vars).forEach(([k, v]) => { if (k.startsWith('--')) root.style.setProperty(k, String(v)); });
       root.dataset.theme = id;
-      root.style.background = theme.gradient;
+      root.dataset.scheme = theme.scheme === 'light' ? 'light' : 'dark';
+      root.style.background = theme.background || theme.vars['--bg'] || '';
       document.querySelectorAll('.theme-card').forEach((card) => {
         card.classList.toggle('selected', card.dataset.theme === id);
       });
@@ -4096,22 +4781,32 @@
     function renderThemeGrid() {
       const grid = document.getElementById('themeGrid');
       grid.innerHTML = '';
-      Object.entries(THEMES).forEach(([id, theme]) => {
+      THEME_ORDER.forEach((id) => {
+        const theme = THEMES[id];
+        const name = theme.name || id;
         const card = document.createElement('div');
         card.className = 'theme-card' + (id === currentTheme ? ' selected' : '');
         card.dataset.theme = id;
-        card.setAttribute('data-tip', `Use the ${theme.name} theme`);
-        card.innerHTML = `<div class="theme-swatch" style="background:${theme.swatch};"></div><div class="theme-label">${theme.name}</div>`;
+        card.setAttribute('data-tip', `Use the ${name} theme`);
+        const swatch = document.createElement('div');
+        swatch.className = 'theme-swatch';
+        swatch.style.background = theme.swatch || theme.vars['--accent'] || '';
+        const label = document.createElement('div');
+        label.className = 'theme-label';
+        label.textContent = name;
+        card.append(swatch, label);
         card.addEventListener('click', () => {
           applyTheme(id);
-          fetch('/api/config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ theme: id }),
-          }).catch(() => {});
+          api('/api/config', { method: 'POST', body: JSON.stringify({ theme: id }) })
+            .then(() => setStatus(`Theme set to ${name}.`, 'success'))
+            .catch((err) => setStatus(`Couldn't save the theme: ${err.message}`, 'error'));
         });
         grid.appendChild(card);
       });
+      const hint = document.getElementById('themeFileHint');
+      if (hint) hint.innerHTML = themesPath
+        ? `Themes are defined in <code>${escapeHtml(themesPath)}</code>: edit it to change a theme or add your own. Your choice is remembered between runs.`
+        : '';
     }
 
     // --- Config Form ---
@@ -4121,7 +4816,6 @@
     const cfgEditModeEl = document.getElementById('cfgEditMode');
     const cfgSaveBtn = document.getElementById('cfgSaveBtn');
     const cfgResetBtn = document.getElementById('cfgResetBtn');
-    const cfgFeedbackEl = document.getElementById('cfgFeedback');
 
     const CONFIG_DEFAULTS = {
       cli_name: 'lexi',
@@ -4141,18 +4835,12 @@
       try {
         const data = await api('/api/config', { method: 'GET' });
         populateConfigForm(data);
-        if (data.theme && THEMES[data.theme]) {
-          applyTheme(data.theme);
-        }
-        renderThemeGrid();
       } catch {
         populateConfigForm(CONFIG_DEFAULTS);
-        renderThemeGrid();
       }
     }
 
     cfgSaveBtn.addEventListener('click', async () => {
-      cfgFeedbackEl.textContent = '';
       try {
         const payload = {
           cli_name: cfgCliNameEl.value.trim() || CONFIG_DEFAULTS.cli_name,
@@ -4164,27 +4852,22 @@
           method: 'POST',
           body: JSON.stringify(payload),
         });
-        cfgFeedbackEl.textContent = 'Configuration saved.';
-        cfgFeedbackEl.style.color = 'var(--success)';
+        setStatus('Saved the CLI configuration.', 'success');
       } catch (err) {
-        cfgFeedbackEl.textContent = err.message;
-        cfgFeedbackEl.style.color = 'var(--danger)';
+        setStatus(err.message, 'error');
       }
     });
 
     cfgResetBtn.addEventListener('click', async () => {
-      cfgFeedbackEl.textContent = '';
       try {
         await api('/api/config', {
           method: 'POST',
           body: JSON.stringify({ ...CONFIG_DEFAULTS }),
         });
         populateConfigForm(CONFIG_DEFAULTS);
-        cfgFeedbackEl.textContent = 'Reset to defaults.';
-        cfgFeedbackEl.style.color = 'var(--success)';
+        setStatus('Reset the CLI configuration to its defaults.', 'success');
       } catch (err) {
-        cfgFeedbackEl.textContent = err.message;
-        cfgFeedbackEl.style.color = 'var(--danger)';
+        setStatus(err.message, 'error');
       }
     });
 
@@ -4193,7 +4876,6 @@
     const apiDetailPlaceholder = document.getElementById('apiDetailPlaceholder');
     const apiDetailContent = document.getElementById('apiDetailContent');
     const apiCreateFormContainer = document.getElementById('apiCreateFormContainer');
-    const apisFeedbackEl = document.getElementById('apisFeedback');
     const apiNewBtn = document.getElementById('apiNewBtn');
     const apiCloneBtn = document.getElementById('apiCloneBtn');
 
@@ -4202,9 +4884,7 @@
     let apisProvidersMap = {}; // api name -> [provider names]
 
     function showApiFeedback(msg, tone = 'muted') {
-      apisFeedbackEl.textContent = msg;
-      apisFeedbackEl.style.color = tone === 'success' ? 'var(--success)' : tone === 'danger' ? 'var(--danger)' : 'var(--muted)';
-      if (msg) setTimeout(() => { if (apisFeedbackEl.textContent === msg) apisFeedbackEl.textContent = ''; }, 5000);
+      setStatus(msg, tone === 'danger' ? 'error' : tone);
     }
 
     function showApiView(view) {
@@ -4344,7 +5024,7 @@
           if (result.valid) {
             showApiFeedback(`Saved "${name}".`, 'success');
           } else {
-            showApiFeedback('Saved, but validation warnings: ' + (result.validation || ''), 'danger');
+            showApiFeedback(`Saved "${name}", with validation warnings: ` + (result.validation || ''), 'warn');
           }
           await fetchApiList();
         } catch (err) {
@@ -4570,6 +5250,7 @@
     }
 
     // --- Init ---
+    loadThemes();
     renderProviderSelector();
     fetchProvidersList();
     fetchConfig();
@@ -4594,6 +5275,9 @@
         if (target === 'chat') {
           loadPrompts();
         }
+        if (target === 'images') {
+          refreshImagesTab();
+        }
         if (target === 'providers') {
           setApiKeyRevealed(false);
           fetchProvidersList();
@@ -4607,6 +5291,7 @@
         }
         if (target === 'configure') {
           fetchConfig();
+          loadThemes();   // picks up edits to themes.json
         }
       });
     });
