@@ -1385,8 +1385,6 @@
     }
     .img-prov-name input { width: 16px; height: 16px; margin: 0; }
     .img-prov-head select { flex: 1 1 160px; min-width: 0; width: auto; padding: 6px 8px; font-size: 0.85rem; }
-    .img-prov.off .img-prov-name { cursor: default; color: var(--muted); font-weight: 500; }
-    .img-prov-why { font-size: 0.8rem; color: var(--muted); }
     .img-prov .img-options { margin-top: 4px; }
     .img-prov-error { margin-top: 6px; font-size: 0.85rem; color: var(--danger); }
     .img-prov-error:empty { display: none; }
@@ -2228,6 +2226,7 @@
     }
     setApiKeyRevealed(false);
     let PROVIDERS = [];
+    let CHAT_PROVIDERS = [];  // the providers that can chat (the Chat tab lists only these)
     let providerConfigured = {};
     const cliLogEl = document.getElementById('cliLog');
     const toggleCliLogBtn = document.getElementById('toggleCliLog');
@@ -2252,7 +2251,10 @@
 
     function renderProviderSelector() {
       providerListEl.innerHTML = '<span class="muted" style="font-size:0.95rem;">Providers:</span>';
-      PROVIDERS.forEach((name, idx) => {
+      if (!CHAT_PROVIDERS.length) {
+        providerListEl.insertAdjacentHTML('beforeend', '<span class="muted" style="font-size:0.9rem;">none of your providers has a chat model</span>');
+      }
+      CHAT_PROVIDERS.forEach((name, idx) => {
         const id = `provider-${idx}`;
         const pill = document.createElement('div');
         pill.className = 'provider-pill';
@@ -2375,7 +2377,7 @@
 
     function getSelectedModels() {
       const models = {};
-      PROVIDERS.forEach((name) => {
+      CHAT_PROVIDERS.forEach((name) => {
         const sel = document.getElementById(`provider-model-${name}`);
         if (sel && sel.value) models[name] = sel.value;
       });
@@ -2436,6 +2438,7 @@
         if (names.length) {
           PROVIDERS = names;
         }
+        CHAT_PROVIDERS = (data.providers || []).filter((p) => p.chat !== false).map((p) => p.name);
         providerModelCache = {};
         (data.providers || []).forEach((p) => {
           providerConfigured[p.name] = p.configured !== false;
@@ -4298,15 +4301,15 @@
         + group("In the provider's list", models.filter((m) => !m.configured).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })));
     }
 
-    // One block per provider: tick box and model picker, plus that API's
-    // settings while it is ticked. Providers without an image API are shown
-    // greyed out, with the reason on hover.
+    // One block per provider that can make images: tick box and model
+    // picker, plus that API's settings while it is ticked. Providers without
+    // an image API aren't listed.
     function renderImgProviders() {
       imgProvidersEl.innerHTML = '';
-      imgProviders.forEach((p, pi) => {
+      imgUsable().forEach((p, pi) => {
         const st = imgState[p.name];
         const box = document.createElement('div');
-        box.className = `img-prov ${p.images ? (st.checked ? 'on' : '') : 'off'}`;
+        box.className = `img-prov${st.checked ? ' on' : ''}`;
         box.dataset.provider = p.name;
         const head = document.createElement('div');
         head.className = 'img-prov-head';
@@ -4316,39 +4319,30 @@
         cb.type = 'checkbox';
         cb.className = 'img-prov-check';
         cb.checked = !!st.checked;
-        cb.disabled = !p.images;
         name.append(cb, document.createTextNode(p.name));
+        name.setAttribute('data-tip', `Send the prompt to ${p.name}`);
         head.appendChild(name);
-        if (p.images) {
-          name.setAttribute('data-tip', `Send the prompt to ${p.name}`);
-          cb.addEventListener('change', () => {
-            st.checked = cb.checked;
-            renderImgProviders();
-            if (st.checked && !st.options) loadImgOptions(p.name);
-            imgUpdateGenerateBtn();
-          });
-          const sel = document.createElement('select');
-          sel.className = 'img-prov-model';
-          sel.setAttribute('aria-label', `${p.name} model`);
-          sel.innerHTML = imgModelOptions(st);
-          sel.value = st.model;
-          if (sel.value !== st.model) st.model = '';
-          sel.addEventListener('change', () => {
-            st.model = sel.value;
-            st.options = null;
-            st.error = '';
-            loadImgOptions(p.name);
-          });
-          head.appendChild(sel);
-        } else {
-          const why = document.createElement('span');
-          why.className = 'img-prov-why';
-          why.textContent = 'no image API';
-          why.setAttribute('data-tip', p.reason || `${p.name} has no image API`);
-          head.appendChild(why);
-        }
+        cb.addEventListener('change', () => {
+          st.checked = cb.checked;
+          renderImgProviders();
+          if (st.checked && !st.options) loadImgOptions(p.name);
+          imgUpdateGenerateBtn();
+        });
+        const sel = document.createElement('select');
+        sel.className = 'img-prov-model';
+        sel.setAttribute('aria-label', `${p.name} model`);
+        sel.innerHTML = imgModelOptions(st);
+        sel.value = st.model;
+        if (sel.value !== st.model) st.model = '';
+        sel.addEventListener('change', () => {
+          st.model = sel.value;
+          st.options = null;
+          st.error = '';
+          loadImgOptions(p.name);
+        });
+        head.appendChild(sel);
         box.appendChild(head);
-        if (p.images && st.checked) {
+        if (st.checked) {
           const opts = (st.options || []);
           if (opts.length) box.appendChild(renderImgOptions(p.name, pi, st, opts));
           const err = document.createElement('div');

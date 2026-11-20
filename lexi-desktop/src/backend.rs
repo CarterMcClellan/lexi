@@ -89,6 +89,10 @@ fn providers() -> Result<Value, String> {
             .unwrap_or(false);
         let has_key = has_key_meta || home.join("providers").join(name).join("api-key").exists();
         let configured = !url.is_empty() && has_key && !default_model.is_empty();
+        // Whether it can chat: a binding that produces text, serving a chat
+        // model by default. The Chat tab lists only these providers.
+        let chat = lexi_host::resolve_model(name, None, Some("text"))
+            .is_ok_and(|r| r.kind.as_deref().is_none_or(|k| k == "chat"));
 
         out.push(json!({
             "name": name,
@@ -99,6 +103,7 @@ fn providers() -> Result<Value, String> {
             "api": api,
             "api_key": if has_key { "[set]" } else { "[missing]" },
             "configured": configured,
+            "chat": chat,
             "source": "providers-config.yaml",
         }));
     }
@@ -976,6 +981,16 @@ mod tests {
         assert_eq!(mock["images"], true);
         assert_eq!(mock["default_model"], "img-model");
         assert_eq!(providers["images_dir"], out.display().to_string());
+
+        // A provider with only an image API is left out of the Chat tab.
+        let all = super::handle("GET", "/api/providers", None).await.unwrap();
+        let mock = all["providers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["name"] == "mockimg")
+            .unwrap();
+        assert_eq!(mock["chat"], false);
 
         let opts = super::handle("GET", "/api/images/options?provider=mockimg", None)
             .await
