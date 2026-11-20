@@ -2001,12 +2001,15 @@
       <div class="chat-prompt-section" id="imgPromptSection">
         <label for="imgPrompt">Prompt</label>
         <textarea id="imgPrompt" placeholder="Describe the image you want"></textarea>
-        <div class="inline-field" style="align-items: center;">
+        <div class="inline-field" style="justify-content: space-between; align-items: center;">
           <div style="display:flex; align-items:center; gap:8px;">
             <button class="btn btn-ghost" id="imgLoadPromptBtn" type="button" data-tip="Put the selected saved prompt's text in the box above">Load Prompt</button>
             <select id="imgPromptSelect" aria-label="Saved prompt" style="width:auto; min-width:180px; max-width:300px;">
               <option value="">-- select prompt --</option>
             </select>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button class="btn btn-ghost" id="imgSavePromptBtn" type="button" data-tip="Save this prompt text as a named prompt">Save</button>
           </div>
         </div>
       </div>
@@ -4535,7 +4538,51 @@
     }
 
     imgGenerateBtn.addEventListener('click', generateImages);
-    imgPromptEl.addEventListener('input', imgUpdateGenerateBtn);
+    const imgSavePromptBtn = document.getElementById('imgSavePromptBtn');
+    // Like Chat's Save: highlighted while the box has text.
+    function imgUpdateSaveBtn() {
+      const has = imgPromptEl.value.trim().length > 0;
+      imgSavePromptBtn.classList.toggle('btn-primary', has);
+      imgSavePromptBtn.classList.toggle('btn-ghost', !has);
+    }
+    imgPromptEl.addEventListener('input', () => { imgUpdateGenerateBtn(); imgUpdateSaveBtn(); });
+    imgSavePromptBtn.addEventListener('click', async () => {
+      const prompt = imgPromptEl.value.trim();
+      if (!prompt) { imgSetStatus('Write a prompt first.', 'error'); imgPromptEl.focus(); return; }
+      const saved = await openDialog({
+        title: 'Save prompt',
+        okLabel: 'Save',
+        body: `<label for="imgSaveName" style="margin-top:0;">Name</label>
+          <input id="imgSaveName" type="text" autocomplete="off" spellcheck="false">
+          <p class="hint" id="imgSaveHint">Saved prompts can be loaded here, in Chat, or with <code>lexi respond --prompt NAME</code>.</p>`,
+        onOpen: (dlg) => {
+          const input = dlg.querySelector('#imgSaveName');
+          const hint = dlg.querySelector('#imgSaveHint');
+          const ok = dlg.querySelector('.dlg-ok');
+          const base = hint.innerHTML;
+          input.addEventListener('input', () => {
+            const taken = imgPrompts.some((x) => x.name === input.value.trim());
+            ok.textContent = taken ? 'Replace' : 'Save';
+            hint.innerHTML = taken ? `A saved prompt named <strong>${esc(input.value.trim())}</strong> already exists; saving replaces it.` : base;
+          });
+        },
+        onOk: async (dlg) => {
+          const name = dlg.querySelector('#imgSaveName').value.trim();
+          if (!name) throw new Error('Give the prompt a name.');
+          const data = await api('/api/prompts', { method: 'POST', body: JSON.stringify({ name, prompt }) });
+          return { name, prompts: data.prompts || [] };
+        },
+      });
+      if (!saved) return;
+      // Keep every prompt list in step: this tab's, Chat's and the Prompts tab.
+      imgPrompts = saved.prompts;
+      renderImgPromptSelect();
+      imgPromptSelectEl.value = saved.name;
+      renderPrompts(saved.prompts);
+      populateChatPromptSelect(saved.prompts);
+      imgSavePromptBtn.classList.replace('btn-primary', 'btn-ghost');
+      imgSetStatus(`Saved the prompt as "${saved.name}".`);
+    });
     imgPromptEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !imgGenerateBtn.disabled) { e.preventDefault(); generateImages(); }
     });
