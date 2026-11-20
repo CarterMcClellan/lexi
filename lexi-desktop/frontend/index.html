@@ -59,7 +59,7 @@
     }
     header h1.brand { margin: 0; font-size: 1rem; font-weight: 400; line-height: normal; }
     /* The logo mark is as tall as three lines of the header's text. Its
-       background is transparent; the light theme puts it on a dark badge,
+       background is transparent; light themes put it on a dark badge,
        since its glow is drawn for a dark background. */
     .brand-logo {
       display: block;
@@ -69,7 +69,7 @@
       user-select: none;
       -webkit-user-drag: none;
     }
-    :root[data-theme="light"] .brand-logo {
+    :root[data-scheme="light"] .brand-logo {
       background: #00060f;
       border-radius: 12px;
     }
@@ -312,7 +312,7 @@
     .btn-primary {
       background: linear-gradient(135deg, var(--accent), var(--accent-2));
       color: #0b1020;
-      box-shadow: 0 12px 30px rgba(124, 58, 237, 0.3);
+      box-shadow: 0 12px 30px color-mix(in srgb, var(--accent) 30%, transparent);
     }
     .btn-ghost {
       background: transparent;
@@ -448,6 +448,9 @@
       color: var(--success);
       border-color: var(--success);
     }
+    /* Headings and labels in the open tab inherit this; a theme can set
+       --heading (the NVIDIA themes use their brand green). */
+    .content.active { color: var(--heading, var(--success)); }
     .muted {
       color: var(--muted);
       font-size: 0.95rem;
@@ -595,7 +598,7 @@
     }
     .respond-tool-pill.selected {
       border-color: var(--accent);
-      background: linear-gradient(135deg, rgba(124, 58, 237, 0.15), rgba(6, 182, 212, 0.10));
+      background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 15%, transparent), color-mix(in srgb, var(--accent-2) 10%, transparent));
     }
     .respond-tool-providers {
       color: var(--muted);
@@ -660,7 +663,7 @@
       padding: 0.2em 12px;
       border-left: 3px solid var(--accent);
       color: var(--muted);
-      background: rgba(124, 58, 237, 0.06);
+      background: color-mix(in srgb, var(--accent) 6%, transparent);
     }
     .markdown-body table {
       border-collapse: collapse;
@@ -774,7 +777,7 @@
       border-radius: 999px;
       font-size: 0.8rem;
       font-weight: 700;
-      background: rgba(34, 197, 94, 0.15);
+      background: color-mix(in srgb, var(--success) 15%, transparent);
       color: var(--success);
       border: 1px solid var(--success);
     }
@@ -865,7 +868,7 @@
     }
     .theme-card.selected {
       border-color: var(--accent);
-      box-shadow: 0 0 12px rgba(124, 58, 237, 0.4);
+      box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 40%, transparent);
     }
     .theme-swatch {
       height: 48px;
@@ -907,7 +910,7 @@
       padding: 2px 8px;
       border-radius: 999px;
       font-size: 0.7rem;
-      background: rgba(34, 197, 94, 0.1);
+      background: color-mix(in srgb, var(--success) 10%, transparent);
       color: var(--success);
       border: 1px solid var(--success);
       margin-left: 6px;
@@ -918,7 +921,7 @@
       padding: 2px 8px;
       border-radius: 999px;
       font-size: 0.7rem;
-      background: rgba(124, 58, 237, 0.1);
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
       color: var(--accent);
       border: 1px solid var(--accent);
       margin: 1px 2px;
@@ -1106,7 +1109,7 @@
       padding: 2px 8px;
       border-radius: 999px;
       font-size: 0.75rem;
-      background: rgba(34, 197, 94, 0.1);
+      background: color-mix(in srgb, var(--success) 10%, transparent);
       color: var(--success);
       border: 1px solid var(--success);
     }
@@ -1138,7 +1141,7 @@
       border-radius: 999px;
       border: 1px solid var(--accent);
       color: var(--text);
-      background: rgba(124, 58, 237, 0.12);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
     }
     .dt-chip button {
       background: none;
@@ -1561,10 +1564,10 @@
       transition: background 120ms ease;
     }
     .api-list-item:hover {
-      background: rgba(124, 58, 237, 0.08);
+      background: color-mix(in srgb, var(--accent) 8%, transparent);
     }
     .api-list-item.selected {
-      background: rgba(124, 58, 237, 0.15);
+      background: color-mix(in srgb, var(--accent) 15%, transparent);
       border-left: 3px solid var(--accent);
     }
     .api-list-item .api-item-name {
@@ -1659,7 +1662,7 @@
       padding: 2px 10px;
       border-radius: 999px;
       font-size: 0.8rem;
-      background: rgba(6, 182, 212, 0.1);
+      background: color-mix(in srgb, var(--accent-2) 10%, transparent);
       color: var(--accent-2);
       border: 1px solid var(--accent-2);
       margin: 2px 4px 2px 0;
@@ -1694,7 +1697,7 @@
       font-size: 0.85rem;
     }
     .api-status-bar.valid {
-      background: rgba(34, 197, 94, 0.12);
+      background: color-mix(in srgb, var(--success) 12%, transparent);
       color: var(--success);
       border: 1px solid var(--success);
     }
@@ -4780,8 +4783,42 @@
         },
         gradient: 'radial-gradient(circle at 10% 20%, rgba(124, 58, 237, 0.08), transparent 35%), radial-gradient(circle at 90% 10%, rgba(6, 182, 212, 0.08), transparent 30%), #f8fafc',
         swatch: 'linear-gradient(135deg, #f1f5f9, #e2e8f0)',
+        scheme: 'light',
+      },
+      // NVIDIA Elements (github.com/NVIDIA/elements, projects/themes): its
+      // dark and light semantic tokens (layer canvas/container, field, text,
+      // border, brand-green accent), converted from OKLCH. Success, danger and
+      // warning use the shade of each Elements scale that reads as text on
+      // these panels.
+      'nvidia-dark': {
+        name: 'NVIDIA Dark',
+        vars: {
+          '--bg': '#0b0c0f', '--card': '#191a1f', '--input-bg': '#24262d',
+          '--shell-bg': 'rgba(0, 0, 0, 0.92)', '--muted': '#979eb2',
+          '--accent': '#6fa200', '--accent-2': '#7eb600', '--text': '#c6cde2',
+          '--border': '#2f333c', '--success': '#14cc61', '--danger': '#ff465d',
+          '--warning': '#fdd506', '--heading': '#7eb600',
+        },
+        gradient: '#0b0c0f',
+        swatch: 'linear-gradient(135deg, #76b900 0 45%, #191a1f 45%)',
+      },
+      'nvidia-light': {
+        name: 'NVIDIA Light',
+        vars: {
+          '--bg': '#ebeff2', '--card': '#ffffff', '--input-bg': '#f5f9fc',
+          '--shell-bg': 'rgba(255, 255, 255, 0.95)', '--muted': '#696c6f',
+          '--accent': '#6aa700', '--accent-2': '#518200', '--text': '#141619',
+          '--border': '#c1c4c8', '--success': '#287c39', '--danger': '#c82d45',
+          '--warning': '#86700a', '--heading': '#518200',
+        },
+        gradient: '#ebeff2',
+        swatch: 'linear-gradient(135deg, #76b900 0 45%, #ebeff2 45%)',
+        scheme: 'light',
       },
     };
+    // Every variable some theme sets, so a theme change clears the ones the
+    // new theme leaves out (e.g. --warning).
+    const THEME_VARS = [...new Set(Object.values(THEMES).flatMap((t) => Object.keys(t.vars)))];
 
     let currentTheme = 'dark-purple';
 
@@ -4790,8 +4827,10 @@
       if (!theme) return;
       currentTheme = id;
       const root = document.documentElement;
+      THEME_VARS.forEach((k) => { if (!(k in theme.vars)) root.style.removeProperty(k); });
       Object.entries(theme.vars).forEach(([k, v]) => root.style.setProperty(k, v));
       root.dataset.theme = id;
+      root.dataset.scheme = theme.scheme || 'dark';
       root.style.background = theme.gradient;
       document.querySelectorAll('.theme-card').forEach((card) => {
         card.classList.toggle('selected', card.dataset.theme === id);
