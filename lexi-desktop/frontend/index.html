@@ -57,12 +57,14 @@
       font-size: 1.4rem;
       letter-spacing: -0.01em;
     }
-    header h1.brand { line-height: 0; }
-    /* The logo's background is transparent; the light theme puts it on a
-       dark badge, since its wordmark is white. */
+    header h1.brand { margin: 0; font-size: 1rem; font-weight: 400; line-height: normal; }
+    /* The logo mark is as tall as three lines of the header's text. Its
+       background is transparent; the light theme puts it on a dark badge,
+       since its glow is drawn for a dark background. */
     .brand-logo {
       display: block;
-      height: 96px;
+      height: 3.6em;
+      height: 3lh;
       width: auto;
       user-select: none;
       -webkit-user-drag: none;
@@ -1819,7 +1821,7 @@
     <div class="shell">
       <header>
         <h1 class="brand">
-          <img class="brand-logo" src="lexi-logo.png" alt="Lexi — Multi-Provider GenAI Client &amp; Studio" width="227" height="96">
+          <img class="brand-logo" src="lexi-mark.png" alt="Lexi" width="174" height="180">
         </h1>
         <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px; min-width:260px;">
           <div class="status" id="status">Ready</div>
