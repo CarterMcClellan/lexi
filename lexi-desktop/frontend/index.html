@@ -1387,6 +1387,19 @@
       padding: 2px;
     }
     .img-gallery > .muted { grid-column: 1 / -1; }
+    /* Cards keep their full size, so a long list scrolls instead of squashing
+       them. The scrollbar is styled so it stays visible (macOS otherwise hides
+       it until you scroll); it only appears when the results overflow. */
+    .img-gallery { grid-auto-rows: max-content; scrollbar-gutter: auto; }
+    .img-card > * { flex-shrink: 0; }
+    .img-gallery::-webkit-scrollbar { width: 10px; height: 10px; }
+    .img-gallery::-webkit-scrollbar-track { background: transparent; }
+    .img-gallery::-webkit-scrollbar-thumb {
+      background: color-mix(in srgb, var(--muted) 45%, transparent);
+      border-radius: 6px;
+      border: 2px solid var(--card);
+    }
+    .img-gallery::-webkit-scrollbar-thumb:hover { background: var(--muted); }
     .img-card {
       margin: 0;
       display: flex;
