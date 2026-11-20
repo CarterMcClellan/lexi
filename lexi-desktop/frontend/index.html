@@ -57,6 +57,20 @@
       font-size: 1.4rem;
       letter-spacing: -0.01em;
     }
+    header h1.brand { line-height: 0; }
+    /* The logo's background is transparent; the light theme puts it on a
+       dark badge, since its wordmark is white. */
+    .brand-logo {
+      display: block;
+      height: 96px;
+      width: auto;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+    :root[data-theme="light"] .brand-logo {
+      background: #00060f;
+      border-radius: 12px;
+    }
     header p {
       margin: 4px 0 0;
       color: var(--muted);
@@ -1688,10 +1702,9 @@
   <body>
     <div class="shell">
       <header>
-        <div>
-          <h1>Lexi</h1>
-          <p>Multi-provider client for generative AI...</p>
-        </div>
+        <h1 class="brand">
+          <img class="brand-logo" src="lexi-logo.png" alt="Lexi — Multi-Provider GenAI Client &amp; Studio" width="227" height="96">
+        </h1>
         <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px; min-width:260px;">
           <div class="status" id="status">Ready</div>
         </div>
@@ -4073,6 +4086,7 @@
       currentTheme = id;
       const root = document.documentElement;
       Object.entries(theme.vars).forEach(([k, v]) => root.style.setProperty(k, v));
+      root.dataset.theme = id;
       root.style.background = theme.gradient;
       document.querySelectorAll('.theme-card').forEach((card) => {
         card.classList.toggle('selected', card.dataset.theme === id);
