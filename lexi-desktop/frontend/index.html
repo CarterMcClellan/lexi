@@ -1347,72 +1347,35 @@
       white-space: normal;
     }
     .lexi-tip.show { opacity: 1; }
-    /* --- Images tab --- */
+    /* --- Images tab (laid out like Chat: prompt, drag bar, providers + results) --- */
     #tab-images.active {
       display: flex;
       flex-direction: column;
-      overflow: hidden;
     }
-    .images-layout {
-      flex: 1 1 auto;
-      min-height: 0;
-      display: grid;
-      grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
-      gap: 16px;
+    .img-settings { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+    .img-settings:empty { display: none; }
+    .img-settings .respond-controls { margin-top: 0; gap: 8px 14px; }
+    .img-settings-provider { font-weight: 700; min-width: 64px; }
+    .img-opt { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 0.85rem; font-weight: 500; color: var(--muted); }
+    .img-opt input,
+    .img-opt select {
+      width: auto; padding: 4px 6px; font-size: 0.85rem; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text);
     }
-    .images-form { overflow: auto; min-height: 0; }
-    .images-form textarea { min-height: 110px; }
-    .img-prompt-tools {
-      display: flex;
-      gap: 8px;
-      margin-top: 8px;
-    }
-    .img-prompt-tools select { flex: 1 1 auto; min-width: 0; padding: 8px 10px; font-size: 0.9rem; }
-    .img-prompt-tools .btn { padding: 8px 12px; }
-    #imgProviderNote:empty { display: none; }
-    .img-providers { display: flex; flex-direction: column; gap: 8px; }
-    .img-prov {
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      background: var(--input-bg);
-      padding: 8px 10px;
-    }
-    .img-prov.on { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
-    .img-prov-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .img-prov-name {
-      display: flex; align-items: center; gap: 6px;
-      margin: 0; cursor: pointer; font-weight: 600; white-space: nowrap;
-    }
-    .img-prov-name input { width: 16px; height: 16px; margin: 0; }
-    .img-prov-head select { flex: 1 1 160px; min-width: 0; width: auto; padding: 6px 8px; font-size: 0.85rem; }
-    .img-prov .img-options { margin-top: 4px; }
-    .img-prov-error { margin-top: 6px; font-size: 0.85rem; color: var(--danger); }
+    .img-opt input[type="number"] { width: 80px; }
+    .img-opt input[type="text"] { width: 120px; }
+    .img-prov-error { flex-basis: 100%; font-size: 0.85rem; color: var(--danger); }
     .img-prov-error:empty { display: none; }
-    .img-subhead { margin-top: 16px; }
-    .img-subhead .muted { font-weight: 400; font-size: 0.85rem; }
-    .img-options {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 4px 10px;
-    }
-    .img-options label { margin-top: 6px; font-size: 0.85rem; }
-    .img-options input,
-    .img-options select { padding: 8px 10px; font-size: 0.9rem; }
-    .img-status { margin-top: 10px; font-size: 0.9rem; min-height: 1.2em; }
+    #imgProviderNote:empty { display: none; }
+    .img-status { margin-top: 6px; font-size: 0.9rem; min-height: 1.2em; }
     .img-status.error { color: var(--danger); }
-    .img-folder {
-      margin: 0 0 12px;
-      font-size: 0.85rem;
-      overflow-wrap: anywhere;
+    .img-results-head {
+      display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px;
+      margin: 4px 0 8px;
     }
+    .img-folder { font-size: 0.85rem; overflow-wrap: anywhere; }
     .img-folder code { font-size: 0.8rem; }
     .img-folder-actions { display: inline-flex; gap: 12px; margin-left: 6px; }
-    .images-results {
-      display: flex;
-      flex-direction: column;
-      min-height: 0;
-      min-width: 0;
-    }
     .img-gallery {
       flex: 1 1 0;
       min-height: 0;
@@ -1486,13 +1449,6 @@
       font-size: 0.85rem;
     }
     dialog.img-viewer .img-viewer-bar .grow { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
-    @media (max-width: 760px) {
-      #tab-images.active { overflow: auto; }
-      .images-layout { flex: 0 0 auto; grid-template-columns: 1fr; }
-      .images-form, .img-gallery { overflow: visible; }
-      .img-gallery { flex: none; }
-      .images-results { min-height: 360px; }
-    }
 
     /* --- APIs tab --- */
     #tab-apis.active {
@@ -2042,42 +1998,41 @@
       </div>
     </div>
     <div class="content" id="tab-images">
-      <div class="images-layout">
-        <section class="panel images-form">
-          <h2>Images</h2>
-          <label for="imgPrompt" style="margin-top:0;">Prompt</label>
-          <textarea id="imgPrompt" placeholder="Describe the image you want"></textarea>
-          <div class="img-prompt-tools">
-            <select id="imgPromptSelect" aria-label="Saved prompt">
-              <option value="">-- saved prompt --</option>
+      <div class="chat-prompt-section" id="imgPromptSection">
+        <label for="imgPrompt">Prompt</label>
+        <textarea id="imgPrompt" placeholder="Describe the image you want"></textarea>
+        <div class="inline-field" style="align-items: center;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button class="btn btn-ghost" id="imgLoadPromptBtn" type="button" data-tip="Put the selected saved prompt's text in the box above">Load Prompt</button>
+            <select id="imgPromptSelect" aria-label="Saved prompt" style="width:auto; min-width:180px; max-width:300px;">
+              <option value="">-- select prompt --</option>
             </select>
-            <button class="btn btn-ghost" id="imgLoadPromptBtn" type="button" data-tip="Put the selected saved prompt's text in the box above">Load</button>
           </div>
-
-          <label class="img-subhead">Providers <span class="muted">(the prompt goes to each ticked one)</span></label>
-          <div class="img-providers" id="imgProviders"></div>
-          <div class="pane-notice warn" id="imgProviderNote"></div>
-
-          <div class="actions">
-            <button class="btn btn-primary" id="imgGenerateBtn" type="button" disabled data-tip="Send the prompt to each ticked provider's image API; every image is saved to the images folder">Generate</button>
+        </div>
+      </div>
+      <div class="chat-resize-bar" id="imgResizeBar" data-tip="Drag to resize the prompt and results areas"></div>
+      <div class="chat-response-section" id="imgResponseSection">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+          <div class="provider-list" id="imgProviders" style="margin:0;"></div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-ghost" id="imgGenerateBtn" type="button" disabled data-tip="Send the prompt to each ticked provider's image API; every image is saved to the images folder">Generate Images</button>
           </div>
-          <div class="img-status" id="imgStatus" role="status"></div>
-        </section>
-
-        <section class="panel images-results">
-          <div class="pane-head">
-            <h2>Results</h2>
-            <button class="link-btn" id="imgClearBtn" type="button" data-tip="Clear this list (the saved files stay in the folder)">Clear</button>
-          </div>
+        </div>
+        <div class="pane-notice warn" id="imgProviderNote"></div>
+        <div class="img-settings" id="imgSettings"></div>
+        <div class="img-status" id="imgStatus" role="status"></div>
+        <div class="img-results-head">
+          <label style="margin:0;">Results</label>
           <div class="img-folder">
             <span class="muted">Saved to</span> <code id="imgDir"></code>
             <span class="img-folder-actions">
               <button class="link-btn" id="imgDirChangeBtn" type="button" data-tip="Choose the folder generated images are saved to">Change…</button>
               <button class="link-btn" id="imgDirOpenBtn" type="button" data-tip="Open the images folder">Open folder</button>
+              <button class="link-btn" id="imgClearBtn" type="button" data-tip="Clear this list (the saved files stay in the folder)">Clear</button>
             </span>
           </div>
-          <div class="img-gallery" id="imgGallery"></div>
-        </section>
+        </div>
+        <div class="img-gallery" id="imgGallery"></div>
       </div>
     </div>
 
@@ -3107,11 +3062,11 @@
       updateGenerateBtn();
     });
 
-    // --- Chat Prompt / Response Resize ---
-    (function initChatResize() {
-      const bar = document.getElementById('chatResizeBar');
-      const topSection = document.getElementById('chatPromptSection');
-      const chatTab = document.getElementById('tab-chat');
+    // --- Prompt / Response Resize (Chat and Images) ---
+    function initPromptResize(barId, topId, tabId) {
+      const bar = document.getElementById(barId);
+      const topSection = document.getElementById(topId);
+      const chatTab = document.getElementById(tabId);
       let startY = 0;
       let startH = 0;
 
@@ -3139,7 +3094,9 @@
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
       }
-    })();
+    }
+    initPromptResize('chatResizeBar', 'chatPromptSection', 'tab-chat');
+    initPromptResize('imgResizeBar', 'imgPromptSection', 'tab-images');
 
     toggleCliLogBtn.addEventListener('click', () => {
       showCliLog = !showCliLog;
@@ -4221,6 +4178,7 @@
     const imgPromptEl = document.getElementById('imgPrompt');
     const imgPromptSelectEl = document.getElementById('imgPromptSelect');
     const imgProvidersEl = document.getElementById('imgProviders');
+    const imgSettingsEl = document.getElementById('imgSettings');
     const imgProviderNoteEl = document.getElementById('imgProviderNote');
     const imgGenerateBtn = document.getElementById('imgGenerateBtn');
     const imgStatusEl = document.getElementById('imgStatus');
@@ -4250,7 +4208,12 @@
 
     function imgUsable() { return imgProviders.filter((p) => p.images); }
     function imgChecked() { return imgUsable().filter((p) => imgState[p.name]?.checked).map((p) => p.name); }
-    function imgUpdateGenerateBtn() { imgGenerateBtn.disabled = imgBusy || !imgChecked().length; }
+    function imgUpdateGenerateBtn() {
+      const ready = !imgBusy && imgChecked().length > 0 && imgPromptEl.value.trim().length > 0;
+      imgGenerateBtn.disabled = !ready;
+      imgGenerateBtn.classList.toggle('btn-primary', ready);
+      imgGenerateBtn.classList.toggle('btn-ghost', !ready);
+    }
 
     async function refreshImagesTab() {
       try {
@@ -4283,7 +4246,7 @@
     function renderImgPromptSelect() {
       const prev = imgPromptSelectEl.value;
       const sorted = [...imgPrompts].sort((a, b) => (b.isActive ? 1 : 0) - (a.isActive ? 1 : 0));
-      imgPromptSelectEl.innerHTML = '<option value="">-- saved prompt --</option>'
+      imgPromptSelectEl.innerHTML = '<option value="">-- select prompt --</option>'
         + sorted.map((p) => `<option value="${esc(p.name)}">${esc(p.isActive ? '$$ (active)' : p.name)}</option>`).join('');
       if (sorted.some((p) => p.name === prev)) imgPromptSelectEl.value = prev;
     }
@@ -4301,33 +4264,33 @@
         + group("In the provider's list", models.filter((m) => !m.configured).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })));
     }
 
-    // One block per provider that can make images: tick box and model
-    // picker, plus that API's settings while it is ticked. Providers without
-    // an image API aren't listed.
+    // Like the Chat tab: one pill per provider that can make images (tick box
+    // and model picker), and below them a settings row for each ticked one
+    // (that image API's settings). Providers without an image API aren't listed.
     function renderImgProviders() {
-      imgProvidersEl.innerHTML = '';
+      imgProvidersEl.innerHTML = '<span class="muted" style="font-size:0.95rem;">Providers:</span>';
+      imgSettingsEl.innerHTML = '';
       imgUsable().forEach((p, pi) => {
         const st = imgState[p.name];
-        const box = document.createElement('div');
-        box.className = `img-prov${st.checked ? ' on' : ''}`;
-        box.dataset.provider = p.name;
-        const head = document.createElement('div');
-        head.className = 'img-prov-head';
-        const name = document.createElement('label');
-        name.className = 'img-prov-name';
+        const pill = document.createElement('div');
+        pill.className = 'provider-pill';
+        pill.dataset.provider = p.name;
         const cb = document.createElement('input');
         cb.type = 'checkbox';
+        cb.id = `imgProv${pi}`;
         cb.className = 'img-prov-check';
+        cb.value = p.name;
         cb.checked = !!st.checked;
-        name.append(cb, document.createTextNode(p.name));
-        name.setAttribute('data-tip', `Send the prompt to ${p.name}`);
-        head.appendChild(name);
         cb.addEventListener('change', () => {
           st.checked = cb.checked;
           renderImgProviders();
           if (st.checked && !st.options) loadImgOptions(p.name);
-          imgUpdateGenerateBtn();
         });
+        const lbl = document.createElement('label');
+        lbl.htmlFor = cb.id;
+        lbl.style.margin = '0';
+        lbl.style.cursor = 'pointer';
+        lbl.textContent = p.name;
         const sel = document.createElement('select');
         sel.className = 'img-prov-model';
         sel.setAttribute('aria-label', `${p.name} model`);
@@ -4340,17 +4303,27 @@
           st.error = '';
           loadImgOptions(p.name);
         });
-        head.appendChild(sel);
-        box.appendChild(head);
-        if (st.checked) {
-          const opts = (st.options || []);
-          if (opts.length) box.appendChild(renderImgOptions(p.name, pi, st, opts));
-          const err = document.createElement('div');
-          err.className = 'img-prov-error';
-          err.textContent = st.error || '';
-          box.appendChild(err);
+        pill.append(cb, lbl, sel);
+        imgProvidersEl.appendChild(pill);
+
+        if (!st.checked) return;
+        const row = document.createElement('div');
+        row.className = 'respond-controls';
+        row.dataset.provider = p.name;
+        const who = document.createElement('span');
+        who.className = 'img-settings-provider';
+        who.textContent = p.name;
+        row.appendChild(who);
+        const opts = st.options || [];
+        opts.forEach((o, i) => row.appendChild(renderImgOption(pi, i, st, o)));
+        if (st.options && !opts.length && !st.error) {
+          row.insertAdjacentHTML('beforeend', '<span class="muted">no settings</span>');
         }
-        imgProvidersEl.appendChild(box);
+        const err = document.createElement('div');
+        err.className = 'img-prov-error';
+        err.textContent = st.error || '';
+        row.appendChild(err);
+        imgSettingsEl.appendChild(row);
       });
       imgUpdateGenerateBtn();
     }
@@ -4391,45 +4364,41 @@
       return IMG_OPTION_LABELS[key] || (key.charAt(0).toUpperCase() + key.slice(1)).replace(/_/g, ' ');
     }
 
-    function renderImgOptions(provider, pi, st, opts) {
-      const grid = document.createElement('div');
-      grid.className = 'img-options';
-      opts.forEach((o, i) => {
-        const id = `imgOpt${pi}_${i}`;
-        const cell = document.createElement('div');
-        const lbl = document.createElement('label');
-        lbl.htmlFor = id;
-        lbl.textContent = imgOptionLabel(o);
-        if (o.description) lbl.setAttribute('data-tip', o.description);
-        let input;
-        const choices = Array.isArray(o.enum) ? o.enum : o.type === 'boolean' ? [true, false] : null;
-        if (choices) {
-          input = document.createElement('select');
-          input.innerHTML = '<option value="">default</option>'
-            + choices.map((c) => `<option value="${esc(JSON.stringify(c))}">${esc(c === true ? 'yes' : c === false ? 'no' : c)}</option>`).join('');
-          const v = st.values[o.path];
-          input.value = v === undefined ? '' : JSON.stringify(v);
-        } else {
-          input = document.createElement('input');
-          const numeric = o.type === 'integer' || o.type === 'number';
-          input.type = numeric ? 'number' : 'text';
-          if (o.type === 'integer') { input.step = '1'; input.min = '1'; }
-          input.placeholder = o.default != null ? String(o.default) : 'default';
-          input.value = st.values[o.path] ?? '';
-        }
-        input.id = id;
-        if (o.description) input.setAttribute('data-tip', o.description);
-        const save = () => {
-          const value = imgReadOption(o, input);
-          if (value === undefined || (typeof value === 'number' && Number.isNaN(value))) delete st.values[o.path];
-          else st.values[o.path] = value;
-        };
-        input.addEventListener('input', save);
-        input.addEventListener('change', save);
-        cell.append(lbl, input);
-        grid.appendChild(cell);
-      });
-      return grid;
+    // One setting as a compact "Label [input]" pair; blank uses the
+    // provider's default.
+    function renderImgOption(pi, i, st, o) {
+      const id = `imgOpt${pi}_${i}`;
+      const lbl = document.createElement('label');
+      lbl.className = 'img-opt';
+      lbl.htmlFor = id;
+      lbl.textContent = imgOptionLabel(o);
+      if (o.description) lbl.setAttribute('data-tip', `${o.description} Leave it blank for the provider's default.`);
+      let input;
+      const choices = Array.isArray(o.enum) ? o.enum : o.type === 'boolean' ? [true, false] : null;
+      if (choices) {
+        input = document.createElement('select');
+        input.innerHTML = '<option value="">default</option>'
+          + choices.map((c) => `<option value="${esc(JSON.stringify(c))}">${esc(c === true ? 'yes' : c === false ? 'no' : c)}</option>`).join('');
+        const v = st.values[o.path];
+        input.value = v === undefined ? '' : JSON.stringify(v);
+      } else {
+        input = document.createElement('input');
+        const numeric = o.type === 'integer' || o.type === 'number';
+        input.type = numeric ? 'number' : 'text';
+        if (o.type === 'integer') { input.step = '1'; input.min = '1'; }
+        input.placeholder = o.default != null ? String(o.default) : 'default';
+        input.value = st.values[o.path] ?? '';
+      }
+      input.id = id;
+      const save = () => {
+        const value = imgReadOption(o, input);
+        if (value === undefined || (typeof value === 'number' && Number.isNaN(value))) delete st.values[o.path];
+        else st.values[o.path] = value;
+      };
+      input.addEventListener('input', save);
+      input.addEventListener('change', save);
+      lbl.appendChild(input);
+      return lbl;
     }
 
     // The typed value of one setting's input (undefined when left blank).
@@ -4530,6 +4499,7 @@
       imgResults.unshift(...entries);
       imgBusy = true;
       imgUpdateGenerateBtn();
+      imgGenerateBtn.textContent = 'Generating...';
       imgSetStatus(`Generating with ${providers.join(', ')}…`);
       setStatus('Generating images...');
       renderImgGallery();
@@ -4548,6 +4518,7 @@
       }));
       clearInterval(ticker);
       imgBusy = false;
+      imgGenerateBtn.textContent = 'Generate Images';
       imgUpdateGenerateBtn();
       const saved = entries.reduce((n, e) => n + (e.images ? e.images.length : 0), 0);
       const failed = entries.filter((e) => e.status === 'failed');
@@ -4564,12 +4535,14 @@
     }
 
     imgGenerateBtn.addEventListener('click', generateImages);
+    imgPromptEl.addEventListener('input', imgUpdateGenerateBtn);
     imgPromptEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !imgGenerateBtn.disabled) { e.preventDefault(); generateImages(); }
     });
     document.getElementById('imgLoadPromptBtn').addEventListener('click', () => {
       const p = imgPrompts.find((x) => x.name === imgPromptSelectEl.value);
       if (p) imgPromptEl.value = p.prompt || '';
+      imgUpdateGenerateBtn();
     });
     document.getElementById('imgClearBtn').addEventListener('click', () => {
       imgResults = imgResults.filter((r) => r.status === 'pending');
@@ -4617,6 +4590,7 @@
           if (st.model !== model || !st.options) { st.model = model; st.options = null; loadImgOptions(r.provider); }
           renderImgProviders();
         }
+        imgUpdateGenerateBtn();
         imgPromptEl.focus();
       }
     });
