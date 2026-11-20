@@ -1369,12 +1369,27 @@
     }
     .img-prompt-tools select { flex: 1 1 auto; min-width: 0; padding: 8px 10px; font-size: 0.9rem; }
     .img-prompt-tools .btn { padding: 8px 12px; }
-    .img-pick {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
-      gap: 0;
-    }
     #imgProviderNote:empty { display: none; }
+    .img-providers { display: flex; flex-direction: column; gap: 8px; }
+    .img-prov {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--input-bg);
+      padding: 8px 10px;
+    }
+    .img-prov.on { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+    .img-prov-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .img-prov-name {
+      display: flex; align-items: center; gap: 6px;
+      margin: 0; cursor: pointer; font-weight: 600; white-space: nowrap;
+    }
+    .img-prov-name input { width: 16px; height: 16px; margin: 0; }
+    .img-prov-head select { flex: 1 1 160px; min-width: 0; width: auto; padding: 6px 8px; font-size: 0.85rem; }
+    .img-prov.off .img-prov-name { cursor: default; color: var(--muted); font-weight: 500; }
+    .img-prov-why { font-size: 0.8rem; color: var(--muted); }
+    .img-prov .img-options { margin-top: 4px; }
+    .img-prov-error { margin-top: 6px; font-size: 0.85rem; color: var(--danger); }
+    .img-prov-error:empty { display: none; }
     .img-subhead { margin-top: 16px; }
     .img-subhead .muted { font-weight: 400; font-size: 0.85rem; }
     .img-options {
@@ -2031,7 +2046,7 @@
     <div class="content" id="tab-images">
       <div class="images-layout">
         <section class="panel images-form">
-          <h2>Generate Images</h2>
+          <h2>Images</h2>
           <label for="imgPrompt" style="margin-top:0;">Prompt</label>
           <textarea id="imgPrompt" placeholder="Describe the image you want"></textarea>
           <div class="img-prompt-tools">
@@ -2041,25 +2056,12 @@
             <button class="btn btn-ghost" id="imgLoadPromptBtn" type="button" data-tip="Put the selected saved prompt's text in the box above">Load</button>
           </div>
 
-          <div class="img-pick">
-            <div>
-              <label for="imgProvider">Provider</label>
-              <select id="imgProvider"></select>
-            </div>
-            <div>
-              <label for="imgModel">Model</label>
-              <select id="imgModel"></select>
-            </div>
-          </div>
+          <label class="img-subhead">Providers <span class="muted">(the prompt goes to each ticked one)</span></label>
+          <div class="img-providers" id="imgProviders"></div>
           <div class="pane-notice warn" id="imgProviderNote"></div>
 
-          <div id="imgOptionsWrap">
-            <label class="img-subhead">Settings <span class="muted">(blank uses the provider's default)</span></label>
-            <div class="img-options" id="imgOptions"></div>
-          </div>
-
           <div class="actions">
-            <button class="btn btn-primary" id="imgGenerateBtn" type="button" disabled data-tip="Send the prompt to the provider's image API; each image is saved to the folder below">Generate</button>
+            <button class="btn btn-primary" id="imgGenerateBtn" type="button" disabled data-tip="Send the prompt to each ticked provider's image API; every image is saved to the images folder">Generate</button>
           </div>
           <div class="img-status" id="imgStatus" role="status"></div>
         </section>
@@ -2350,7 +2352,8 @@
       }
       try {
         const data = await api(`/api/models?provider=${encodeURIComponent(provider)}`);
-        const models = data.models || [];
+        // Only models the chat API serves: image and embedding models have tabs of their own.
+        const models = (data.models || []).filter((m) => m.kind === 'chat');
         providerModelCache[provider] = models;
         populateModelSelect(selectEl, models);
       } catch {
@@ -4208,16 +4211,14 @@
     })();
 
     // --- Images Tab ---
-    // The same pipeline as `lexi generate` (`respond --output image`): the
-    // provider's image API and model, that API's settings (its schema flags),
-    // and files saved to the images folder (`images_dir` in config.json).
+    // The same pipeline as `lexi generate` (`respond --output image`), sent to
+    // each ticked provider: that provider's image API and model, the API's
+    // settings (its schema flags), and files saved to the images folder
+    // (`images_dir` in config.json).
     const imgPromptEl = document.getElementById('imgPrompt');
     const imgPromptSelectEl = document.getElementById('imgPromptSelect');
-    const imgProviderEl = document.getElementById('imgProvider');
-    const imgModelEl = document.getElementById('imgModel');
+    const imgProvidersEl = document.getElementById('imgProviders');
     const imgProviderNoteEl = document.getElementById('imgProviderNote');
-    const imgOptionsWrapEl = document.getElementById('imgOptionsWrap');
-    const imgOptionsEl = document.getElementById('imgOptions');
     const imgGenerateBtn = document.getElementById('imgGenerateBtn');
     const imgStatusEl = document.getElementById('imgStatus');
     const imgDirEl = document.getElementById('imgDir');
@@ -4230,18 +4231,23 @@
     const IMG_HIDDEN_OPTIONS = new Set(['response_format', 'user']);
     const IMG_OPTION_LABELS = { n: 'Count' };
 
-    let imgProviders = [];
+    let imgProviders = [];    // from /api/images/providers, in config order
     let imgPrompts = [];
-    let imgOptions = [];      // the current API's settings (schema flags)
-    let imgValues = {};       // path → value typed so far (kept across models)
+    // Per provider: {checked, model, models, defaultModel, options, values, seq, error}.
+    // `values` (setting path → value) is kept when the model changes.
+    const imgState = {};
+    let imgFirstLoad = true;
     let imgBusy = false;
-    let imgOptionsSeq = 0;
     let imgResults = [];      // newest first: {status, prompt, provider, model, images?, error?, started}
 
     function imgSetStatus(text, tone) {
       imgStatusEl.textContent = text || '';
       imgStatusEl.classList.toggle('error', tone === 'error');
     }
+
+    function imgUsable() { return imgProviders.filter((p) => p.images); }
+    function imgChecked() { return imgUsable().filter((p) => imgState[p.name]?.checked).map((p) => p.name); }
+    function imgUpdateGenerateBtn() { imgGenerateBtn.disabled = imgBusy || !imgChecked().length; }
 
     async function refreshImagesTab() {
       try {
@@ -4253,19 +4259,19 @@
         imgDirEl.textContent = prov.images_dir || '';
         imgPrompts = prompts.prompts || [];
         renderImgPromptSelect();
-        const prev = imgProviderEl.value;
-        imgProviderEl.innerHTML = imgProviders.map((p) => `<option value="${esc(p.name)}"${p.images ? '' : ' disabled'}>${esc(p.name)}${p.images ? '' : ' (no image API)'}</option>`).join('');
-        const usable = imgProviders.filter((p) => p.images);
-        if (!usable.length) {
-          imgProviderNoteEl.textContent = 'None of your providers has an image API. Add one to a provider with `lexi providers api add <provider> image-generations`.';
-          imgModelEl.innerHTML = '';
-          imgOptionsWrapEl.hidden = true;
-          imgGenerateBtn.disabled = true;
-          return;
-        }
-        imgProviderNoteEl.textContent = '';
-        imgProviderEl.value = usable.some((p) => p.name === prev) ? prev : usable[0].name;
-        if (imgProviderEl.value !== prev || !imgModelEl.options.length) await loadImgModels();
+        imgProviders.forEach((p) => {
+          if (!imgState[p.name]) imgState[p.name] = { checked: false, model: '', models: null, defaultModel: p.default_model, options: null, values: {}, seq: 0, error: '' };
+          imgState[p.name].defaultModel = p.default_model;
+          if (!p.images) imgState[p.name].checked = false;
+        });
+        const usable = imgUsable();
+        // The first time, tick the first provider that can make images.
+        if (imgFirstLoad && usable.length) imgState[usable[0].name].checked = true;
+        imgFirstLoad = false;
+        imgProviderNoteEl.textContent = usable.length ? ''
+          : 'None of your providers has an image API. Add one to a provider with `lexi providers api add <provider> image-generations`.';
+        renderImgProviders();
+        await Promise.all(usable.map((p) => loadImgModels(p.name)));
       } catch (err) {
         imgSetStatus(err.message, 'error');
       }
@@ -4279,47 +4285,111 @@
       if (sorted.some((p) => p.name === prev)) imgPromptSelectEl.value = prev;
     }
 
-    async function loadImgModels() {
-      const provider = imgProviderEl.value;
-      imgModelEl.innerHTML = '';
-      imgGenerateBtn.disabled = true;
-      try {
-        const data = await api(`/api/images/models?provider=${encodeURIComponent(provider)}`, { method: 'GET' });
-        if (imgProviderEl.value !== provider) return;
-        const models = data.models || [];
-        const label = (m) => (m.name && m.name !== m.id ? `${m.id} — ${m.name}` : m.id);
-        const group = (title, list) => (list.length
-          ? `<optgroup label="${esc(title)}">${list.map((m) => `<option value="${esc(m.id)}">${esc(label(m))}</option>`).join('')}</optgroup>`
-          : '');
-        imgModelEl.innerHTML = `<option value="">Default${data.default_model ? ` (${esc(data.default_model)})` : ''}</option>`
-          + group('Configured', models.filter((m) => m.configured))
-          + group("In the provider's list", models.filter((m) => !m.configured).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })));
-      } catch (err) {
-        imgModelEl.innerHTML = '<option value="">Default</option>';
-        imgSetStatus(err.message, 'error');
-      }
-      await loadImgOptions();
+    // The model picker's options: the default, then the provider's image
+    // models (configured first, then the rest of its cached model list).
+    function imgModelOptions(st) {
+      const label = (m) => (m.name && m.name !== m.id ? `${m.id} — ${m.name}` : m.id);
+      const group = (title, list) => (list.length
+        ? `<optgroup label="${esc(title)}">${list.map((m) => `<option value="${esc(m.id)}">${esc(label(m))}</option>`).join('')}</optgroup>`
+        : '');
+      const models = st.models || [];
+      return `<option value="">Default${st.defaultModel ? ` (${esc(st.defaultModel)})` : ''}</option>`
+        + group('Configured', models.filter((m) => m.configured))
+        + group("In the provider's list", models.filter((m) => !m.configured).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })));
     }
 
-    async function loadImgOptions() {
-      const seq = ++imgOptionsSeq;
-      const provider = imgProviderEl.value;
-      const model = imgModelEl.value;
-      imgGenerateBtn.disabled = true;
+    // One block per provider: tick box and model picker, plus that API's
+    // settings while it is ticked. Providers without an image API are shown
+    // greyed out, with the reason on hover.
+    function renderImgProviders() {
+      imgProvidersEl.innerHTML = '';
+      imgProviders.forEach((p, pi) => {
+        const st = imgState[p.name];
+        const box = document.createElement('div');
+        box.className = `img-prov ${p.images ? (st.checked ? 'on' : '') : 'off'}`;
+        box.dataset.provider = p.name;
+        const head = document.createElement('div');
+        head.className = 'img-prov-head';
+        const name = document.createElement('label');
+        name.className = 'img-prov-name';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'img-prov-check';
+        cb.checked = !!st.checked;
+        cb.disabled = !p.images;
+        name.append(cb, document.createTextNode(p.name));
+        head.appendChild(name);
+        if (p.images) {
+          name.setAttribute('data-tip', `Send the prompt to ${p.name}`);
+          cb.addEventListener('change', () => {
+            st.checked = cb.checked;
+            renderImgProviders();
+            if (st.checked && !st.options) loadImgOptions(p.name);
+            imgUpdateGenerateBtn();
+          });
+          const sel = document.createElement('select');
+          sel.className = 'img-prov-model';
+          sel.setAttribute('aria-label', `${p.name} model`);
+          sel.innerHTML = imgModelOptions(st);
+          sel.value = st.model;
+          if (sel.value !== st.model) st.model = '';
+          sel.addEventListener('change', () => {
+            st.model = sel.value;
+            st.options = null;
+            st.error = '';
+            loadImgOptions(p.name);
+          });
+          head.appendChild(sel);
+        } else {
+          const why = document.createElement('span');
+          why.className = 'img-prov-why';
+          why.textContent = 'no image API';
+          why.setAttribute('data-tip', p.reason || `${p.name} has no image API`);
+          head.appendChild(why);
+        }
+        box.appendChild(head);
+        if (p.images && st.checked) {
+          const opts = (st.options || []);
+          if (opts.length) box.appendChild(renderImgOptions(p.name, pi, st, opts));
+          const err = document.createElement('div');
+          err.className = 'img-prov-error';
+          err.textContent = st.error || '';
+          box.appendChild(err);
+        }
+        imgProvidersEl.appendChild(box);
+      });
+      imgUpdateGenerateBtn();
+    }
+
+    async function loadImgModels(provider) {
+      const st = imgState[provider];
       try {
-        const q = `provider=${encodeURIComponent(provider)}${model ? `&model=${encodeURIComponent(model)}` : ''}`;
-        const data = await api(`/api/images/options?${q}`, { method: 'GET' });
-        if (seq !== imgOptionsSeq) return;
-        imgOptions = (data.options || []).filter((o) => !IMG_HIDDEN_OPTIONS.has(o.path));
-        renderImgOptions();
-        imgSetStatus('');
-        imgGenerateBtn.disabled = imgBusy;
+        const data = await api(`/api/images/models?provider=${encodeURIComponent(provider)}`, { method: 'GET' });
+        st.models = data.models || [];
+        if (data.default_model) st.defaultModel = data.default_model;
       } catch (err) {
-        if (seq !== imgOptionsSeq) return;
-        imgOptions = [];
-        renderImgOptions();
-        imgSetStatus(err.message, 'error');
+        st.models = [];
+        st.error = err.message;
       }
+      renderImgProviders();
+      if (st.checked) await loadImgOptions(provider);
+    }
+
+    async function loadImgOptions(provider) {
+      const st = imgState[provider];
+      const seq = ++st.seq;
+      try {
+        const q = `provider=${encodeURIComponent(provider)}${st.model ? `&model=${encodeURIComponent(st.model)}` : ''}`;
+        const data = await api(`/api/images/options?${q}`, { method: 'GET' });
+        if (seq !== st.seq) return;
+        st.options = (data.options || []).filter((o) => !IMG_HIDDEN_OPTIONS.has(o.path));
+        st.error = '';
+      } catch (err) {
+        if (seq !== st.seq) return;
+        st.options = [];
+        st.error = err.message;
+      }
+      renderImgProviders();
     }
 
     function imgOptionLabel(o) {
@@ -4327,11 +4397,11 @@
       return IMG_OPTION_LABELS[key] || (key.charAt(0).toUpperCase() + key.slice(1)).replace(/_/g, ' ');
     }
 
-    function renderImgOptions() {
-      imgOptionsWrapEl.hidden = !imgOptions.length;
-      imgOptionsEl.innerHTML = '';
-      imgOptions.forEach((o, i) => {
-        const id = `imgOpt${i}`;
+    function renderImgOptions(provider, pi, st, opts) {
+      const grid = document.createElement('div');
+      grid.className = 'img-options';
+      opts.forEach((o, i) => {
+        const id = `imgOpt${pi}_${i}`;
         const cell = document.createElement('div');
         const lbl = document.createElement('label');
         lbl.htmlFor = id;
@@ -4343,7 +4413,7 @@
           input = document.createElement('select');
           input.innerHTML = '<option value="">default</option>'
             + choices.map((c) => `<option value="${esc(JSON.stringify(c))}">${esc(c === true ? 'yes' : c === false ? 'no' : c)}</option>`).join('');
-          const v = imgValues[o.path];
+          const v = st.values[o.path];
           input.value = v === undefined ? '' : JSON.stringify(v);
         } else {
           input = document.createElement('input');
@@ -4351,17 +4421,21 @@
           input.type = numeric ? 'number' : 'text';
           if (o.type === 'integer') { input.step = '1'; input.min = '1'; }
           input.placeholder = o.default != null ? String(o.default) : 'default';
-          input.value = imgValues[o.path] ?? '';
+          input.value = st.values[o.path] ?? '';
         }
         input.id = id;
         if (o.description) input.setAttribute('data-tip', o.description);
-        input.addEventListener('change', () => {
+        const save = () => {
           const value = imgReadOption(o, input);
-          if (value === undefined) delete imgValues[o.path]; else imgValues[o.path] = value;
-        });
+          if (value === undefined || (typeof value === 'number' && Number.isNaN(value))) delete st.values[o.path];
+          else st.values[o.path] = value;
+        };
+        input.addEventListener('input', save);
+        input.addEventListener('change', save);
         cell.append(lbl, input);
-        imgOptionsEl.appendChild(cell);
+        grid.appendChild(cell);
       });
+      return grid;
     }
 
     // The typed value of one setting's input (undefined when left blank).
@@ -4374,12 +4448,12 @@
       return raw;
     }
 
-    function imgCollectOptions() {
+    // The settings to send to one provider: only those its current API has.
+    function imgCollectOptions(provider) {
+      const st = imgState[provider];
       const out = {};
-      imgOptions.forEach((o, i) => {
-        const input = document.getElementById(`imgOpt${i}`);
-        const v = input ? imgReadOption(o, input) : undefined;
-        if (v !== undefined && !(typeof v === 'number' && Number.isNaN(v))) out[o.path] = v;
+      (st.options || []).forEach((o) => {
+        if (st.values[o.path] !== undefined) out[o.path] = st.values[o.path];
       });
       return out;
     }
@@ -4401,7 +4475,7 @@
         if (r.status === 'failed') {
           cards.push(`<figure class="img-card failed"><div class="img-thumb">${esc(r.error)}</div>
             <figcaption><div class="img-caption">${esc(r.prompt)}</div><div class="img-meta">${meta}</div>
-            <div class="img-actions"><button type="button" class="btn-icon img-retry" data-r="${ri}" data-tip="Put this prompt back in the box to try again">&#8634;</button></div></figcaption></figure>`);
+            <div class="img-actions"><button type="button" class="btn-icon img-retry" data-r="${ri}" data-tip="Put this prompt and provider back in the form to try again">&#8634;</button></div></figcaption></figure>`);
           return;
         }
         r.images.forEach((img, ii) => {
@@ -4415,7 +4489,7 @@
               <div class="img-actions">
                 <button type="button" class="btn-icon img-reveal" data-path="${esc(img.path)}" data-tip="Show this file in ${FILE_MANAGER}">&#128193;</button>
                 <button type="button" class="btn-icon img-copy" data-path="${esc(img.path)}" data-tip="Copy this file's path">&#10697;</button>
-                <button type="button" class="btn-icon img-retry" data-r="${ri}" data-tip="Put this prompt and model back in the form">&#8634;</button>
+                <button type="button" class="btn-icon img-retry" data-r="${ri}" data-tip="Put this prompt, provider and model back in the form">&#8634;</button>
               </div>
             </figcaption></figure>`);
         });
@@ -4428,7 +4502,7 @@
       dlg.className = 'img-viewer';
       dlg.innerHTML = `<img src="${img.data_url}" alt="${esc(r.prompt)}">
         <div class="img-viewer-bar">
-          <div class="grow">${esc(img.revised_prompt || r.prompt)}<div class="muted">${esc(img.path)}</div></div>
+          <div class="grow">${esc(img.revised_prompt || r.prompt)}<div class="muted">${esc(r.provider)} · ${esc(r.model || '')} · ${esc(img.path)}</div></div>
           <button type="button" class="btn btn-ghost img-reveal" data-path="${esc(img.path)}">Show in ${FILE_MANAGER}</button>
           <button type="button" class="btn btn-primary img-viewer-close">Close</button>
         </div>`;
@@ -4450,43 +4524,51 @@
       }
     }
 
+    // One request per ticked provider, all at once; each gets its own result
+    // card as soon as it answers.
     async function generateImages() {
       const prompt = imgPromptEl.value.trim();
       if (!prompt) { imgSetStatus('Write a prompt first.', 'error'); imgPromptEl.focus(); return; }
-      const provider = imgProviderEl.value;
-      if (!provider) return;
-      const model = imgModelEl.value;
-      const entry = { status: 'pending', prompt, provider, model, started: Date.now() };
-      imgResults.unshift(entry);
+      const providers = imgChecked();
+      if (!providers.length) { imgSetStatus('Tick at least one provider.', 'error'); return; }
+      const started = Date.now();
+      const entries = providers.map((provider) => ({ status: 'pending', prompt, provider, model: imgState[provider].model, started }));
+      imgResults.unshift(...entries);
       imgBusy = true;
-      imgGenerateBtn.disabled = true;
-      imgSetStatus(`Generating with ${provider}…`);
+      imgUpdateGenerateBtn();
+      imgSetStatus(`Generating with ${providers.join(', ')}…`);
       setStatus('Generating images...');
       renderImgGallery();
-      const ticker = setInterval(() => { if (entry.status === 'pending') renderImgGallery(); }, 1000);
-      try {
-        const data = await api('/api/images/generate', {
-          method: 'POST',
-          body: JSON.stringify({ provider, model, prompt, options: imgCollectOptions() }),
-        });
-        Object.assign(entry, { status: 'done', model: data.model, images: data.images || [], warnings: data.warnings || [] });
-        const n = entry.images.length;
-        imgSetStatus(`Saved ${n} image${n === 1 ? '' : 's'}.`);
-        setStatus(`Generated ${n} image${n === 1 ? '' : 's'}`, 'success');
-      } catch (err) {
-        Object.assign(entry, { status: 'failed', error: err.message });
-        imgSetStatus(err.message, 'error');
-        setStatus('Image generation failed', 'error');
-      } finally {
-        clearInterval(ticker);
-        imgBusy = false;
-        imgGenerateBtn.disabled = !imgProviderEl.value;
+      const ticker = setInterval(() => { if (entries.some((e) => e.status === 'pending')) renderImgGallery(); }, 1000);
+      await Promise.all(entries.map(async (entry) => {
+        try {
+          const data = await api('/api/images/generate', {
+            method: 'POST',
+            body: JSON.stringify({ provider: entry.provider, model: entry.model, prompt, options: imgCollectOptions(entry.provider) }),
+          });
+          Object.assign(entry, { status: 'done', model: data.model, images: data.images || [], warnings: data.warnings || [] });
+        } catch (err) {
+          Object.assign(entry, { status: 'failed', error: err.message });
+        }
         renderImgGallery();
+      }));
+      clearInterval(ticker);
+      imgBusy = false;
+      imgUpdateGenerateBtn();
+      const saved = entries.reduce((n, e) => n + (e.images ? e.images.length : 0), 0);
+      const failed = entries.filter((e) => e.status === 'failed');
+      const msg = `Saved ${saved} image${saved === 1 ? '' : 's'}.`;
+      if (failed.length) {
+        const which = failed.map((e) => e.provider).join(', ');
+        imgSetStatus(failed.length === entries.length && failed.length === 1 ? failed[0].error : `${msg} Failed: ${which} (see its card).`, 'error');
+        setStatus('Image generation failed', 'error');
+      } else {
+        imgSetStatus(msg);
+        setStatus(`Generated ${saved} image${saved === 1 ? '' : 's'}`, 'success');
       }
+      renderImgGallery();
     }
 
-    imgProviderEl.addEventListener('change', () => { imgSetStatus(''); loadImgModels(); });
-    imgModelEl.addEventListener('change', () => { imgSetStatus(''); loadImgOptions(); });
     imgGenerateBtn.addEventListener('click', generateImages);
     imgPromptEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !imgGenerateBtn.disabled) { e.preventDefault(); generateImages(); }
@@ -4529,14 +4611,17 @@
       }
       const retry = e.target.closest('.img-retry');
       if (retry) {
+        // Make the form match that result: its prompt, and only its provider
+        // ticked, with the model it used.
         const r = imgResults[+retry.dataset.r];
         imgPromptEl.value = r.prompt;
-        if (r.provider !== imgProviderEl.value && [...imgProviderEl.options].some((o) => o.value === r.provider && !o.disabled)) {
-          imgProviderEl.value = r.provider;
-          loadImgModels().then(() => { if ([...imgModelEl.options].some((o) => o.value === r.model)) { imgModelEl.value = r.model; loadImgOptions(); } });
-        } else if ([...imgModelEl.options].some((o) => o.value === r.model) && imgModelEl.value !== r.model) {
-          imgModelEl.value = r.model;
-          loadImgOptions();
+        if (imgUsable().some((p) => p.name === r.provider)) {
+          imgUsable().forEach((p) => { imgState[p.name].checked = p.name === r.provider; });
+          const st = imgState[r.provider];
+          const known = (st.models || []).some((m) => m.id === r.model);
+          const model = known && r.model !== st.defaultModel ? r.model : '';
+          if (st.model !== model || !st.options) { st.model = model; st.options = null; loadImgOptions(r.provider); }
+          renderImgProviders();
         }
         imgPromptEl.focus();
       }
