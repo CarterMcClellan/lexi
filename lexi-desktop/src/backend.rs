@@ -5,8 +5,9 @@
 //! dispatches here. Shapes match the original Node handlers. Every endpoint is
 //! served in-process by `lexi-host`: chat (buffered + streaming, fanned out over
 //! providers concurrently) plus the full admin surface (providers, models,
-//! prompts, config, API definitions). Only hosted-model discovery makes a live
-//! provider call; the rest read/write `~/.lexi-cli/`.
+//! prompts, config, API definitions) and image generation (the Images tab).
+//! Only chat, image generation and hosted-model discovery call a provider; the
+//! rest read/write `~/.lexi-cli/`.
 
 use serde_json::{json, Map, Value};
 
@@ -45,6 +46,11 @@ pub async fn handle(method: &str, path: &str, body: Option<Value>) -> Result<Val
         ("POST", "/api/definitions/delete") => api_delete(body.unwrap_or(Value::Null)),
         ("POST", "/api/definitions/preview") => api_preview(body.unwrap_or(Value::Null)),
         ("POST", "/api/respond") => respond(body.unwrap_or(Value::Null)).await,
+        ("GET", "/api/images/providers") => images_providers(),
+        ("GET", "/api/images/models") => images_models(path).await,
+        ("GET", "/api/images/options") => images_options(path),
+        ("POST", "/api/images/generate") => images_generate(body.unwrap_or(Value::Null)).await,
+        ("POST", "/api/images/reveal") => images_reveal(body.unwrap_or(Value::Null)),
         _ => Err(format!(
             "endpoint not available in the desktop app: {method} {base}"
         )),
@@ -626,6 +632,229 @@ async fn respond(body: Value) -> Result<Value, String> {
     Ok(json!({ "responses": responses }))
 }
 
+// --- Images tab ---------------------------------------------------------------
+// The same pipeline as `lexi respond --output image` / `lexi generate`: the
+// provider's image binding picks the API and default model, the settings are
+// that API's schema flags (`x-cli`), and images are saved by
+// `lexi_host::generate::save_artifacts` (never overwriting a file).
+
+/// Where generated images go: `images_dir` in `config.json` (`~` expanded),
+/// else `~/Pictures/Lexi`.
+fn images_dir() -> std::path::PathBuf {
+    let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    let configured = config::load_config()
+        .ok()
+        .and_then(|c| {
+            c.get("images_dir")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .filter(|s| !s.trim().is_empty());
+    match configured {
+        Some(dir) => match dir.strip_prefix("~/") {
+            Some(rest) => home.join(rest),
+            None if dir == "~" => home,
+            None => std::path::PathBuf::from(dir),
+        },
+        None => home.join("Pictures").join("Lexi"),
+    }
+}
+
+/// `GET /api/images/providers` — every provider, whether it can make images
+/// (an API that produces them), and its default image model; plus the folder
+/// images are saved to.
+fn images_providers() -> Result<Value, String> {
+    let cfg = config::load_providers().map_err(|e| e.to_string())?;
+    let names: Vec<String> = cfg
+        .get("providers")
+        .and_then(Value::as_object)
+        .map(|m| m.keys().cloned().collect())
+        .unwrap_or_default();
+    let providers: Vec<Value> = names
+        .iter()
+        .map(
+            |name| match lexi_host::resolve_model(name, None, Some("image")) {
+                Ok(r) => {
+                    json!({ "name": name, "images": true, "default_model": r.model, "api": r.api })
+                }
+                Err(e) => json!({ "name": name, "images": false, "reason": e.to_string() }),
+            },
+        )
+        .collect();
+    Ok(json!({
+        "providers": providers,
+        "images_dir": images_dir().display().to_string(),
+    }))
+}
+
+/// `GET /api/images/models?provider=X` — the models that produce images
+/// (`out:image`): configured ones, plus those in the cached catalog (usable
+/// unconfigured). No network call.
+async fn images_models(path: &str) -> Result<Value, String> {
+    let provider = require_provider(path)?;
+    let has_out_image = |m: &Value| {
+        m.get("tags")
+            .and_then(Value::as_array)
+            .is_some_and(|t| t.iter().any(|t| t == "out:image"))
+    };
+    let mut models: Vec<Value> = Vec::new();
+    for m in lexi_host::models::model_summaries(&provider).map_err(|e| e.to_string())? {
+        if has_out_image(&m) {
+            models.push(json!({ "id": m["id"], "name": m["name"], "configured": true }));
+        }
+    }
+    // The catalog is optional: no cached listing just means no extra models.
+    if let Ok(hosted) =
+        lexi_host::models::hosted_summaries(&provider, true, &["out:image".to_string()]).await
+    {
+        for m in hosted {
+            let Some(id) = m.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+            if models.iter().all(|c| c["id"] != id) {
+                let name = m.get("display_name").or_else(|| m.get("name")).cloned();
+                models.push(json!({ "id": id, "name": name, "configured": false }));
+            }
+        }
+    }
+    let default = lexi_host::resolve_model(&provider, None, Some("image"))
+        .ok()
+        .map(|r| r.model);
+    Ok(json!({ "provider": provider, "default_model": default, "models": models }))
+}
+
+/// `GET /api/images/options?provider=X[&model=M]` — the settings the image API
+/// serving that model accepts (its schema flags), and the model it resolves to.
+fn images_options(path: &str) -> Result<Value, String> {
+    let provider = require_provider(path)?;
+    let model = query_param(path, "model").filter(|m| !m.is_empty());
+    let r = lexi_host::resolve_model(&provider, model.as_deref(), Some("image"))
+        .map_err(|e| e.to_string())?;
+    // The prompt and model are set by the tab itself.
+    let options: Vec<Value> = lexi_core::cli_flags(&r.effective)
+        .into_iter()
+        .filter(|f| !matches!(f["path"].as_str(), Some("prompt" | "model")))
+        .collect();
+    Ok(json!({
+        "provider": provider,
+        "model": r.model,
+        "api": r.api,
+        "options": options,
+    }))
+}
+
+/// `POST /api/images/generate` — `{provider, model?, prompt, options: {path: value}}`.
+/// Generates, saves each image to the images folder, and returns them with
+/// their data inline (`data_url`) for the page to show.
+async fn images_generate(body: Value) -> Result<Value, String> {
+    use base64::prelude::*;
+    let provider = require_field(&body, "provider")?;
+    let prompt = require_field(&body, "prompt")?;
+    let model = body
+        .get("model")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    let set_paths: Vec<(String, Value)> = body
+        .get("options")
+        .and_then(Value::as_object)
+        .map(|o| {
+            o.iter()
+                .filter(|(_, v)| !v.is_null() && *v != "")
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let req = lexi_host::ChatRequest {
+        prompt: json!({ "prompt": prompt, "role": "user" }),
+        model,
+        output: Some("image".into()),
+        set_paths,
+        ..Default::default()
+    };
+    let chat = lexi_host::prepare_chat(&provider, &req, lexi_host::ChatMode::Buffered)
+        .map_err(|e| e.to_string())?;
+    let res = lexi_host::run_chat(&chat, |_| {})
+        .await
+        .map_err(|e| e.to_string())?;
+    let dir = images_dir();
+    let saved = lexi_host::generate::save_artifacts(&chat, &res, &dir)
+        .await
+        .map_err(|e| e.to_string())?;
+    if saved.is_empty() {
+        let text = res.text.trim();
+        return Err(if text.is_empty() {
+            "the provider returned no images".to_string()
+        } else {
+            format!("the provider returned no images: {text}")
+        });
+    }
+    let images: Vec<Value> = saved
+        .iter()
+        .map(|a| {
+            let mut v = a.to_value();
+            if let Ok(bytes) = std::fs::read(&a.path) {
+                v["data_url"] = Value::from(format!(
+                    "data:{};base64,{}",
+                    a.media_type,
+                    BASE64_STANDARD.encode(bytes)
+                ));
+            }
+            v
+        })
+        .collect();
+    Ok(json!({
+        "provider": provider,
+        "model": chat.model,
+        "images": images,
+        "warnings": chat.warnings,
+    }))
+}
+
+/// `POST /api/images/reveal` — `{path}` shows that file in the file manager;
+/// `{}` opens the images folder (creating it first).
+fn images_reveal(body: Value) -> Result<Value, String> {
+    use std::process::Command;
+    let file = body
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty());
+    let status = match file {
+        Some(path) => {
+            if !std::path::Path::new(path).exists() {
+                return Err(format!("{path} no longer exists"));
+            }
+            if cfg!(target_os = "macos") {
+                Command::new("open").args(["-R", path]).status()
+            } else if cfg!(target_os = "windows") {
+                Command::new("explorer")
+                    .arg(format!("/select,{path}"))
+                    .status()
+            } else {
+                let parent = std::path::Path::new(path)
+                    .parent()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| ".".into());
+                Command::new("xdg-open").arg(parent).status()
+            }
+        }
+        None => {
+            let dir = images_dir();
+            std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+            let opener = if cfg!(target_os = "macos") {
+                "open"
+            } else if cfg!(target_os = "windows") {
+                "explorer"
+            } else {
+                "xdg-open"
+            };
+            Command::new(opener).arg(&dir).status()
+        }
+    };
+    status.map_err(|e| e.to_string())?;
+    Ok(json!({}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{percent_decode, query_param};
@@ -690,5 +919,94 @@ mod tests {
         assert_eq!(int_field(&body, "d"), None);
         assert_eq!(int_field(&body, "e"), None);
         assert_eq!(int_field(&body, "missing"), None);
+    }
+
+    /// The Images tab's calls end to end against a mock image API: the
+    /// provider is found, its settings listed, and a generation sends the
+    /// chosen settings and saves the images to `images_dir`.
+    #[tokio::test]
+    async fn images_generate_against_a_mock_provider() {
+        use serde_json::json;
+        use wiremock::matchers::{body_partial_json, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/images/generations"))
+            .and(body_partial_json(
+                json!({ "model": "img-model", "size": "1024x1024", "n": 2 }),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "created": 1,
+                "data": [
+                    { "b64_json": "iVBORw0KGgo=", "revised_prompt": "a calm fox" },
+                    { "b64_json": "iVBORw0KGgo=" }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let home = tempfile::tempdir().unwrap();
+        let out = home.path().join("pictures");
+        std::env::set_var("LEXI_HOME", home.path());
+        std::fs::create_dir_all(home.path().join("providers")).unwrap();
+        std::fs::write(
+            home.path().join("providers/providers-config.yaml"),
+            format!(
+                "providers:\n  mockimg:\n    api_key: k\n    apis:\n      - api: image-generations\n        url: {}\n        default_model: img-model\n",
+                server.uri()
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            home.path().join("config.json"),
+            serde_json::to_string(&json!({ "images_dir": out.display().to_string() })).unwrap(),
+        )
+        .unwrap();
+
+        let providers = super::handle("GET", "/api/images/providers", None)
+            .await
+            .unwrap();
+        let mock = providers["providers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["name"] == "mockimg")
+            .unwrap();
+        assert_eq!(mock["images"], true);
+        assert_eq!(mock["default_model"], "img-model");
+        assert_eq!(providers["images_dir"], out.display().to_string());
+
+        let opts = super::handle("GET", "/api/images/options?provider=mockimg", None)
+            .await
+            .unwrap();
+        let paths: Vec<&str> = opts["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|o| o["path"].as_str())
+            .collect();
+        assert!(paths.contains(&"size") && paths.contains(&"n"), "{paths:?}");
+        assert!(!paths.contains(&"prompt") && !paths.contains(&"model"));
+
+        let res = super::handle(
+            "POST",
+            "/api/images/generate",
+            Some(json!({
+                "provider": "mockimg",
+                "prompt": "A calm fox",
+                "options": { "size": "1024x1024", "n": 2, "quality": "" }
+            })),
+        )
+        .await
+        .unwrap();
+        let images = res["images"].as_array().unwrap();
+        assert_eq!(images.len(), 2);
+        assert_eq!(images[0]["revised_prompt"], "a calm fox");
+        assert!(images[0]["data_url"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/png;base64,"));
+        assert!(out.join("a-calm-fox-1.png").exists() && out.join("a-calm-fox-2.png").exists());
     }
 }

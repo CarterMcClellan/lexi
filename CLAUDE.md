@@ -83,5 +83,6 @@ On every run, `lexi_host::ensure_home` fills in missing defaults (embedded from 
 - Default provider configs: `providers/` (embedded; seeded into `~/.lexi-cli/providers/`)
 - Python wheel: `lexi-python/` (PyO3 over lexi-core + lexi-host; Python API in `lexi-python/python/lexi/`)
 - Desktop `/api/*` backend: `lexi-desktop/src/backend.rs`; frontend: `lexi-desktop/frontend/index.html`
+- Desktop Images tab: `/api/images/*` in `backend.rs`, the `respond --output image` pipeline (settings are the image API's `x-cli` flags); images are saved to `images_dir` in `config.json` (default `~/Pictures/Lexi`)
 - Cross-language conformance oracle: `conformance/`
 - Docs: `docs/cli-reference.md` (generated), `docs/spec/` (API definition, message IR, CLI machine interface), `docs/surface-matrix.md`
