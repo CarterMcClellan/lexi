@@ -4756,6 +4756,9 @@
         THEME_VARS = [...new Set(Object.values(THEMES).flatMap((t) => Object.keys(t.vars)))];
         themesPath = data.path || '';
         if (data.selected && THEMES[data.selected]) applyTheme(data.selected);
+        if (data.added && data.added.length) {
+          setStatus(`New theme${data.added.length === 1 ? '' : 's'} added to ${themesPath}: ${data.added.join(', ')}.`, 'success');
+        }
         if (data.warning) setStatus(data.warning, 'warn');
       } catch (err) {
         setStatus(`Couldn't load the themes: ${err.message}`, 'error');
