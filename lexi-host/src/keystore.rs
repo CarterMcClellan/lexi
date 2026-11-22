@@ -11,7 +11,8 @@
 use std::path::Path;
 
 /// The keychain service name every Lexi item is filed under.
-pub(crate) const SERVICE: &str = "Lexi";
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const SERVICE: &str = "Lexi";
 
 /// Whether this platform has an OS credential store Lexi can use.
 pub(crate) const NATIVE: bool = cfg!(any(target_os = "macos", target_os = "windows"));
