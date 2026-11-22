@@ -1549,6 +1549,34 @@ mod tests {
         assert!(out.join("a-calm-fox-1.png").exists() && out.join("a-calm-fox-2.png").exists());
     }
 
+    /// The frontend is one script: a second top-level `function name(` with
+    /// the same name silently replaces the first everywhere (a release-notes
+    /// `renderMarkdown` once broke chat that way).
+    #[test]
+    fn frontend_top_level_functions_have_unique_names() {
+        let html = include_str!("../frontend/index.html");
+        let mut seen = std::collections::HashMap::new();
+        let mut dups = Vec::new();
+        for (i, line) in html.lines().enumerate() {
+            // Top-level script code is indented four spaces.
+            let Some(rest) = line.strip_prefix("    ") else {
+                continue;
+            };
+            let rest = rest.strip_prefix("async ").unwrap_or(rest);
+            let Some(decl) = rest.strip_prefix("function ") else {
+                continue;
+            };
+            let name: String = decl
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$')
+                .collect();
+            if let Some(first) = seen.insert(name.clone(), i + 1) {
+                dups.push(format!("{name} (lines {first} and {})", i + 1));
+            }
+        }
+        assert!(dups.is_empty(), "duplicate top-level functions: {dups:?}");
+    }
+
     #[test]
     fn release_notes_have_a_section_for_this_version() {
         let sections = super::release_sections(super::RELEASE_NOTES);

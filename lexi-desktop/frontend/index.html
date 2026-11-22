@@ -3727,7 +3727,8 @@
     }
 
     // --- Release notes: a little Markdown (headings, lists, bold, code, links) ---
-    function renderMarkdown(md) {
+    // Returns HTML text (the chat's renderMarkdown above returns an element).
+    function renderNotesMarkdown(md) {
       const inline = (text) => esc(text)
         .replace(/`([^`]+)`/g, '<code>$1</code>')
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
@@ -3836,7 +3837,7 @@
       if (!notes.length) return '';
       const titled = notes.map((n) => {
         const title = /^unreleased$/i.test(n.version) ? `New in this build (since ${esc(st.version)})` : esc(n.title);
-        return `<h3>${title}</h3>${renderMarkdown(n.notes)}`;
+        return `<h3>${title}</h3>${renderNotesMarkdown(n.notes)}`;
       }).join('');
       const heading = about || !st.seen_version ? `What's new in Lexi ${esc(st.version)}` : `What's new since Lexi ${esc(st.seen_version)}`;
       return `<section class="splash-section notes"><h2>${heading}</h2>${titled}</section>`;
