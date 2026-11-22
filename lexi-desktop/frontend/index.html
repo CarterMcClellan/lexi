@@ -2741,16 +2741,15 @@
       providerTableEl.appendChild(table);
     }
 
-    function showProvidersConfigSource() {
-      const features = 'width=820,height=600,resizable=yes,scrollbars=yes';
-      const win = window.open('/api/providers/config-source/view', 'lexi-providers-config', features);
-      if (!win) {
-        api('/api/providers/config-source')
-          .then((data) => openModal(data.source || 'providers-config.yaml', data.text || ''))
-          .catch((err) => openModal('Error', err.message || 'Failed to load providers-config.yaml'));
-        return;
+    // The app has no web server, so the file is shown in the floating viewer
+    // rather than a new window (window.open would try to load the route as a URL).
+    async function showProvidersConfigSource() {
+      try {
+        const data = await api('/api/providers/config-source');
+        openModal(data.path || data.source || 'providers-config.yaml', data.text || '');
+      } catch (err) {
+        setStatus(`Couldn't show providers-config.yaml: ${err.message}`, 'error');
       }
-      win.focus();
     }
 
     async function api(path, options = {}) {

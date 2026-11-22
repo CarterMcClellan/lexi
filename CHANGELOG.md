@@ -25,6 +25,7 @@ go under **Unreleased**; at release time that heading becomes the version
 
 ### Fixes
 - The Providers tab's API key panel can save, show and remove keys again.
+- The Providers tab's **Show** button opens `providers-config.yaml` again.
 - A provider whose key comes from an unset environment variable no longer shows as having a key.
 
 ## 0.2.0 — 2026-11-16

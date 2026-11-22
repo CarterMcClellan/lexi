@@ -18,6 +18,7 @@ pub async fn handle(method: &str, path: &str, body: Option<Value>) -> Result<Val
     let base = path.split('?').next().unwrap_or(path);
     match (method, base) {
         ("GET", "/api/providers") | ("GET", "/api/providers/") => providers(),
+        ("GET", "/api/providers/config-source") => providers_config_source(),
         ("GET", "/api/config") | ("GET", "/api/config/") => Ok(config_get()),
         ("GET", "/api/themes") => Ok(themes()),
         ("GET", "/api/startup") => startup(path),
@@ -109,6 +110,15 @@ fn providers() -> Result<Value, String> {
         }));
     }
     Ok(json!({ "providers": out, "source": "providers-config.yaml" }))
+}
+
+/// `GET /api/providers/config-source` — the text of `providers-config.yaml`
+/// and where it is (the Providers tab's Show button; `providers list --raw`).
+fn providers_config_source() -> Result<Value, String> {
+    let path = config::lexi_home().join("providers/providers-config.yaml");
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
+    Ok(json!({ "source": "providers-config.yaml", "path": path.display().to_string(), "text": text }))
 }
 
 /// `GET /api/models?provider=X` — a provider's configured models, enriched with
@@ -1590,6 +1600,12 @@ mod tests {
         // ...and the provider list doesn't count the unset variable as a key.
         let list = super::handle("GET", "/api/providers", None).await.unwrap();
         assert_eq!(list["providers"][0]["api_key"], "[missing]");
+        // The Providers tab's Show button reads the config file in-process.
+        let src = super::handle("GET", "/api/providers/config-source", None)
+            .await
+            .unwrap();
+        assert!(src["text"].as_str().unwrap().contains("LEXI_TEST_UNSET_KEY_VAR"));
+        assert!(src["path"].as_str().unwrap().ends_with("providers-config.yaml"));
 
         // A wrong key is refused by the provider; the right one is verified.
         let key = |action: &str, value: &str| json!({ "action": action, "provider": "openai", "value": value, "reveal": true });
