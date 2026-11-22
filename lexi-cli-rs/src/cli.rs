@@ -299,7 +299,7 @@ pub enum ProvidersCmd {
         )]
         hosted_models: String,
     },
-    /// Manage a provider's saved API key (system keychain, or its key file).
+    /// Manage a provider's API key: where api_key in providers-config.yaml says it comes from (environment variables, keychain items, files, tried in order).
     #[command(name = "api-key")]
     ApiKey {
         #[command(subcommand)]
@@ -361,20 +361,41 @@ pub enum ProviderApiCmd {
 
 #[derive(Debug, Subcommand)]
 pub enum ApiKeyCmd {
-    /// Save an API key in the system keychain (macOS, Windows) or the provider's key file (prompted for, or read from stdin, without --value).
+    /// Save an API key in the first keychain item or file the provider's api_key lists, adding one (a keychain item on macOS and Windows, else an owner-only file) when it lists neither. Prompted for, or read from stdin, without --value.
     Set {
         name: String,
         #[arg(short, long)]
         value: Option<String>,
+        /// A key for this API only (one of the provider's APIs); it gets its own api_key.
+        #[arg(long)]
+        api: Option<String>,
     },
-    /// Show the API key in use, masked unless --reveal.
+    /// Show where the key comes from (each api_key source, in order) and the key in use, masked unless --reveal.
     Show {
         name: String,
         #[arg(short, long)]
         reveal: bool,
+        /// The key this API uses.
+        #[arg(long)]
+        api: Option<String>,
     },
-    /// Delete the saved key (keychain item and key file).
-    Remove { name: String },
+    /// Delete the saved key (in the first keychain item or file api_key lists); the config is left as it is.
+    Remove {
+        name: String,
+        /// The API's own key.
+        #[arg(long)]
+        api: Option<String>,
+    },
+    /// Move the saved key to the system keychain or an owner-only file, and point api_key at it.
+    Move {
+        name: String,
+        /// Where to: keychain or file.
+        #[arg(long, value_parser = ["keychain", "file"])]
+        to: String,
+        /// The API's own key.
+        #[arg(long)]
+        api: Option<String>,
+    },
 }
 
 /// Model metadata flags shared by `models add` / `models set`.

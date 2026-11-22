@@ -311,7 +311,7 @@ providers:
 providers api-key set my-llm --value your-key-here
 ```
 
-Or, to read the key from an environment variable, add `api_key: ${MY_LLM_API_KEY}` to the provider's entry in `providers-config.yaml` and export the variable. A saved key takes precedence.
+The key goes in the system keychain (macOS, Windows) or an owner-only file, and the provider's `api_key` in `providers-config.yaml` gets that source. To read the key from an environment variable instead, set `api_key: [{env: MY_LLM_API_KEY}]` and export the variable. `api_key` is a list tried in order; see [Getting Started](getting-started.md#where-a-key-comes-from).
 
 ### Step 3: Test It
 

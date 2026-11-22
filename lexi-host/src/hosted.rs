@@ -194,7 +194,7 @@ pub async fn fetch_hosted_models(provider: &str) -> Result<Vec<Value>, HostError
         .cloned()
         .ok_or_else(|| HostError::UnknownProvider(provider.to_string()))?;
     let eff = config::effective_config(provider, &provider_cfg)?;
-    let api_key = config::resolve_api_key(provider, &provider_cfg)?;
+    let api_key = config::resolve_api_key(provider, &eff)?;
     let client = reqwest::Client::new();
     let models = fetch_hosted_models_with(&client, &eff, &api_key).await?;
     // Cache it: classification reads models' catalog data from here.
@@ -252,6 +252,8 @@ pub struct KeyStatus {
     pub status: &'static str,
     /// Where the key comes from (see [`config::api_key_source`]).
     pub source: Option<&'static str>,
+    /// The keychain item, file or variable it was read from.
+    pub from: Option<String>,
     /// Whether the provider answered and accepted the key; `false` when no key
     /// is set, the key was refused, or the check couldn't reach a verdict
     /// (timeout, 5xx, no models endpoint) — then `status` is still `"ready"`.
@@ -271,16 +273,23 @@ pub async fn check_api_key(provider: &str) -> Result<KeyStatus, HostError> {
         .and_then(|p| p.get(provider))
         .cloned()
         .ok_or_else(|| HostError::UnknownProvider(provider.to_string()))?;
-    let source = config::api_key_source(provider, &provider_cfg)?;
-    let Some(source) = source else {
+    let eff = config::effective_config(provider, &provider_cfg)?;
+    let lookup = config::lookup_api_key(&eff)?;
+    if let Some((s, e)) = lookup.failure() {
+        return Err(HostError::Config(format!(
+            "couldn't read {provider}'s API key from {}: {e}",
+            s.describe()
+        )));
+    }
+    let (Some(api_key), Some(used)) = (lookup.key.clone(), lookup.used()) else {
         return Ok(KeyStatus {
             status: "no api-key",
             source: None,
+            from: None,
             verified: false,
         });
     };
-    let api_key = config::resolve_api_key(provider, &provider_cfg)?;
-    let eff = config::effective_config(provider, &provider_cfg)?;
+    let (source, from) = (used.kind(), used.describe());
     let client = reqwest::Client::builder()
         .timeout(KEY_CHECK_TIMEOUT)
         .build()?;
@@ -294,6 +303,7 @@ pub async fn check_api_key(provider: &str) -> Result<KeyStatus, HostError> {
     Ok(KeyStatus {
         status,
         source: Some(source),
+        from: Some(from),
         verified,
     })
 }

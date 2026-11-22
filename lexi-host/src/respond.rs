@@ -459,21 +459,13 @@ pub async fn respond_background_with_effective(
 /// [`crate::models::resolve_model`]: the effective config of the binding that
 /// serves the model (per-model `auth`/`request`/`response` overrides merged
 /// in), the API key, and the model id.
-fn provider_api_key(provider: &str) -> Result<String, HostError> {
-    let providers = config::load_providers()?;
-    let provider_cfg = providers
-        .get("providers")
-        .and_then(|p| p.get(provider))
-        .ok_or_else(|| HostError::UnknownProvider(provider.to_string()))?;
-    config::resolve_api_key(provider, provider_cfg)
-}
-
 fn resolve_provider_model(
     provider: &str,
     model_override: Option<&str>,
 ) -> Result<(Value, String, String), HostError> {
     let resolved = crate::models::resolve_model(provider, model_override, Some("text"))?;
-    let api_key = provider_api_key(provider)?;
+    // The model's / API's own api_key, else the provider's.
+    let api_key = config::resolve_api_key(provider, &resolved.effective)?;
     Ok((resolved.effective, api_key, resolved.model))
 }
 
@@ -700,7 +692,7 @@ pub fn prepare_chat(
         resolved.model.clone(),
         resolved.api.clone(),
     );
-    let api_key = provider_api_key(provider)?;
+    let api_key = config::resolve_api_key(provider, &eff)?;
     // `respond` returns text and/or artifacts; vectors are `embed`'s job.
     let outputs: Vec<&str> = eff
         .pointer("/capabilities/output")
@@ -850,7 +842,7 @@ fn resolve_provider(provider: &str) -> Result<(Value, String), HostError> {
         .cloned()
         .ok_or_else(|| HostError::UnknownProvider(provider.to_string()))?;
     let eff = config::effective_config(provider, &provider_cfg)?;
-    let api_key = config::resolve_api_key(provider, &provider_cfg)?;
+    let api_key = config::resolve_api_key(provider, &eff)?;
     Ok((eff, api_key))
 }
 

@@ -118,7 +118,9 @@ fn providers_config_source() -> Result<Value, String> {
     let path = config::lexi_home().join("providers/providers-config.yaml");
     let text = std::fs::read_to_string(&path)
         .map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
-    Ok(json!({ "source": "providers-config.yaml", "path": path.display().to_string(), "text": text }))
+    Ok(
+        json!({ "source": "providers-config.yaml", "path": path.display().to_string(), "text": text }),
+    )
 }
 
 /// `GET /api/models?provider=X` — a provider's configured models, enriched with
@@ -554,9 +556,11 @@ fn unseen_notes(text: &str, seen: Option<&str>, current: &str) -> Vec<Value> {
         .collect()
 }
 
-/// One provider's credential state for the startup screen and setup wizard:
-/// where its key comes from (if anywhere), the environment variable it reads,
-/// where a saved key goes, and the template's `setup` help.
+/// One provider's credential state for the startup screen, the API key panel
+/// and the setup wizard: its `api_key` sources in order and what each had
+/// (`sources`), the one the key came from (`source` kind, `from` place), the
+/// first environment variable it reads, where a saved key goes (`save_to`,
+/// `store`, `adds_source`), and the template's `setup` help.
 fn provider_credentials(name: &str) -> Value {
     let cfg = lexi_host::admin::provider_config(name).unwrap_or(Value::Null);
     let setup = cfg.get("setup").cloned().unwrap_or(Value::Null);
@@ -566,16 +570,27 @@ fn provider_credentials(name: &str) -> Value {
         "setup": setup,
         "url": cfg.get("url"),
     });
-    match lexi_host::admin::api_key_info(name, false) {
+    match lexi_host::admin::api_key_info(name, None, false) {
         Ok(info) => {
             let env = info.get("env").and_then(Value::as_str);
-            out["source"] = info["source"].clone();
-            out["key"] = info["key"].clone();
+            for k in [
+                "source",
+                "from",
+                "key",
+                "error",
+                "sources",
+                "save_to",
+                "store",
+                "store_label",
+                "adds_source",
+                "keychain",
+                "keychain_label",
+            ] {
+                out[k] = info[k].clone();
+            }
             out["env"] = json!(env);
             out["env_set"] =
                 json!(env.is_some_and(|v| std::env::var(v).is_ok_and(|s| !s.is_empty())));
-            out["store"] = info["store"].clone();
-            out["store_label"] = info["store_label"].clone();
         }
         Err(e) => {
             out["source"] = Value::Null;
@@ -631,9 +646,12 @@ fn startup_seen() -> Result<Value, String> {
     Ok(json!({ "seen_version": APP_VERSION }))
 }
 
-/// `POST /api/providers/api-key` `{action: show|set|remove, provider, reveal?,
-/// value?}` — a provider's saved API key (the OS keychain, or its key file).
-/// Every action answers with the provider's credentials afterwards.
+/// `POST /api/providers/api-key` `{action: show|set|remove|move, provider,
+/// reveal?, value?, to?}` — a provider's API key: `set` saves it where its
+/// `api_key` says (adding a keychain item or file when it lists neither),
+/// `remove` deletes the saved one, `move` moves it `to` the keychain or a
+/// file. Every action answers with the provider's credentials afterwards
+/// (plus `saved`/`location`/`added`/`used`, or `removed`).
 fn provider_api_key(body: Value) -> Result<Value, String> {
     let provider = body
         .get("provider")
@@ -646,19 +664,24 @@ fn provider_api_key(body: Value) -> Result<Value, String> {
     match action {
         "show" => {
             let reveal = body.get("reveal").and_then(Value::as_bool).unwrap_or(false);
-            let info =
-                lexi_host::admin::api_key_info(provider, reveal).map_err(|e| e.to_string())?;
+            let info = lexi_host::admin::api_key_info(provider, None, reveal)
+                .map_err(|e| e.to_string())?;
             let mut creds = provider_credentials(provider);
             creds["key"] = info["key"].clone();
             return Ok(creds);
         }
         "set" => {
             let value = body.get("value").and_then(Value::as_str).unwrap_or("");
-            let store = config::set_api_key(provider, value).map_err(|e| e.to_string())?;
-            result["saved"] = json!(store);
+            let saved = config::set_api_key(provider, None, value).map_err(|e| e.to_string())?;
+            result = saved_value(&saved);
+        }
+        "move" => {
+            let to = body.get("to").and_then(Value::as_str).unwrap_or("");
+            let moved = config::move_api_key(provider, None, to).map_err(|e| e.to_string())?;
+            result = saved_value(&moved);
         }
         "remove" => {
-            let removed = config::remove_api_key(provider).map_err(|e| e.to_string())?;
+            let removed = config::remove_api_key(provider, None).map_err(|e| e.to_string())?;
             result["removed"] = json!(removed);
         }
         other => return Err(format!("unknown api-key action {other:?}")),
@@ -668,6 +691,15 @@ fn provider_api_key(body: Value) -> Result<Value, String> {
         c.extend(r.clone());
     }
     Ok(creds)
+}
+
+fn saved_value(saved: &config::SavedKey) -> Value {
+    json!({
+        "saved": saved.store,
+        "location": saved.location,
+        "added": saved.added,
+        "used": saved.used,
+    })
 }
 
 /// `POST /api/providers/check` `{provider}` — test the provider's key against
@@ -685,6 +717,7 @@ async fn provider_check(body: Value) -> Result<Value, String> {
         "provider": provider,
         "status": st.status,
         "source": st.source,
+        "from": st.from,
         "verified": st.verified,
     }))
 }
@@ -1604,8 +1637,14 @@ mod tests {
         let src = super::handle("GET", "/api/providers/config-source", None)
             .await
             .unwrap();
-        assert!(src["text"].as_str().unwrap().contains("LEXI_TEST_UNSET_KEY_VAR"));
-        assert!(src["path"].as_str().unwrap().ends_with("providers-config.yaml"));
+        assert!(src["text"]
+            .as_str()
+            .unwrap()
+            .contains("LEXI_TEST_UNSET_KEY_VAR"));
+        assert!(src["path"]
+            .as_str()
+            .unwrap()
+            .ends_with("providers-config.yaml"));
 
         // A wrong key is refused by the provider; the right one is verified.
         let key = |action: &str, value: &str| json!({ "action": action, "provider": "openai", "value": value, "reveal": true });
@@ -1614,6 +1653,17 @@ mod tests {
             .unwrap();
         assert_eq!(saved["saved"], "file");
         assert_eq!(saved["source"], "file");
+        // The config had only the (unset) variable, so a key file was added
+        // after it.
+        assert_eq!(saved["added"], true);
+        assert_eq!(saved["location"], "providers/openai/api-key");
+        let states: Vec<&str> = saved["sources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["state"].as_str().unwrap())
+            .collect();
+        assert_eq!(states, ["missing", "used"]);
         let check = super::handle(
             "POST",
             "/api/providers/check",

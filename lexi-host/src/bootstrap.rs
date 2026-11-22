@@ -91,6 +91,7 @@ pub fn ensure_home_in(home: &Path) -> Result<Vec<PathBuf>, HostError> {
         write_new(&aliases, DEFAULT_ALIASES)?;
         created.push(aliases);
     }
+    crate::config::upgrade_key_sources(home);
     Ok(created)
 }
 

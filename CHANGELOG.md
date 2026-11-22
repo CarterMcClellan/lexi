@@ -11,7 +11,9 @@ go under **Unreleased**; at release time that heading becomes the version
 ### Desktop app
 - **Startup screen.** When Lexi opens, it checks which providers have API keys. It shows a welcome screen the first time you run a new version (with these notes), or when no provider has a key yet.
 - **Setup wizard.** For each provider, the wizard explains how to get a key and saves it for you. It can also test the key.
-- **Keys in the Keychain.** API keys you save are kept in the macOS Keychain (Windows Credential Manager on Windows) instead of a plain-text file. A key saved by an earlier version moves there automatically the first time Lexi reads it. The CLI and Python library use the same store.
+- **You choose where each key comes from.** A provider's `api_key` in providers-config.yaml is now a list of places tried in order: an environment variable, a macOS Keychain item (Windows Credential Manager on Windows), or a file at any path. Only a missing key moves on to the next place; a locked Keychain stops with an error instead of quietly using a different key. The API Key panel shows each place and which one is in use.
+- **Keys in the Keychain.** Keys you save go in the Keychain, encrypted, instead of a plain-text file. A key file saved by an earlier version keeps working (the config now lists it), and **Move to Keychain** moves it there. The CLI and Python library read the same places.
+- **A key per API or model.** An API (say, OpenAI's image generation) or a model can have its own `api_key`, for example to bill images to a different project.
 - **Images tab.** Generate images from several providers at once. Each provider has its own model and settings, and images are saved to a folder you choose.
 - **Chat and Images list only the right models.** Chat lists only chat models, and Images lists only image models. Providers with no suitable model are hidden.
 - **Prompt editing.** Chat and Images share one way of handling prompts:

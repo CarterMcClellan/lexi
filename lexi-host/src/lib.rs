@@ -28,7 +28,9 @@ pub enum HostError {
     MissingApi(String),
     #[error("unknown API definition {0:?}")]
     UnknownApi(String),
-    #[error("missing API key for provider {0:?}")]
+    /// No source in a provider's `api_key` list has a key (the message names
+    /// the provider and where Lexi looked).
+    #[error("{0}")]
     MissingApiKey(String),
     #[error("config error: {0}")]
     Config(String),

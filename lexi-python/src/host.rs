@@ -479,7 +479,9 @@ fn _admin<'py>(py: Python<'py>, op: &str, args: &Bound<'py, PyAny>) -> PyResult<
             let name = a.string("name")?;
             block_on(py, async move {
                 let st = lexi_host::check_api_key(&name).await?;
-                Ok(json!({ "provider": name, "status": st.status, "source": st.source }))
+                Ok(
+                    json!({ "provider": name, "status": st.status, "source": st.source, "from": st.from }),
+                )
             })?
         }
         "providers.add" => {
@@ -508,10 +510,24 @@ fn _admin<'py>(py: Python<'py>, op: &str, args: &Bound<'py, PyAny>) -> PyResult<
         "providers.set_key" => {
             let name = a.str("name")?;
             require_provider(name).map_err(e)?;
-            let store = cfg::set_api_key(name, a.str("key")?).map_err(e)?;
-            json!({ "provider": name, "store": store })
+            let mut saved = cfg::set_api_key(name, a.opt_str("api"), a.str("key")?)
+                .map_err(e)?
+                .to_value();
+            saved["provider"] = json!(name);
+            saved
         }
-        "providers.show_key" => admin::api_key_info(a.str("name")?, a.flag("reveal")).map_err(e)?,
+        "providers.move_key" => {
+            let name = a.str("name")?;
+            require_provider(name).map_err(e)?;
+            let mut moved = cfg::move_api_key(name, a.opt_str("api"), a.str("to")?)
+                .map_err(e)?
+                .to_value();
+            moved["provider"] = json!(name);
+            moved
+        }
+        "providers.show_key" => {
+            admin::api_key_info(a.str("name")?, a.opt_str("api"), a.flag("reveal")).map_err(e)?
+        }
         "providers.upgrade" => {
             cfg::upgrade_provider(a.str("name")?, a.opt_str("template"), a.flag("apply"))
                 .map_err(e)?
@@ -541,7 +557,7 @@ fn _admin<'py>(py: Python<'py>, op: &str, args: &Bound<'py, PyAny>) -> PyResult<
         "providers.remove_key" => {
             let name = a.str("name")?;
             require_provider(name).map_err(e)?;
-            json!({ "removed": cfg::remove_api_key(name).map_err(e)? })
+            json!({ "removed": cfg::remove_api_key(name, a.opt_str("api")).map_err(e)? })
         }
 
         // models

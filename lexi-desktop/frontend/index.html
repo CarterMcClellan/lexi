@@ -819,6 +819,20 @@
       font-size: 0.9rem;
       color: var(--muted);
     }
+    .key-sources {
+      margin-top: 8px;
+      font-size: 0.88rem;
+      color: var(--text);
+    }
+    .key-sources ol { margin: 6px 0 8px; padding-left: 1.4em; }
+    .key-sources li { margin: 2px 0; }
+    .key-sources .src-from { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.84rem; }
+    .key-sources .src-state { color: var(--muted); margin-left: 6px; }
+    .key-sources .src-state::before { content: "— "; }
+    .key-sources .src-used .src-state { color: var(--success); font-weight: 600; }
+    .key-sources .src-error .src-state { color: var(--warning, #f59e0b); }
+    .key-sources .src-not-checked { opacity: 0.7; }
+    .key-sources .warn-text { color: var(--warning, #f59e0b); font-size: 0.84rem; }
     .api-key-box {
       width: 100%;
       box-sizing: border-box;
@@ -2185,10 +2199,11 @@
           <span>Current API Key</span>
           <button class="btn btn-ghost" id="apiKeyRevealBtn" type="button" disabled data-tip="Show or hide the saved key">Redacted</button>
           <button class="btn btn-ghost" id="apiKeyTestBtn" type="button" disabled data-tip="Ask the provider whether it accepts this key (lists its models; nothing is generated or billed)">Test</button>
-          <button class="btn btn-danger" id="apiKeyRemoveBtn" type="button" disabled data-tip="Delete the saved API key for this provider">Remove</button>
+          <button class="btn btn-ghost" id="apiKeyMoveBtn" type="button" hidden data-tip="Move the saved key from its file into the system keychain, and point providers-config.yaml at it">Move to Keychain</button>
+          <button class="btn btn-danger" id="apiKeyRemoveBtn" type="button" disabled data-tip="Delete the saved API key for this provider (providers-config.yaml is left as it is)">Remove</button>
         </div>
         <div class="api-key-status api-key-box" id="apiKeyStatus"></div>
-        <div class="api-key-status" id="apiKeySource"></div>
+        <div class="key-sources" id="apiKeySource"></div>
         <label for="apiKeyInput">New API Key</label>
         <input type="password" id="apiKeyInput" placeholder="Paste an API key…" autocomplete="off" spellcheck="false">
         <div class="btn-row">
@@ -2427,6 +2442,7 @@
     const apiKeySaveBtn = document.getElementById('apiKeySaveBtn');
     const apiKeyRevealBtn = document.getElementById('apiKeyRevealBtn');
     const apiKeyRemoveBtn = document.getElementById('apiKeyRemoveBtn');
+    const apiKeyMoveBtn = document.getElementById('apiKeyMoveBtn');
     let apiKeyRevealed = false;
     function setApiKeyRevealed(value) {
       apiKeyRevealed = !!value;
@@ -3500,19 +3516,51 @@
     const apiKeySourceEl = document.getElementById('apiKeySource');
 
     // Where a provider's key comes from, in words (`p` is a credentials row
-    // from /api/startup or /api/providers/api-key).
+    // from /api/startup or /api/providers/api-key: `source` is the kind of
+    // place, `from` the place itself).
     function keySourceText(p) {
       switch (p.source) {
-        case 'keychain': return `Saved in the ${p.store_label || 'system keychain'}`;
-        case 'file': return 'Saved in its key file (readable only by you)';
-        case 'env': return `From the environment variable $${p.env}`;
+        case 'keychain': return `From the ${p.from || p.store_label || 'system keychain'}`;
+        case 'file': return `From the file ${p.from || 'providers/…/api-key'} (readable only by you)`;
+        case 'env': return `From the environment variable ${p.from || ''}`;
         case 'config': return 'Written in providers-config.yaml';
         default: return 'No key';
       }
     }
-    // "in the macOS Keychain" / "in an owner-only key file".
+    // Where a saved key goes: "in the macOS Keychain item Lexi/openai" / "in
+    // the file providers/openai/api-key" (a credentials row), or just the kind
+    // of store (the startup summary).
     function storePhrase(p) {
-      return p.store === 'keychain' ? `in the ${p.store_label}` : `in ${p.store_label || 'its key file'}`;
+      const kind = p.saved || p.store;
+      const place = p.location || p.save_to;
+      if (place) return kind === 'keychain' ? `in the ${place}` : `in the file ${place}`;
+      return kind === 'keychain' ? `in the ${p.store_label}` : `in ${p.store_label || 'a key file'}`;
+    }
+    // After saving: a warning when an earlier source (a set variable) wins.
+    function shadowNote(saved) {
+      return saved && saved.used && saved.used !== saved.location
+        ? ` ${saved.used} comes first in its api_key and has a key, so that key is used.` : '';
+    }
+    const SOURCE_STATE = {
+      used: 'in use', missing: 'no key', unavailable: 'not available', error: 'error', 'not checked': 'not checked',
+    };
+    // The provider's api_key sources in order, and where a saved key goes.
+    function keySourcesHtml(p) {
+      const items = (p.sources || []).map((src) => {
+        // "not set" / "no item" / "no file" say more than "no key".
+        const label = (src.state === 'missing' || src.state === 'unavailable') && src.note
+          ? src.note : (SOURCE_STATE[src.state] || src.state);
+        const err = src.state === 'error' ? `<div class="warn-text">${esc(src.note || '')}</div>` : '';
+        return `<li class="src-${src.state.replace(' ', '-')}"><span class="src-from">${esc(src.from)}</span>
+          <span class="src-state">${esc(label)}</span>${err}</li>`;
+      }).join('');
+      const list = items
+        ? `<div class="muted">Lexi looks for ${esc(providerDisplay(p.provider || p.name))}'s key in this order (its <code>api_key</code> in providers-config.yaml):</div><ol>${items}</ol>`
+        : `<div class="muted">providers-config.yaml names nowhere to find this provider's key.</div>`;
+      const save = p.save_to
+        ? `<div class="muted">A key saved here goes ${esc(storePhrase(p))}${p.adds_source ? ', which Lexi adds to the end of the list' : ''}.</div>`
+        : '';
+      return list + save;
     }
     function providerDisplay(name) {
       const row = (startupState.providers || []).find((p) => p.name === name);
@@ -3534,31 +3582,32 @@
       fetchApiKeyStatus(next);
     }
 
+    let apiKeyInfo = null;
     async function fetchApiKeyStatus(provider) {
       apiKeyStatusEl.textContent = 'Checking…';
-      apiKeySourceEl.textContent = '';
+      apiKeySourceEl.innerHTML = '';
       apiKeyRevealBtn.disabled = true;
       apiKeyTestBtn.disabled = true;
       apiKeyRemoveBtn.disabled = true;
+      apiKeyMoveBtn.hidden = true;
       try {
         const data = await api('/api/providers/api-key', {
           method: 'POST',
           body: JSON.stringify({ action: 'show', provider, reveal: apiKeyRevealed }),
         });
         if (apiKeyProviderEl.value !== provider) return;
+        apiKeyInfo = data;
         const hasKey = !!data.source;
-        apiKeyStatusEl.textContent = hasKey ? data.key : 'No API key set.';
-        const saved = data.source === 'keychain' || data.source === 'file';
-        let where = hasKey ? `${keySourceText(data)}.` : '';
-        if (!saved) {
-          where += ` A key saved here goes ${storePhrase(data)}`
-            + (data.env ? ` and is used instead of $${data.env}.` : '.');
-        }
-        apiKeySourceEl.textContent = where.trim();
-        apiKeySaveBtn.dataset.tip = `Save this key for the selected provider (${storePhrase(data)})`;
+        apiKeyStatusEl.textContent = hasKey ? data.key : (data.error ? `Couldn't read the key: ${data.error}` : 'No API key set.');
+        apiKeySourceEl.innerHTML = keySourcesHtml(data);
+        apiKeySaveBtn.dataset.tip = `Save this key ${storePhrase(data)}`;
         apiKeyRevealBtn.disabled = !hasKey;
         apiKeyTestBtn.disabled = !hasKey;
-        apiKeyRemoveBtn.disabled = !saved;
+        // Remove and Move work on the first keychain item or file listed.
+        const savedSource = (data.sources || []).find((x) => x.kind === 'keychain' || x.kind === 'file');
+        apiKeyRemoveBtn.disabled = !savedSource;
+        apiKeyMoveBtn.hidden = !(data.keychain && savedSource && savedSource.kind === 'file' && savedSource.state === 'used');
+        apiKeyMoveBtn.textContent = `Move to ${data.keychain_label || 'Keychain'}`;
       } catch (err) {
         apiKeyStatusEl.textContent = 'No API key set.';
         apiKeySourceEl.textContent = err.message;
@@ -3590,7 +3639,7 @@
           method: 'POST',
           body: JSON.stringify({ action: 'set', provider, value }),
         });
-        setStatus(`Saved the API key for ${provider} ${storePhrase(data)}.`, 'success');
+        setStatus(`Saved the API key for ${provider} ${storePhrase(data)}.${shadowNote(data)}`, data.used && data.used !== data.location ? 'warn' : 'success');
         apiKeyInputEl.value = '';
         afterKeyChange();
       } catch (err) {
@@ -3626,6 +3675,24 @@
       }
     });
 
+    apiKeyMoveBtn.addEventListener('click', async () => {
+      const provider = apiKeyProviderEl.value;
+      if (!provider || !apiKeyInfo) return;
+      const label = apiKeyInfo.keychain_label || 'system keychain';
+      if (!await confirmDialog(`Move to ${label}`, `Move ${provider}'s API key from its file into the ${label}? Lexi points providers-config.yaml at the new place and deletes the file. macOS may ask whether Lexi may use the Keychain.`, 'Move')) return;
+      setStatus(`Moving ${provider}'s API key…`, 'busy');
+      try {
+        const data = await api('/api/providers/api-key', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'move', provider, to: 'keychain' }),
+        });
+        setStatus(`Moved ${provider}'s API key to the ${data.location}.`, 'success');
+        afterKeyChange();
+      } catch (err) {
+        setStatus(err.message, 'error');
+      }
+    });
+
     document.getElementById('apiKeyWizardBtn').addEventListener('click', () => {
       openSetupWizard(apiKeyProviderEl.value);
     });
@@ -3647,9 +3714,10 @@
       const name = providerDisplay(provider);
       if (r.status === 'no api-key') return { ok: false, tone: 'error', text: `${name} has no API key.` };
       if (r.status === 'invalid api-key') {
-        return { ok: false, tone: 'error', text: `${name} refused the key. Check that you copied all of it, or create a new one.` };
+        return { ok: false, tone: 'error', text: `${name} refused the key${r.from ? ` from ${r.from}` : ''}. Check that you copied all of it, or create a new one.` };
       }
-      if (r.verified) return { ok: true, tone: 'success', text: `${name} accepted the key.` };
+      const from = r.from ? ` from ${r.from}` : '';
+      if (r.verified) return { ok: true, tone: 'success', text: `${name} accepted the key${from}.` };
       return { ok: true, tone: 'warn', text: `Couldn't reach ${name} to test the key. It's saved and will be used.` };
     }
 
@@ -3945,9 +4013,20 @@
           const s = p.setup || {};
           const steps = (s.steps || []).map((t) => `<li>${esc(t)}</li>`).join('');
           const host = keysHost(p);
+          // The api_key list is tried in order: say whether a saved key would
+          // replace the one in use, or sit behind it.
           let have = '';
-          if (p.source === 'env') have = `<p class="notice">Lexi is already using <code>$${esc(p.env)}</code> for ${esc(p.display)}. A key you save here is used instead.</p>`;
-          else if (p.source) have = `<p class="notice">${esc(p.display)} already has a key (${esc(keySourceText(p).toLowerCase())}). A new one replaces it.</p>`;
+          const srcs = p.sources || [];
+          const usedAt = srcs.findIndex((x) => x.state === 'used');
+          let saveAt = srcs.findIndex((x) => x.kind === 'keychain' || x.kind === 'file');
+          if (saveAt < 0) saveAt = srcs.length;
+          if (p.source && usedAt < saveAt) {
+            have = `<p class="notice">${esc(p.display)} already gets a key from <code>${esc(p.from)}</code>, which comes first in its <code>api_key</code> list. A key you save is used only when that has none.</p>`;
+          } else if (p.source && usedAt === saveAt) {
+            have = `<p class="notice">${esc(p.display)} already has a key (${esc(keySourceText(p).toLowerCase())}). A new one replaces it.</p>`;
+          } else if (p.source) {
+            have = `<p class="notice">${esc(p.display)} gets its key from <code>${esc(p.from)}</code> now. A key you save comes first, so it's used instead.</p>`;
+          }
           page.innerHTML = `<p><strong>Get an API key from ${esc(p.display)}.</strong></p>
             ${steps ? `<ol class="howto">${steps}</ol>` : `<p>Sign in to ${esc(p.display)}'s website and create an API key${p.url ? ` for <code>${esc(p.url)}</code>` : ''}.</p>`}
             ${s.key_prefix ? `<p class="muted">${esc(p.display)} keys start with <code>${esc(s.key_prefix)}</code>.</p>` : ''}
@@ -3966,8 +4045,8 @@
             : `<p class="muted">Then quit and reopen Lexi so it sees the variable.</p>`;
           page.innerHTML = `
             <label class="choice"><input type="radio" name="wzMode" value="save" ${mode === 'save' ? 'checked' : ''}>
-              <div style="flex:1;"><div class="choice-title">Save the key ${esc(storePhrase(st))}${st.store === 'keychain' ? ' (recommended)' : ''}</div>
-                <div class="muted" style="font-size:0.85rem;">Lexi, the <code>lexi</code> command line and the Python library all read it from there.</div>
+              <div style="flex:1;"><div class="choice-title">Save the key ${esc(storePhrase(p))}${p.store === 'keychain' ? ' (recommended)' : ''}</div>
+                <div class="muted" style="font-size:0.85rem;">Lexi, the <code>lexi</code> command line and the Python library all read it from there.${p.adds_source ? ` Lexi adds it to the end of ${esc(p.display)}'s <code>api_key</code> list in providers-config.yaml.` : ''}</div>
                 <div class="choice-detail" data-for="save">
                   <div class="key-row">
                     <input type="password" id="wzKey" placeholder="Paste your ${esc(p.display)} API key" autocomplete="off" spellcheck="false">
@@ -4014,8 +4093,11 @@
           sync();
           if (mode === 'save') keyEl.focus();
         } else {
-          const where = saved ? keySourceText(saved) : keySourceText(p);
-          page.innerHTML = `<p><strong>${esc(p.display)} is set up.</strong> ${esc(where)}.</p>
+          const where = saved && saved.location
+            ? `Saved ${storePhrase(saved)}.` : `${keySourceText(saved || p)}.`;
+          const shadow = shadowNote(saved);
+          page.innerHTML = `<p><strong>${esc(p.display)} is set up.</strong> ${esc(where)}</p>
+            ${shadow ? `<p class="notice">${esc(shadow.trim())} Change the order in providers-config.yaml if you want the saved key used.</p>` : ''}
             <div class="result" id="wzResult"><span class="spinner" aria-hidden="true"></span><span>Asking ${esc(p.display)} whether it accepts the key…</span></div>
             <p class="muted" style="font-size:0.85rem;">The test lists ${esc(p.display)}'s models. Nothing is generated or billed.</p>`;
           backBtn.hidden = false;
@@ -4069,7 +4151,7 @@
               nextBtn.disabled = false;
               return;
             }
-            setStatus(`Saved the API key for ${chosen.display} ${storePhrase(saved)}.`, 'success');
+            setStatus(`Saved the API key for ${chosen.display} ${storePhrase(saved)}.${shadowNote(saved)}`, shadowNote(saved) ? 'warn' : 'success');
             afterKeyChange();
             step = 3;
           } else {
