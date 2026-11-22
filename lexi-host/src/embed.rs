@@ -32,12 +32,7 @@ pub async fn embed(provider: &str, req: &EmbedRequest) -> Result<Value, HostErro
     }
     let resolved = crate::models::resolve_model(provider, req.model.as_deref(), Some("vector"))?;
     let eff = &resolved.effective;
-    let providers = config::load_providers()?;
-    let provider_cfg = providers
-        .get("providers")
-        .and_then(|p| p.get(provider))
-        .ok_or_else(|| HostError::UnknownProvider(provider.to_string()))?;
-    let api_key = config::resolve_api_key(provider, provider_cfg)?;
+    let api_key = config::resolve_api_key(provider, eff)?;
 
     let bindings = json!({ "inputs": req.inputs, "model": resolved.model });
     let mut overrides = req.overrides.clone();

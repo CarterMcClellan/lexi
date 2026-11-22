@@ -65,6 +65,7 @@
        since its glow is drawn for a dark background. */
     .brand-logo {
       display: block;
+      cursor: pointer;
       height: 3.6em;
       height: 3lh;
       width: auto;
@@ -273,6 +274,7 @@
     }
     input[type="text"],
     input[type="number"],
+    input[type="password"],
     textarea,
     select {
       width: 100%;
@@ -817,6 +819,20 @@
       font-size: 0.9rem;
       color: var(--muted);
     }
+    .key-sources {
+      margin-top: 8px;
+      font-size: 0.88rem;
+      color: var(--text);
+    }
+    .key-sources ol { margin: 6px 0 8px; padding-left: 1.4em; }
+    .key-sources li { margin: 2px 0; }
+    .key-sources .src-from { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.84rem; }
+    .key-sources .src-state { color: var(--muted); margin-left: 6px; }
+    .key-sources .src-state::before { content: "— "; }
+    .key-sources .src-used .src-state { color: var(--success); font-weight: 600; }
+    .key-sources .src-error .src-state { color: var(--warning, #f59e0b); }
+    .key-sources .src-not-checked { opacity: 0.7; }
+    .key-sources .warn-text { color: var(--warning, #f59e0b); font-size: 0.84rem; }
     .api-key-box {
       width: 100%;
       box-sizing: border-box;
@@ -1294,6 +1310,199 @@
       padding: 6px 8px 2px;
     }
     .dt-menu .btn { padding: 5px 12px; font-size: 0.8rem; }
+
+    /* --- Startup screen ---
+       Shown while Lexi checks the providers' keys; it stays up (with the
+       release notes) the first time a version is opened, or when no
+       provider has a key yet. */
+    .splash {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      background: radial-gradient(circle at 20% 15%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 45%),
+                  radial-gradient(circle at 85% 90%, color-mix(in srgb, var(--accent-2) 12%, transparent), transparent 40%),
+                  var(--bg);
+      transition: opacity 260ms ease;
+    }
+    .splash.closing { opacity: 0; pointer-events: none; }
+    .splash[hidden] { display: none; }
+    .splash-card {
+      width: min(720px, 100%);
+      max-height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      text-align: center;
+    }
+    .splash-logo {
+      display: block;
+      width: min(380px, 70vw);
+      height: auto;
+      flex-shrink: 0;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+    :root[data-scheme="light"] .splash-logo {
+      background: #00060f;
+      border-radius: 18px;
+      padding: 10px 18px;
+    }
+    .splash-about {
+      margin: 0;
+      max-width: 600px;
+      line-height: 1.5;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+    .splash-version { font-size: 0.85rem; color: var(--muted); margin: 0; flex-shrink: 0; }
+    .splash-status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 0.95rem;
+      flex-shrink: 0;
+    }
+    .splash-status[data-tone="error"] { color: var(--danger); }
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+      border-top-color: var(--accent);
+      animation: lexi-spin 0.8s linear infinite;
+    }
+    @keyframes lexi-spin { to { transform: rotate(360deg); } }
+    .splash-body {
+      width: 100%;
+      min-height: 0;
+      overflow: auto;
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .splash-body[hidden], .splash-actions[hidden], .splash-status[hidden] { display: none; }
+    .splash-section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 18px;
+    }
+    .splash-section h2 { margin: 0 0 8px; font-size: 1.05rem; color: var(--heading, var(--text)); }
+    .splash-actions { display: flex; gap: 10px; justify-content: center; flex-shrink: 0; }
+    .notice {
+      border: 1px solid var(--warning, #f59e0b);
+      background: color-mix(in srgb, var(--warning, #f59e0b) 12%, transparent);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin: 10px 0 0;
+      line-height: 1.45;
+    }
+    /* Release notes (a little Markdown). */
+    .notes h3 { margin: 14px 0 4px; font-size: 0.95rem; color: var(--heading, var(--text)); }
+    .notes h3:first-child { margin-top: 0; }
+    .notes h4 { margin: 10px 0 2px; font-size: 0.9rem; }
+    .notes ul { margin: 4px 0; padding-left: 20px; }
+    .notes li { margin: 3px 0; line-height: 1.45; }
+    .notes p { margin: 6px 0; line-height: 1.45; }
+    .notes code, .wizard code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.85em;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 0 4px;
+    }
+    /* A provider and where its key comes from. */
+    .cred-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .cred-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .cred-name { font-weight: 600; }
+    .cred-state { font-size: 0.85rem; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+    .cred-state.ok { color: var(--success); }
+    .cred-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+    /* --- Setup wizard --- */
+    dialog.lexi-dialog.wizard { width: min(660px, calc(100vw - 32px)); }
+    .wizard-steps {
+      display: flex;
+      gap: 6px;
+      margin: 12px 0 4px;
+      padding: 0;
+      list-style: none;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .wizard-steps li { flex: 1; padding-top: 6px; border-top: 3px solid var(--border); }
+    .wizard-steps li.done { border-top-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+    .wizard-steps li.current { border-top-color: var(--accent); color: var(--text); font-weight: 600; }
+    .wizard-providers {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .wizard-provider {
+      text-align: left;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .wizard-provider:hover { border-color: var(--accent-2); }
+    .wizard-provider.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent) inset;
+      background: color-mix(in srgb, var(--accent) 10%, var(--input-bg));
+    }
+    .wizard-provider .about { font-size: 0.82rem; color: var(--muted); line-height: 1.35; }
+    .wizard ol.howto { margin: 10px 0 0; padding-left: 22px; }
+    .wizard ol.howto li { margin: 5px 0; line-height: 1.45; }
+    .wizard .choice {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      font-weight: 400;
+      margin: 12px 0 0;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    .wizard .choice:has(input:checked) { border-color: var(--accent); }
+    .wizard .choice input { width: auto; margin-top: 3px; }
+    .wizard .choice-title { font-weight: 600; }
+    .wizard .choice-detail { margin-top: 8px; }
+    .wizard .key-row { display: flex; gap: 8px; margin-top: 8px; }
+    .wizard .key-row input { flex: 1; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9rem; }
+    .wizard pre {
+      margin: 8px 0 0;
+      padding: 8px 10px;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      font-size: 0.85rem;
+    }
+    .wizard .result { margin-top: 14px; display: flex; gap: 10px; align-items: flex-start; line-height: 1.45; }
+    .wizard .result.ok { color: var(--success); }
+    .wizard .result.bad { color: var(--danger); }
+    .wizard .result.warn { color: var(--warning, #f59e0b); }
+    .wizard .warn-text { color: var(--warning, #f59e0b); font-size: 0.85rem; margin-top: 6px; }
+    .wizard .warn-text:empty { display: none; }
+    .lexi-dialog-actions .spacer { flex: 1; }
 
     /* --- Modal dialogs --- */
     dialog.lexi-dialog {
@@ -1850,10 +2059,20 @@
   </script>
 </head>
   <body>
+    <div class="splash" id="splash" role="dialog" aria-modal="true" aria-label="Welcome to Lexi">
+      <div class="splash-card">
+        <img class="splash-logo" src="lexi-logo.png" alt="Lexi — Multi-Provider GenAI Client &amp; Studio" width="680" height="288">
+        <p class="splash-about">Send one prompt to several AI providers at once and compare their answers side by side, generate images, and keep your prompts, models and API definitions in one place. The same engine runs the <code>lexi</code> command line and Python library.</p>
+        <p class="splash-version" id="splashVersion"></p>
+        <div class="splash-status" id="splashStatus"><span class="spinner" aria-hidden="true"></span><span>Checking your providers' API keys…</span></div>
+        <div class="splash-body" id="splashBody" hidden></div>
+        <div class="splash-actions" id="splashActions" hidden></div>
+      </div>
+    </div>
     <div class="shell">
       <header>
         <h1 class="brand">
-          <img class="brand-logo" src="lexi-mark.png" alt="Lexi" width="174" height="180">
+          <img class="brand-logo" id="brandLogo" src="lexi-mark.png" alt="Lexi" width="174" height="180" data-tip="About Lexi: what's new in this version, and your providers' keys">
         </h1>
         <div class="msg-area">
           <button class="status" id="status" type="button" data-tone="muted" aria-live="polite" data-tip="Lexi's messages: what it just did. Click to see the recent ones.">Ready</button>
@@ -1968,7 +2187,10 @@
         <div id="providerTable"></div>
       </section>
       <section class="panel api-key-panel">
-        <h2>API Key Management</h2>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <h2 style="margin:0;">API Key Management</h2>
+          <button class="btn btn-primary" id="apiKeyWizardBtn" type="button" data-tip="Step-by-step help getting a key from a provider and adding it to Lexi">Setup Wizard…</button>
+        </div>
         <div class="field-row">
           <label style="margin:0; white-space:nowrap;">Provider:</label>
           <select id="apiKeyProvider" style="max-width:220px;"></select>
@@ -1976,13 +2198,16 @@
         <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-top:10px;">
           <span>Current API Key</span>
           <button class="btn btn-ghost" id="apiKeyRevealBtn" type="button" disabled data-tip="Show or hide the saved key">Redacted</button>
-          <button class="btn btn-danger" id="apiKeyRemoveBtn" type="button" data-tip="Delete the saved API key for this provider">Remove</button>
+          <button class="btn btn-ghost" id="apiKeyTestBtn" type="button" disabled data-tip="Ask the provider whether it accepts this key (lists its models; nothing is generated or billed)">Test</button>
+          <button class="btn btn-ghost" id="apiKeyMoveBtn" type="button" hidden data-tip="Move the saved key from its file into the system keychain, and point providers-config.yaml at it">Move to Keychain</button>
+          <button class="btn btn-danger" id="apiKeyRemoveBtn" type="button" disabled data-tip="Delete the saved API key for this provider (providers-config.yaml is left as it is)">Remove</button>
         </div>
         <div class="api-key-status api-key-box" id="apiKeyStatus"></div>
-        <label>New API Key</label>
-        <input type="password" id="apiKeyInput" placeholder="Enter API key...">
+        <div class="key-sources" id="apiKeySource"></div>
+        <label for="apiKeyInput">New API Key</label>
+        <input type="password" id="apiKeyInput" placeholder="Paste an API key…" autocomplete="off" spellcheck="false">
         <div class="btn-row">
-          <button class="btn btn-primary" id="apiKeySaveBtn" data-tip="Save this key for the selected provider (kept in its api-key file, readable only by you)">Save</button>
+          <button class="btn btn-primary" id="apiKeySaveBtn" data-tip="Save this key for the selected provider">Save</button>
         </div>
       </section>
     </div>
@@ -2217,6 +2442,7 @@
     const apiKeySaveBtn = document.getElementById('apiKeySaveBtn');
     const apiKeyRevealBtn = document.getElementById('apiKeyRevealBtn');
     const apiKeyRemoveBtn = document.getElementById('apiKeyRemoveBtn');
+    const apiKeyMoveBtn = document.getElementById('apiKeyMoveBtn');
     let apiKeyRevealed = false;
     function setApiKeyRevealed(value) {
       apiKeyRevealed = !!value;
@@ -2542,16 +2768,15 @@
       providerTableEl.appendChild(table);
     }
 
-    function showProvidersConfigSource() {
-      const features = 'width=820,height=600,resizable=yes,scrollbars=yes';
-      const win = window.open('/api/providers/config-source/view', 'lexi-providers-config', features);
-      if (!win) {
-        api('/api/providers/config-source')
-          .then((data) => openModal(data.source || 'providers-config.yaml', data.text || ''))
-          .catch((err) => openModal('Error', err.message || 'Failed to load providers-config.yaml'));
-        return;
+    // The app has no web server, so the file is shown in the floating viewer
+    // rather than a new window (window.open would try to load the route as a URL).
+    async function showProvidersConfigSource() {
+      try {
+        const data = await api('/api/providers/config-source');
+        openModal(data.path || data.source || 'providers-config.yaml', data.text || '');
+      } catch (err) {
+        setStatus(`Couldn't show providers-config.yaml: ${err.message}`, 'error');
       }
-      win.focus();
     }
 
     async function api(path, options = {}) {
@@ -3298,6 +3523,61 @@
     })();
 
     // --- API Key Management ---
+    const apiKeyTestBtn = document.getElementById('apiKeyTestBtn');
+    const apiKeySourceEl = document.getElementById('apiKeySource');
+
+    // Where a provider's key comes from, in words (`p` is a credentials row
+    // from /api/startup or /api/providers/api-key: `source` is the kind of
+    // place, `from` the place itself).
+    function keySourceText(p) {
+      switch (p.source) {
+        case 'keychain': return `From the ${p.from || p.store_label || 'system keychain'}`;
+        case 'file': return `From the file ${p.from || 'providers/…/api-key'} (readable only by you)`;
+        case 'env': return `From the environment variable ${p.from || ''}`;
+        case 'config': return 'Written in providers-config.yaml';
+        default: return 'No key';
+      }
+    }
+    // Where a saved key goes: "in the macOS Keychain item Lexi/openai" / "in
+    // the file providers/openai/api-key" (a credentials row), or just the kind
+    // of store (the startup summary).
+    function storePhrase(p) {
+      const kind = p.saved || p.store;
+      const place = p.location || p.save_to;
+      if (place) return kind === 'keychain' ? `in the ${place}` : `in the file ${place}`;
+      return kind === 'keychain' ? `in the ${p.store_label}` : `in ${p.store_label || 'a key file'}`;
+    }
+    // After saving: a warning when an earlier source (a set variable) wins.
+    function shadowNote(saved) {
+      return saved && saved.used && saved.used !== saved.location
+        ? ` ${saved.used} comes first in its api_key and has a key, so that key is used.` : '';
+    }
+    const SOURCE_STATE = {
+      used: 'in use', missing: 'no key', unavailable: 'not available', error: 'error', 'not checked': 'not checked',
+    };
+    // The provider's api_key sources in order, and where a saved key goes.
+    function keySourcesHtml(p) {
+      const items = (p.sources || []).map((src) => {
+        // "not set" / "no item" / "no file" say more than "no key".
+        const label = (src.state === 'missing' || src.state === 'unavailable') && src.note
+          ? src.note : (SOURCE_STATE[src.state] || src.state);
+        const err = src.state === 'error' ? `<div class="warn-text">${esc(src.note || '')}</div>` : '';
+        return `<li class="src-${src.state.replace(' ', '-')}"><span class="src-from">${esc(src.from)}</span>
+          <span class="src-state">${esc(label)}</span>${err}</li>`;
+      }).join('');
+      const list = items
+        ? `<div class="muted">Lexi looks for ${esc(providerDisplay(p.provider || p.name))}'s key in this order (its <code>api_key</code> in providers-config.yaml):</div><ol>${items}</ol>`
+        : `<div class="muted">providers-config.yaml names nowhere to find this provider's key.</div>`;
+      const save = p.save_to
+        ? `<div class="muted">A key saved here goes ${esc(storePhrase(p))}${p.adds_source ? ', which Lexi adds to the end of the list' : ''}.</div>`
+        : '';
+      return list + save;
+    }
+    function providerDisplay(name) {
+      const row = (startupState.providers || []).find((p) => p.name === name);
+      return (row && row.display) || name;
+    }
+
     function populateApiKeyProviderDropdown() {
       const previous = apiKeyProviderEl.value;
       apiKeyProviderEl.innerHTML = '';
@@ -3313,25 +3593,40 @@
       fetchApiKeyStatus(next);
     }
 
+    let apiKeyInfo = null;
     async function fetchApiKeyStatus(provider) {
-      apiKeyStatusEl.textContent = 'Checking...';
+      apiKeyStatusEl.textContent = 'Checking…';
+      apiKeySourceEl.innerHTML = '';
       apiKeyRevealBtn.disabled = true;
+      apiKeyTestBtn.disabled = true;
+      apiKeyRemoveBtn.disabled = true;
+      apiKeyMoveBtn.hidden = true;
       try {
         const data = await api('/api/providers/api-key', {
           method: 'POST',
           body: JSON.stringify({ action: 'show', provider, reveal: apiKeyRevealed }),
         });
-        const output = (data.output || '').trim();
-        const hasKey = !!output && !output.toLowerCase().includes('no api key');
-        if (hasKey) {
-          apiKeyStatusEl.innerHTML = `<strong>${escapeHtml(output)}</strong>`;
-        } else {
-          apiKeyStatusEl.textContent = 'No API key configured.';
-        }
+        if (apiKeyProviderEl.value !== provider) return;
+        apiKeyInfo = data;
+        const hasKey = !!data.source;
+        // A Keychain key isn't read just to show this panel (macOS would ask
+        // for access); it's read when it's used, revealed or tested.
+        apiKeyStatusEl.textContent = data.error ? `Couldn't read the key: ${data.error}`
+          : !hasKey ? 'No API key set.'
+          : data.key_hidden ? `Saved in the ${data.keychain_label || 'system keychain'}; not read yet. Lexi reads it when you use ${providerDisplay(provider)}, or click Clear Text or Test (macOS may ask once).`
+          : data.key;
+        apiKeySourceEl.innerHTML = keySourcesHtml(data);
+        apiKeySaveBtn.dataset.tip = `Save this key ${storePhrase(data)}`;
         apiKeyRevealBtn.disabled = !hasKey;
-      } catch {
-        apiKeyStatusEl.textContent = 'No API key configured.';
-        apiKeyRevealBtn.disabled = true;
+        apiKeyTestBtn.disabled = !hasKey;
+        // Remove and Move work on the first keychain item or file listed.
+        const savedSource = (data.sources || []).find((x) => x.kind === 'keychain' || x.kind === 'file');
+        apiKeyRemoveBtn.disabled = !savedSource;
+        apiKeyMoveBtn.hidden = !(data.keychain && savedSource && savedSource.kind === 'file' && savedSource.state === 'used');
+        apiKeyMoveBtn.textContent = `Move to ${data.keychain_label || 'Keychain'}`;
+      } catch (err) {
+        apiKeyStatusEl.textContent = 'No API key set.';
+        apiKeySourceEl.textContent = err.message;
       }
     }
 
@@ -3352,18 +3647,29 @@
       const value = apiKeyInputEl.value.trim();
       if (!provider) return;
       if (!value) {
-        setStatus('Enter an API key first.', 'error');
+        setStatus('Paste an API key first.', 'error');
         return;
       }
       try {
-        await api('/api/providers/api-key', {
+        const data = await api('/api/providers/api-key', {
           method: 'POST',
           body: JSON.stringify({ action: 'set', provider, value }),
         });
-        setStatus(`Saved the API key for ${provider}.`, 'success');
+        setStatus(`Saved the API key for ${provider} ${storePhrase(data)}.${shadowNote(data)}`, data.used && data.used !== data.location ? 'warn' : 'success');
         apiKeyInputEl.value = '';
-        fetchApiKeyStatus(provider);
-        fetchProvidersList();
+        afterKeyChange();
+      } catch (err) {
+        setStatus(err.message, 'error');
+      }
+    });
+
+    apiKeyTestBtn.addEventListener('click', async () => {
+      const provider = apiKeyProviderEl.value;
+      if (!provider) return;
+      setStatus(`Testing the API key for ${provider}…`, 'busy');
+      try {
+        const r = await testProviderKey(provider);
+        setStatus(r.text, r.tone);
       } catch (err) {
         setStatus(err.message, 'error');
       }
@@ -3372,19 +3678,531 @@
     apiKeyRemoveBtn.addEventListener('click', async () => {
       const provider = apiKeyProviderEl.value;
       if (!provider) return;
-      if (!await confirmDialog('Remove API key', `Remove the API key for ${provider}?`, 'Remove')) return;
+      if (!await confirmDialog('Remove API key', `Remove the saved API key for ${provider}?`, 'Remove')) return;
       try {
-        await api('/api/providers/api-key', {
+        const data = await api('/api/providers/api-key', {
           method: 'POST',
           body: JSON.stringify({ action: 'remove', provider }),
         });
-        setStatus(`Removed the API key for ${provider}.`, 'success');
-        fetchApiKeyStatus(provider);
-        fetchProvidersList();
+        setStatus(data.removed ? `Removed the saved API key for ${provider}.` : `${provider} had no saved API key.`, 'success');
+        afterKeyChange();
       } catch (err) {
         setStatus(err.message, 'error');
       }
     });
+
+    apiKeyMoveBtn.addEventListener('click', async () => {
+      const provider = apiKeyProviderEl.value;
+      if (!provider || !apiKeyInfo) return;
+      const label = apiKeyInfo.keychain_label || 'system keychain';
+      if (!await confirmDialog(`Move to ${label}`, `Move ${provider}'s API key from its file into the ${label}? Lexi points providers-config.yaml at the new place and deletes the file. macOS may ask whether Lexi may use the Keychain.`, 'Move')) return;
+      setStatus(`Moving ${provider}'s API key…`, 'busy');
+      try {
+        const data = await api('/api/providers/api-key', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'move', provider, to: 'keychain' }),
+        });
+        setStatus(`Moved ${provider}'s API key to the ${data.location}.`, 'success');
+        afterKeyChange();
+      } catch (err) {
+        setStatus(err.message, 'error');
+      }
+    });
+
+    document.getElementById('apiKeyWizardBtn').addEventListener('click', () => {
+      openSetupWizard(apiKeyProviderEl.value);
+    });
+
+    // After a key is saved or removed: refresh everything that shows keys or
+    // lists usable providers.
+    function afterKeyChange() {
+      setApiKeyRevealed(false);
+      fetchProvidersList();
+      if (typeof refreshImagesTab === 'function') refreshImagesTab();
+    }
+
+    // Ask the provider whether it accepts the key → {text, tone, ok}.
+    async function testProviderKey(provider) {
+      const r = await api('/api/providers/check', {
+        method: 'POST',
+        body: JSON.stringify({ provider }),
+      });
+      const name = providerDisplay(provider);
+      if (r.status === 'no api-key') return { ok: false, tone: 'error', text: `${name} has no API key.` };
+      if (r.status === 'invalid api-key') {
+        return { ok: false, tone: 'error', text: `${name} refused the key${r.from ? ` from ${r.from}` : ''}. Check that you copied all of it, or create a new one.` };
+      }
+      const from = r.from ? ` from ${r.from}` : '';
+      if (r.verified) return { ok: true, tone: 'success', text: `${name} accepted the key${from}.` };
+      return { ok: true, tone: 'warn', text: `Couldn't reach ${name} to test the key. It's saved and will be used.` };
+    }
+
+    // --- Release notes: a little Markdown (headings, lists, bold, code, links) ---
+    // Returns HTML text (the chat's renderMarkdown above returns an element).
+    function renderNotesMarkdown(md) {
+      const inline = (text) => esc(text)
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>')
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" data-external>$1</a>');
+      const out = [];
+      let para = [];
+      let depth = 0; // open <ul> levels
+      const flushPara = () => { if (para.length) { out.push(`<p>${inline(para.join(' '))}</p>`); para = []; } };
+      const closeLists = (to) => { while (depth > to) { out.push('</li></ul>'); depth -= 1; } };
+      for (const raw of md.split('\n')) {
+        const line = raw.replace(/\s+$/, '');
+        const item = line.match(/^(\s*)[-*] (.*)$/);
+        const head = line.match(/^(#{3,4}) (.*)$/);
+        if (item) {
+          flushPara();
+          const level = Math.min(2, Math.floor(item[1].length / 2) + 1);
+          if (level > depth) {
+            // A deeper list opens inside the item before it.
+            while (depth < level) { out.push('<ul>'); depth += 1; }
+          } else {
+            closeLists(level);
+            out.push('</li>');
+          }
+          out.push(`<li>${inline(item[2])}`);
+        } else if (head) {
+          flushPara(); closeLists(0);
+          out.push(`<h4>${inline(head[2])}</h4>`);
+        } else if (!line.trim()) {
+          flushPara(); closeLists(0);
+        } else if (depth) {
+          out[out.length - 1] += ` ${inline(line.trim())}`;
+        } else {
+          para.push(line.trim());
+        }
+      }
+      flushPara(); closeLists(0);
+      return out.join('');
+    }
+    // Links in rendered notes open in the browser, not in the app's window.
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest && e.target.closest('a[data-external]');
+      if (!a) return;
+      e.preventDefault();
+      openExternal(a.getAttribute('href'));
+    });
+    async function openExternal(url) {
+      try {
+        await api('/api/open-url', { method: 'POST', body: JSON.stringify({ url }) });
+        setStatus(`Opened ${new URL(url).host} in your browser.`, 'muted');
+      } catch (err) {
+        setStatus(`Couldn't open ${url}: ${err.message}`, 'error');
+      }
+    }
+
+    // --- Startup screen ---
+    // Shown while Lexi checks the providers' keys. It goes away by itself
+    // when this version has been opened before and a provider has a key;
+    // otherwise it shows what's new (the release notes not yet seen) and/or
+    // sends you to the setup wizard.
+    let startupState = { providers: [] };
+    const splashEl = document.getElementById('splash');
+    const splashStatusEl = document.getElementById('splashStatus');
+    const splashBodyEl = document.getElementById('splashBody');
+    const splashActionsEl = document.getElementById('splashActions');
+    const splashVersionEl = document.getElementById('splashVersion');
+
+    async function loadStartup(about = false) {
+      startupState = await api(`/api/startup${about ? '?about=1' : ''}`);
+      return startupState;
+    }
+
+    function closeSplash() {
+      if (splashEl.hidden) return;
+      splashEl.classList.add('closing');
+      setTimeout(() => { splashEl.hidden = true; splashEl.classList.remove('closing'); }, 280);
+      document.removeEventListener('keydown', splashKeys, true);
+    }
+    // Esc dismisses the screen (Enter presses the focused button, which
+    // starts on the main one).
+    function splashKeys(e) {
+      if (splashEl.hidden || document.querySelector('dialog[open]')) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        splashActionsEl.querySelector('[data-dismiss]')?.click();
+      }
+    }
+
+    function showTab(name) {
+      const tab = document.querySelector(`.tab[data-tab="${name}"]`);
+      if (tab) tab.click();
+    }
+
+    function credentialsSection(st) {
+      const rows = (st.providers || []).map((p) => {
+        const ok = !!p.source;
+        return `<li class="cred-row"><span class="cred-name">${esc(p.display || p.name)}</span>
+          <span class="cred-state ${ok ? 'ok' : ''}"><span class="cred-dot" aria-hidden="true"></span>${esc(ok ? keySourceText(p) : 'No API key')}</span></li>`;
+      }).join('');
+      const notice = st.has_credentials ? '' : `<p class="notice">Lexi needs an API key from at least one provider before it can chat or make images. The setup wizard shows you where to get one, and saves it ${esc(storePhrase(st))}.</p>`;
+      return `<section class="splash-section"><h2>Your providers</h2><ul class="cred-list">${rows || '<li class="muted">No providers are configured.</li>'}</ul>${notice}</section>`;
+    }
+
+    function notesSection(st, about) {
+      const notes = st.notes || [];
+      if (!notes.length) return '';
+      const titled = notes.map((n) => {
+        const title = /^unreleased$/i.test(n.version) ? `New in this build (since ${esc(st.version)})` : esc(n.title);
+        return `<h3>${title}</h3>${renderNotesMarkdown(n.notes)}`;
+      }).join('');
+      const heading = about || !st.seen_version ? `What's new in Lexi ${esc(st.version)}` : `What's new since Lexi ${esc(st.seen_version)}`;
+      return `<section class="splash-section notes"><h2>${heading}</h2>${titled}</section>`;
+    }
+
+    function renderSplash(st, about = false) {
+      splashVersionEl.textContent = `Version ${st.version}`;
+      splashStatusEl.hidden = true;
+      // Without any key, the providers come first: that's what needs doing.
+      splashBodyEl.innerHTML = st.has_credentials
+        ? notesSection(st, about) + credentialsSection(st)
+        : credentialsSection(st) + notesSection(st, about);
+      splashBodyEl.scrollTop = 0;
+      splashBodyEl.hidden = false;
+      splashActionsEl.innerHTML = '';
+      const button = (label, cls, onClick, tip) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = `btn ${cls}`;
+        b.textContent = label;
+        if (tip) b.dataset.tip = tip;
+        b.addEventListener('click', onClick);
+        splashActionsEl.appendChild(b);
+        return b;
+      };
+      const finish = async () => {
+        if (st.new_version && !about) {
+          try { await api('/api/startup/seen', { method: 'POST', body: '{}' }); } catch {}
+        }
+        closeSplash();
+      };
+      const toWizard = async () => {
+        await finish();
+        showTab('providers');
+        openSetupWizard();
+      };
+      if (st.has_credentials) {
+        button('Set Up a Provider…', 'btn-ghost', toWizard, 'Add an API key for another provider');
+        button(about ? 'Close' : 'Continue', 'btn-primary', finish).dataset.dismiss = '';
+      } else {
+        button('Skip for Now', 'btn-ghost', async () => {
+          await finish();
+          showTab('providers');
+          setStatus('No provider has an API key yet. Use the Setup Wizard on the Providers tab when you\'re ready.', 'warn');
+        }, 'Look around first; the Providers tab has the setup wizard').dataset.dismiss = '';
+        button('Set Up a Provider', 'btn-primary', toWizard);
+      }
+      splashActionsEl.hidden = false;
+      splashEl.hidden = false;
+      document.addEventListener('keydown', splashKeys, true);
+      splashActionsEl.querySelector('.btn-primary')?.focus();
+    }
+
+    async function runStartup() {
+      try {
+        const st = await loadStartup();
+        if (!st.new_version && st.has_credentials) {
+          closeSplash();
+          return;
+        }
+        renderSplash(st);
+        if (st.new_version) setStatus(`Welcome to Lexi ${st.version}.`, 'muted');
+        if (!st.has_credentials) setStatus('No provider has an API key yet.', 'warn');
+      } catch (err) {
+        splashStatusEl.dataset.tone = 'error';
+        splashStatusEl.textContent = `Couldn't check your providers: ${err.message}`;
+        splashActionsEl.innerHTML = '';
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn btn-primary';
+        b.textContent = 'Continue';
+        b.addEventListener('click', closeSplash);
+        splashActionsEl.appendChild(b);
+        splashActionsEl.hidden = false;
+        setStatus(`Couldn't check your providers: ${err.message}`, 'error');
+      }
+    }
+
+    // The header logo reopens the screen: this version's notes and the keys.
+    document.getElementById('brandLogo').addEventListener('click', async () => {
+      try {
+        renderSplash(await loadStartup(true), true);
+      } catch (err) {
+        setStatus(`Couldn't load the release notes: ${err.message}`, 'error');
+      }
+    });
+
+    // --- Setup wizard: get an API key from a provider and add it to Lexi ---
+    // Steps: 1 choose a provider, 2 get a key (the provider template's `setup`
+    // help), 3 add it (save it, or use an environment variable), 4 test it.
+    async function openSetupWizard(preferred) {
+      let st;
+      try {
+        st = await loadStartup();
+      } catch (err) {
+        setStatus(`Couldn't load the providers: ${err.message}`, 'error');
+        return;
+      }
+      const STEPS = ['Choose a provider', 'Get an API key', 'Add it to Lexi', 'Test it'];
+      let step = 0;
+      let mode = 'save';
+      let saved = null;   // the credentials row after saving
+      const firstMissing = (st.providers || []).find((p) => !p.source);
+      let chosen = (st.providers || []).find((p) => p.name === preferred)
+        || firstMissing || (st.providers || [])[0];
+
+      const dlg = document.createElement('dialog');
+      dlg.className = 'lexi-dialog wizard';
+      dlg.innerHTML = `
+        <form method="dialog" novalidate>
+          <div class="lexi-dialog-head">
+            <h3>Set up a provider</h3>
+            <button type="button" class="modal-close dlg-x" aria-label="Close" data-tip="Close the wizard (Esc)">&times;</button>
+          </div>
+          <div class="lexi-dialog-body">
+            <ol class="wizard-steps">${STEPS.map((t) => `<li>${esc(t)}</li>`).join('')}</ol>
+            <div class="wizard-page"></div>
+          </div>
+          <div class="lexi-dialog-error" role="alert"></div>
+          <div class="lexi-dialog-actions">
+            <button type="button" class="btn btn-ghost wz-back">Back</button>
+            <span class="spacer"></span>
+            <button type="button" class="btn btn-ghost wz-alt" hidden></button>
+            <button type="submit" class="btn btn-primary wz-next"></button>
+          </div>
+        </form>`;
+      const page = dlg.querySelector('.wizard-page');
+      const errEl = dlg.querySelector('.lexi-dialog-error');
+      const backBtn = dlg.querySelector('.wz-back');
+      const nextBtn = dlg.querySelector('.wz-next');
+      const altBtn = dlg.querySelector('.wz-alt');
+      let altAction = null;
+      const setError = (m) => { errEl.textContent = m || ''; };
+
+      const keysHost = (p) => {
+        const u = (p.setup && (p.setup.keys_url || p.setup.site)) || '';
+        try { return new URL(u).host; } catch { return ''; }
+      };
+      const envCommand = (p) => {
+        const v = p.env;
+        if (st.platform === 'windows') return { profile: `setx ${v} "your-key"`, app: null };
+        if (st.platform === 'macos') {
+          return { profile: `export ${v}="your-key"    # in ~/.zshrc`, app: `launchctl setenv ${v} "your-key"` };
+        }
+        return { profile: `export ${v}="your-key"    # in ~/.profile`, app: null };
+      };
+
+      function render() {
+        setError('');
+        dlg.querySelectorAll('.wizard-steps li').forEach((li, i) => {
+          li.classList.toggle('done', i < step);
+          li.classList.toggle('current', i === step);
+        });
+        backBtn.hidden = step === 0;
+        backBtn.disabled = false;
+        altBtn.hidden = true;
+        altAction = null;
+        nextBtn.disabled = false;
+        const p = chosen;
+        if (step === 0) {
+          page.innerHTML = `<p>Lexi talks to AI providers with your own API keys. Which provider do you want to set up?</p>
+            <div class="wizard-providers">${(st.providers || []).map((q) => `
+              <button type="button" class="wizard-provider${q === chosen ? ' selected' : ''}" data-name="${esc(q.name)}">
+                <span class="cred-name">${esc(q.display || q.name)}</span>
+                <span class="about">${esc((q.setup && q.setup.about) || q.url || '')}</span>
+                <span class="cred-state ${q.source ? 'ok' : ''}"><span class="cred-dot" aria-hidden="true"></span>${esc(q.source ? keySourceText(q) : 'No API key')}</span>
+              </button>`).join('')}</div>`;
+          page.querySelectorAll('.wizard-provider').forEach((b) => {
+            b.addEventListener('click', () => {
+              chosen = st.providers.find((q) => q.name === b.dataset.name);
+              page.querySelectorAll('.wizard-provider').forEach((x) => x.classList.toggle('selected', x === b));
+              nextBtn.disabled = false;
+            });
+            b.addEventListener('dblclick', () => { step = 1; render(); });
+          });
+          nextBtn.textContent = 'Next';
+          nextBtn.disabled = !chosen;
+        } else if (step === 1) {
+          const s = p.setup || {};
+          const steps = (s.steps || []).map((t) => `<li>${esc(t)}</li>`).join('');
+          const host = keysHost(p);
+          // The api_key list is tried in order: say whether a saved key would
+          // replace the one in use, or sit behind it.
+          let have = '';
+          const srcs = p.sources || [];
+          const usedAt = srcs.findIndex((x) => x.state === 'used');
+          let saveAt = srcs.findIndex((x) => x.kind === 'keychain' || x.kind === 'file');
+          if (saveAt < 0) saveAt = srcs.length;
+          if (p.source && usedAt < saveAt) {
+            have = `<p class="notice">${esc(p.display)} already gets a key from <code>${esc(p.from)}</code>, which comes first in its <code>api_key</code> list. A key you save is used only when that has none.</p>`;
+          } else if (p.source && usedAt === saveAt) {
+            have = `<p class="notice">${esc(p.display)} already has a key (${esc(keySourceText(p).toLowerCase())}). A new one replaces it.</p>`;
+          } else if (p.source) {
+            have = `<p class="notice">${esc(p.display)} gets its key from <code>${esc(p.from)}</code> now. A key you save comes first, so it's used instead.</p>`;
+          }
+          page.innerHTML = `<p><strong>Get an API key from ${esc(p.display)}.</strong></p>
+            ${steps ? `<ol class="howto">${steps}</ol>` : `<p>Sign in to ${esc(p.display)}'s website and create an API key${p.url ? ` for <code>${esc(p.url)}</code>` : ''}.</p>`}
+            ${s.key_prefix ? `<p class="muted">${esc(p.display)} keys start with <code>${esc(s.key_prefix)}</code>.</p>` : ''}
+            ${have}`;
+          if (host) {
+            altBtn.hidden = false;
+            altBtn.textContent = `Open ${host}`;
+            altBtn.dataset.tip = `Open ${s.keys_url || s.site} in your browser`;
+            altAction = () => openExternal(s.keys_url || s.site);
+          }
+          nextBtn.textContent = 'I Have a Key';
+        } else if (step === 2) {
+          const env = p.env ? envCommand(p) : null;
+          const appNote = env && env.app
+            ? `<p class="muted">Apps opened from the Dock or Finder don't read your shell profile. For Lexi to see the variable, also run:</p><pre>${esc(env.app)}</pre><p class="muted">then quit and reopen Lexi. That lasts until you log out.</p>`
+            : `<p class="muted">Then quit and reopen Lexi so it sees the variable.</p>`;
+          page.innerHTML = `
+            <label class="choice"><input type="radio" name="wzMode" value="save" ${mode === 'save' ? 'checked' : ''}>
+              <div style="flex:1;"><div class="choice-title">Save the key ${esc(storePhrase(p))}${p.store === 'keychain' ? ' (recommended)' : ''}</div>
+                <div class="muted" style="font-size:0.85rem;">Lexi, the <code>lexi</code> command line and the Python library all read it from there.${p.adds_source ? ` Lexi adds it to the end of ${esc(p.display)}'s <code>api_key</code> list in providers-config.yaml.` : ''}</div>
+                <div class="choice-detail" data-for="save">
+                  <div class="key-row">
+                    <input type="password" id="wzKey" placeholder="Paste your ${esc(p.display)} API key" autocomplete="off" spellcheck="false">
+                    <button type="button" class="btn btn-ghost" id="wzShow" data-tip="Show or hide the key">Show</button>
+                  </div>
+                  <div class="warn-text" id="wzKeyWarn"></div>
+                </div>
+              </div>
+            </label>
+            ${p.env ? `<label class="choice"><input type="radio" name="wzMode" value="env" ${mode === 'env' ? 'checked' : ''}>
+              <div style="flex:1;"><div class="choice-title">Use the environment variable <code>$${esc(p.env)}</code></div>
+                <div class="muted" style="font-size:0.85rem;">Handy if you already keep keys in your shell profile. Lexi reads ${p.env_set ? 'it now' : 'it once it is set'}.</div>
+                <div class="choice-detail" data-for="env">
+                  <p class="muted" style="margin:0;">Add this to your shell profile (the <code>lexi</code> command line reads it there):</p>
+                  <pre>${esc(env.profile)}</pre>
+                  ${appNote}
+                </div>
+              </div>
+            </label>` : ''}`;
+          const keyEl = page.querySelector('#wzKey');
+          const warnEl = page.querySelector('#wzKeyWarn');
+          const prefix = (p.setup && p.setup.key_prefix) || '';
+          const sync = () => {
+            mode = (page.querySelector('input[name="wzMode"]:checked') || {}).value || 'save';
+            page.querySelectorAll('.choice-detail').forEach((d) => { d.hidden = d.dataset.for !== mode; });
+            const v = keyEl.value.trim();
+            warnEl.textContent = v && prefix && !v.startsWith(prefix)
+              ? `${p.display} keys usually start with ${prefix} — check that you copied the whole key.` : '';
+            if (mode === 'save') {
+              nextBtn.textContent = 'Save Key';
+              nextBtn.disabled = !v;
+            } else {
+              nextBtn.textContent = 'Check Again';
+              nextBtn.disabled = false;
+            }
+          };
+          page.querySelectorAll('input[name="wzMode"]').forEach((r) => r.addEventListener('change', sync));
+          keyEl.addEventListener('input', sync);
+          page.querySelector('#wzShow').addEventListener('click', (e) => {
+            const shown = keyEl.type === 'text';
+            keyEl.type = shown ? 'password' : 'text';
+            e.currentTarget.textContent = shown ? 'Show' : 'Hide';
+          });
+          sync();
+          if (mode === 'save') keyEl.focus();
+        } else {
+          const where = saved && saved.location
+            ? `Saved ${storePhrase(saved)}.` : `${keySourceText(saved || p)}.`;
+          const shadow = shadowNote(saved);
+          page.innerHTML = `<p><strong>${esc(p.display)} is set up.</strong> ${esc(where)}</p>
+            ${shadow ? `<p class="notice">${esc(shadow.trim())} Change the order in providers-config.yaml if you want the saved key used.</p>` : ''}
+            <div class="result" id="wzResult"><span class="spinner" aria-hidden="true"></span><span>Asking ${esc(p.display)} whether it accepts the key…</span></div>
+            <p class="muted" style="font-size:0.85rem;">The test lists ${esc(p.display)}'s models. Nothing is generated or billed.</p>`;
+          backBtn.hidden = false;
+          altBtn.hidden = false;
+          altBtn.textContent = 'Set Up Another';
+          altBtn.dataset.tip = 'Add a key for another provider';
+          altAction = async () => {
+            st = await loadStartup();
+            chosen = st.providers.find((q) => !q.source) || st.providers[0];
+            saved = null;
+            step = 0;
+            render();
+          };
+          nextBtn.textContent = 'Done';
+          runTest();
+        }
+      }
+
+      async function runTest() {
+        const box = page.querySelector('#wzResult');
+        try {
+          const r = await testProviderKey(chosen.name);
+          box.className = `result ${r.tone === 'success' ? 'ok' : r.tone === 'warn' ? 'warn' : 'bad'}`;
+          box.textContent = `${r.tone === 'success' ? '✓' : r.tone === 'warn' ? '!' : '✕'} ${r.text}`;
+          setStatus(r.text, r.tone);
+        } catch (err) {
+          box.className = 'result bad';
+          box.textContent = `✕ ${err.message}`;
+        }
+      }
+
+      async function next() {
+        setError('');
+        if (step === 0) {
+          if (!chosen) return;
+          step = 1;
+        } else if (step === 1) {
+          step = 2;
+        } else if (step === 2) {
+          if (mode === 'save') {
+            const value = page.querySelector('#wzKey').value.trim();
+            if (!value) return;
+            nextBtn.disabled = true;
+            try {
+              saved = await api('/api/providers/api-key', {
+                method: 'POST',
+                body: JSON.stringify({ action: 'set', provider: chosen.name, value }),
+              });
+            } catch (err) {
+              setError(err.message);
+              nextBtn.disabled = false;
+              return;
+            }
+            setStatus(`Saved the API key for ${chosen.display} ${storePhrase(saved)}.${shadowNote(saved)}`, shadowNote(saved) ? 'warn' : 'success');
+            afterKeyChange();
+            step = 3;
+          } else {
+            st = await loadStartup();
+            chosen = st.providers.find((q) => q.name === chosen.name) || chosen;
+            if (chosen.source === 'env') {
+              saved = chosen;
+              afterKeyChange();
+              step = 3;
+            } else {
+              setError(`Lexi doesn't see $${chosen.env} yet. Set it as shown, then quit and reopen Lexi.`);
+              return;
+            }
+          }
+        } else {
+          dlg.close();
+          return;
+        }
+        render();
+      }
+
+      dlg.querySelector('form').addEventListener('submit', (e) => { e.preventDefault(); next(); });
+      backBtn.addEventListener('click', () => { if (step > 0) { step = step === 3 ? 2 : step - 1; render(); } });
+      altBtn.addEventListener('click', () => { if (altAction) altAction(); });
+      dlg.querySelector('.dlg-x').addEventListener('click', () => dlg.close());
+      dlg.addEventListener('close', () => {
+        dlg.remove();
+        if (apiKeyProviderEl.value) fetchApiKeyStatus(apiKeyProviderEl.value);
+      });
+      document.body.appendChild(dlg);
+      dlg.showModal();
+      render();
+      nextBtn.focus();
+    }
 
     // --- Shared UI: escaping, hover help, dialogs, data tables ---
 
@@ -5289,6 +6107,7 @@
 
     // --- Init ---
     loadThemes();
+    runStartup();
     renderProviderSelector();
     fetchProvidersList();
     fetchConfig();

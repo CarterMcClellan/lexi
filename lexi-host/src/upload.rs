@@ -85,7 +85,7 @@ pub async fn upload_file(provider: &str, file_path: &Path) -> Result<String, Hos
         .cloned()
         .ok_or_else(|| HostError::UnknownProvider(provider.to_string()))?;
     let eff = config::effective_config(provider, &provider_cfg)?;
-    let api_key = config::resolve_api_key(provider, &provider_cfg)?;
+    let api_key = config::resolve_api_key(provider, &eff)?;
     let client = reqwest::Client::new();
     upload_file_with_effective(&client, &eff, &api_key, file_path).await
 }

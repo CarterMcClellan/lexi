@@ -314,7 +314,8 @@ pub fn resolve_model(
         )));
     }
 
-    // Per-model overrides of the API's auth/request/response blocks.
+    // Per-model overrides of the API's auth/request/response blocks, and the
+    // model's own api_key (which replaces the API's / provider's).
     if let Some(meta) = configured
         .iter()
         .find(|x| x.id == model)
@@ -331,6 +332,9 @@ pub fn resolve_model(
                     };
                     cfg.insert(key.to_string(), merged);
                 }
+            }
+            if let Some(k) = meta.get("api_key") {
+                cfg.insert("api_key".into(), k.clone());
             }
         }
     }

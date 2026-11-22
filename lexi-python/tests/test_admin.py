@@ -29,8 +29,23 @@ def test_providers_lifecycle(home):
     assert lexi.providers.show_key("mine", reveal=True)["key"] == "sk-abcdefghij"
     assert lexi.providers.rename("mine", "yours") == {"renamed": "mine", "to": "yours"}
     assert lexi.providers.remove_key("yours") == {"removed": True}
-    assert lexi.providers.show_key("yours") == {"provider": "yours", "source": None, "key": None}
-    lexi.providers.set_key("yours", "k2")
+    # The key file followed the rename, and the config names it.
+    assert lexi.providers.show_key("yours") == {
+        "provider": "yours", "api": None, "own": True,
+        "source": None, "from": None, "key": None, "key_hidden": False, "error": None,
+        "sources": [{
+            "kind": "file", "from": "providers/yours/api-key",
+            "state": "missing", "note": "no file",
+        }],
+        "save_to": "providers/yours/api-key", "store": "file",
+        "store_label": "an owner-only key file", "adds_source": False, "env": None,
+        "keychain": False, "keychain_label": lexi.providers.show_key("yours")["keychain_label"],
+    }
+    saved = lexi.providers.set_key("yours", "k2")
+    assert saved == {
+        "provider": "yours", "store": "file", "location": "providers/yours/api-key",
+        "added": False, "used": "providers/yours/api-key",
+    }
     assert lexi.providers.show_key("yours", reveal=True)["key"] == "k2"
     assert lexi.providers.remove("yours") == {"removed": "yours"}
     assert "yours" not in [p["name"] for p in lexi.providers.list()]
@@ -48,6 +63,7 @@ def test_provider_status_and_hosted_models(home):
         lexi.providers.add("mock", m.url, "m-a", api_key="k")
         assert lexi.providers.status("mock") == {
             "provider": "mock", "status": "ready", "source": "file",
+            "from": "providers/mock/api-key",
         }
         assert [x["id"] for x in lexi.models.hosted("mock")] == ["m-a", "m-b"]
         lexi.providers.remove_key("mock")
@@ -224,3 +240,31 @@ def test_provider_upgrade_and_apis(home):
     assert lexi.providers.add_api("openai", "embeddings")["existed"] is True
     with pytest.raises(lexi.LexiError, match="only API"):
         lexi.providers.remove_api("anthropic", "messages")
+
+
+def test_key_sources_per_api_keys_and_move(home, monkeypatch):
+    lexi.providers.add("mine", "https://x.example/v1", "m1")
+    monkeypatch.setenv("LEXI_TEST_MINE_KEY", "from-env")
+    cfg = home / "providers" / "providers-config.yaml"
+    cfg.write_text(cfg.read_text().replace(
+        "  mine:\n", "  mine:\n    api_key: [{env: LEXI_TEST_MINE_KEY}, {file: providers/mine/api-key}]\n", 1))
+    info = lexi.providers.show_key("mine", reveal=True)
+    assert (info["source"], info["from"], info["key"]) == ("env", "$LEXI_TEST_MINE_KEY", "from-env")
+    assert [s["state"] for s in info["sources"]] == ["used", "not checked"]
+
+    # Saved in the listed file, but the variable comes first and is set.
+    saved = lexi.providers.set_key("mine", "from-file")
+    assert (saved["location"], saved["used"]) == ("providers/mine/api-key", "$LEXI_TEST_MINE_KEY")
+    monkeypatch.delenv("LEXI_TEST_MINE_KEY")
+    assert lexi.providers.show_key("mine", reveal=True)["key"] == "from-file"
+
+    # A key for one API only.
+    assert not lexi.providers.show_key("mine", api="chat-completions")["own"]
+    lexi.providers.set_key("mine", "chat-only", api="chat-completions")
+    own = lexi.providers.show_key("mine", api="chat-completions", reveal=True)
+    assert own["own"] and own["key"] == "chat-only"
+
+    # The keychain is off in tests (LEXI_KEY_STORE=file; Linux has none), so it
+    # can't be the target.
+    with pytest.raises(lexi.LexiError, match="keychain"):
+        lexi.providers.move_key("mine", "keychain")

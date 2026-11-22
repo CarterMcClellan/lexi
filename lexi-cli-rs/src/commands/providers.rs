@@ -26,9 +26,10 @@ pub(crate) async fn run(io: &mut Io<'_>, cmd: ProvidersCmd) -> u8 {
             &hosted_models,
         ),
         ProvidersCmd::ApiKey { cmd } => match cmd {
-            ApiKeyCmd::Set { name, value } => key_set(io, &name, value),
-            ApiKeyCmd::Show { name, reveal } => key_show(io, &name, reveal),
-            ApiKeyCmd::Remove { name } => key_remove(io, &name),
+            ApiKeyCmd::Set { name, value, api } => key_set(io, &name, value, api.as_deref()),
+            ApiKeyCmd::Show { name, reveal, api } => key_show(io, &name, reveal, api.as_deref()),
+            ApiKeyCmd::Remove { name, api } => key_remove(io, &name, api.as_deref()),
+            ApiKeyCmd::Move { name, to, api } => key_move(io, &name, &to, api.as_deref()),
         },
         ProvidersCmd::Api { cmd } => api(io, cmd),
         ProvidersCmd::Upgrade {
@@ -61,12 +62,15 @@ fn provider_cfg(io: &mut Io<'_>, name: &str) -> Result<Value, u8> {
 async fn status(io: &mut Io<'_>, name: &str, raw: bool) -> u8 {
     match lexi_host::check_api_key(name).await {
         Ok(st) => {
-            let json = json!({ "provider": name, "status": st.status, "source": st.source });
+            let json = json!({ "provider": name, "status": st.status, "source": st.source, "from": st.from });
             let human = if raw {
                 json.to_string()
             } else {
-                let source = st.source.map(|s| format!(" ({s})")).unwrap_or_default();
-                format!("{name}: {}{source}", st.status)
+                let from = st
+                    .from
+                    .map(|s| format!(" (key from {s})"))
+                    .unwrap_or_default();
+                format!("{name}: {}{from}", st.status)
             };
             io.result(human, json)
         }
@@ -103,7 +107,23 @@ fn read_key() -> std::io::Result<String> {
     }
 }
 
-fn key_set(io: &mut Io<'_>, name: &str, value: Option<String>) -> u8 {
+/// What a saved key means for messages: where it went, whether the config
+/// gained that source, and a warning when an earlier source wins.
+fn saved_message(lead: &str, saved: &lexi_host::config::SavedKey) -> String {
+    let mut msg = format!("{lead} {}.", saved.location);
+    if saved.added {
+        msg.push_str(" Added it to the provider's api_key in providers-config.yaml.");
+    }
+    match &saved.used {
+        Some(used) if *used != saved.location => msg.push_str(&format!(
+            "\nNote: {used} comes first in api_key and has a key, so that key is used."
+        )),
+        _ => {}
+    }
+    msg
+}
+
+fn key_set(io: &mut Io<'_>, name: &str, value: Option<String>, api: Option<&str>) -> u8 {
     if let Err(code) = provider_cfg(io, name) {
         return code;
     }
@@ -114,39 +134,87 @@ fn key_set(io: &mut Io<'_>, name: &str, value: Option<String>) -> u8 {
             Err(e) => return io.fail(e),
         },
     };
-    match lexi_host::config::set_api_key(name, &key) {
-        Ok(()) => io.result(
-            format!("Saved API key for {name}."),
-            json!({ "provider": name }),
-        ),
-        Err(e) => io.fail(e),
-    }
-}
-
-/// `sk-a…wxyz`-style masking: first and last 4 shown when long enough.
-fn key_show(io: &mut Io<'_>, name: &str, reveal: bool) -> u8 {
-    match lexi_host::admin::api_key_info(name, reveal) {
-        Ok(info) if info["key"].is_null() => {
-            io.result(format!("No API key configured for {name}."), info)
+    match lexi_host::config::set_api_key(name, api, &key) {
+        Ok(saved) => {
+            let mut json = saved.to_value();
+            json["provider"] = json!(name);
+            io.result(
+                saved_message(&format!("Saved the API key for {name} in"), &saved),
+                json,
+            )
         }
-        Ok(info) => io.result(scalar(info.get("key")), info),
         Err(e) => io.fail(e),
     }
 }
 
-fn key_remove(io: &mut Io<'_>, name: &str) -> u8 {
+/// Each `api_key` source in order with what was found there, then the key
+/// (`sk-a…wxyz`-style masking unless --reveal).
+fn key_show(io: &mut Io<'_>, name: &str, reveal: bool, api: Option<&str>) -> u8 {
+    let info = match lexi_host::admin::api_key_info(name, api, Some(reveal)) {
+        Ok(info) => info,
+        Err(e) => return io.fail(e),
+    };
+    let mut lines = Vec::new();
+    let whose = match (api, info["own"].as_bool()) {
+        (Some(a), Some(false)) => format!("The {a} API uses {name}'s key. "),
+        _ => String::new(),
+    };
+    let sources = info["sources"].as_array().cloned().unwrap_or_default();
+    if sources.is_empty() {
+        lines.push(format!("{whose}{name}'s api_key names no source."));
+    } else {
+        lines.push(format!("{whose}api_key sources, in order:"));
+        for (i, s) in sources.iter().enumerate() {
+            let note = s["note"]
+                .as_str()
+                .map(|n| format!(": {n}"))
+                .unwrap_or_default();
+            lines.push(format!(
+                "  {}. {} — {}{note}",
+                i + 1,
+                scalar(s.get("from")),
+                scalar(s.get("state"))
+            ));
+        }
+    }
+    match (info["key"].as_str(), info["error"].as_str()) {
+        (_, Some(err)) => lines.push(format!("No API key: {err}")),
+        (Some(key), None) => lines.push(format!("Key: {key}")),
+        (None, None) => lines.push(format!("No API key configured for {name}.")),
+    }
+    io.result(lines.join("\n"), info)
+}
+
+fn key_remove(io: &mut Io<'_>, name: &str, api: Option<&str>) -> u8 {
     if let Err(code) = provider_cfg(io, name) {
         return code;
     }
-    match lexi_host::config::remove_api_key(name) {
+    match lexi_host::config::remove_api_key(name, api) {
         Ok(true) => io.result(
-            format!("Removed API key for {name}."),
+            format!("Removed the saved API key for {name}."),
             json!({ "removed": true }),
         ),
         Ok(false) => io.result(
-            format!("No API key file found for {name}."),
+            format!("No saved API key for {name}."),
             json!({ "removed": false }),
         ),
+        Err(e) => io.fail(e),
+    }
+}
+
+fn key_move(io: &mut Io<'_>, name: &str, to: &str, api: Option<&str>) -> u8 {
+    if let Err(code) = provider_cfg(io, name) {
+        return code;
+    }
+    match lexi_host::config::move_api_key(name, api, to) {
+        Ok(saved) => {
+            let mut json = saved.to_value();
+            json["provider"] = json!(name);
+            io.result(
+                saved_message(&format!("Moved {name}'s API key to"), &saved),
+                json,
+            )
+        }
         Err(e) => io.fail(e),
     }
 }

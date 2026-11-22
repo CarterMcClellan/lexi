@@ -346,13 +346,13 @@ lexi providers add [OPTIONS] --url <URL> --default_model <DEFAULT_MODEL> <NAME>
 - `<NAME>`
 - `--url` — Base URL, e.g. https://api.example.com/v1
 - `--default_model` — The model used when none is given
-- `--api_key` — API key (stored in the provider's key file, not the config)
+- `--api_key` — API key (saved in the system keychain or the provider's key file, never the config)
 - `--api` — API definition the provider speaks
 - `--hosted_models` — Path of the provider's models endpoint
 
 #### `providers api-key set`
 
-Store an API key (prompted for, or read from stdin, without --value)
+Save an API key in the first keychain item or file the provider's api_key lists, adding one (a keychain item on macOS and Windows, else an owner-only file) when it lists neither. Prompted for, or read from stdin, without --value
 
 ```
 lexi providers api-key set [OPTIONS] <NAME>
@@ -360,10 +360,11 @@ lexi providers api-key set [OPTIONS] <NAME>
 
 - `<NAME>`
 - `-v, --value`
+- `--api` — A key for this API only (one of the provider's APIs); it gets its own api_key
 
 #### `providers api-key show`
 
-Show the API key in use, masked unless --reveal
+Show where the key comes from (each api_key source, in order) and the key in use, masked unless --reveal
 
 ```
 lexi providers api-key show [OPTIONS] <NAME>
@@ -371,16 +372,30 @@ lexi providers api-key show [OPTIONS] <NAME>
 
 - `<NAME>`
 - `-r, --reveal`
+- `--api` — The key this API uses
 
 #### `providers api-key remove`
 
-Delete the stored key file
+Delete the saved key (in the first keychain item or file api_key lists); the config is left as it is
 
 ```
-lexi providers api-key remove <NAME>
+lexi providers api-key remove [OPTIONS] <NAME>
 ```
 
 - `<NAME>`
+- `--api` — The API's own key
+
+#### `providers api-key move`
+
+Move the saved key to the system keychain or an owner-only file, and point api_key at it
+
+```
+lexi providers api-key move [OPTIONS] --to <TO> <NAME>
+```
+
+- `<NAME>`
+- `--to` — Where to: keychain or file
+- `--api` — The API's own key
 
 #### `providers api list`
 
@@ -450,7 +465,7 @@ lexi providers rename <OLD> <NEW>
 
 Aliases: `del`, `delete`
 
-Remove a provider and its models, aliases and key file
+Remove a provider and its models, aliases and saved key
 
 ```
 lexi providers rm <NAME>

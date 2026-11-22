@@ -33,7 +33,7 @@ Surface principle (`docs/cli-consolidation-plan.md` §3): library, language bind
 ### Configuration Structure
 - Config dir: `~/.lexi-cli/` (override with `$LEXI_HOME`)
 - Main provider config: `providers/providers-config.yaml`
-- Per-provider: `providers/<provider>/configured-models.yaml`, `model-aliases.yaml`, `default-model.yaml`, `model-tags.yaml` (your tags), `catalog.json` (cached listing), `api-key` (0600)
+- Per-provider: `providers/<provider>/configured-models.yaml`, `model-aliases.yaml`, `default-model.yaml`, `model-tags.yaml` (your tags), `catalog.json` (cached listing), `api-key` (0600; a key file Lexi saved, when the provider's `api_key` lists it)
 - Command aliases: `aliases.json`; CLI settings: `config.json`; shell history: `history`
 - Desktop themes: `themes.json` (every theme's colours; copied from the shipped `lexi-desktop/themes.json` on first use, then the user's copy is what's read); the chosen theme is `theme` in `config.json` (default `dark-cyan`). A colour may be a list (the first value the web engine supports wins) and `scheme: auto` follows the OS Light/Dark setting; the System theme uses WebKit's `-apple-system-*` colours (accent, labels, backgrounds) with CSS system-colour fallbacks
 - Prompts: individual JSON files in `prompts/` (the active prompt is `$$`)
@@ -64,7 +64,7 @@ pip install ./lexi-python pytest pyyaml && pytest lexi-python/tests
 
 ### Provider System
 - Three preconfigured providers, each from a shipped template: OpenAI (`responses` + `image-generations`), Anthropic (`messages`), NVIDIA (`chat-completions`)
-- API key lookup: the provider's `api-key` file first, then the config's `api_key` (`${ENV_VAR}` or literal)
+- API key lookup (`lexi-host/src/keystore.rs`, `config::resolve_api_key`): a provider's `api_key` is an ordered list of sources — `{env: VAR}` (or `"${VAR}"`), `{keychain: NAME}` (OS keychain: macOS Keychain / Windows Credential Manager, service `Lexi`), `{file: PATH}` (relative to `$LEXI_HOME`) — and the first with a key wins. Only a *missing* key moves on; a read error (locked keychain) stops and is the error. An API binding's or configured model's own `api_key` replaces the provider's (resolve from the effective config). Saving (`set_api_key`) writes the first keychain/file source, adding one (keychain item named after the provider, or `providers/<p>/api-key`) when there's none; `move_api_key` moves between them. `LEXI_KEY_STORE=file` turns the keychain off — every test harness sets it so tests never touch the real keychain. `ensure_home` lists an old (0.2.0) key file in its provider's `api_key` once. Rename/remove provider carry Lexi-named keychain items and key files along
 - Model resolution (`lexi_host::models::resolve_model`): `--model` (aliases resolved; must be configured or recognized by a `kind:` tag from a rule or your tags), else the default model of the binding producing the requested output (catch-all: `default-model.yaml` first); per-model `auth`/`request`/`response` overrides are deep-merged; an explicit `api:` on a configured model pins its binding
 - Providers reference an API definition with `api:` (or define `request`/`response` inline); provider entries deep-merge over it
 
@@ -84,6 +84,8 @@ On every run, `lexi_host::ensure_home` fills in missing defaults (embedded from 
 - Default provider configs: `providers/` (embedded; seeded into `~/.lexi-cli/providers/`)
 - Python wheel: `lexi-python/` (PyO3 over lexi-core + lexi-host; Python API in `lexi-python/python/lexi/`)
 - Desktop `/api/*` backend: `lexi-desktop/src/backend.rs`; frontend: `lexi-desktop/frontend/index.html`
+- Desktop startup screen (`runStartup` in `index.html`, `GET /api/startup` in `backend.rs`): shown while the providers' keys are checked; it closes itself when this version has been opened before (`seen_version` in `config.json`) and some provider has a key, else it shows the unseen release notes and/or sends you to the **Setup Wizard** (`openSetupWizard`; per-provider help is the template's `setup:` block). The header logo reopens it
+- Release notes: `CHANGELOG.md` (repo root, embedded in the desktop app) — add user-facing notes under `## Unreleased` with each change; at release time it becomes `## X.Y.Z — date`. A desktop test fails unless the app's version has a section
 - Desktop Images tab: `/api/images/*` in `backend.rs`, the `respond --output image` pipeline sent to each ticked provider (each with its own model and settings — the image API's `x-cli` flags); the Chat tab's model pickers list only `kind: chat` models; images are saved to `images_dir` in `config.json` (default `~/Pictures/Lexi`)
 - Cross-language conformance oracle: `conformance/`
 - Docs: `docs/cli-reference.md` (generated), `docs/spec/` (API definition, message IR, CLI machine interface), `docs/surface-matrix.md`

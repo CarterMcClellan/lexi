@@ -52,6 +52,12 @@ def ok(obj):
     return lambda _body: (200, "application/json", json.dumps(obj).encode())
 
 
+@pytest.fixture(autouse=True)
+def _file_key_store(monkeypatch):
+    """Saved keys go to the temp home's key file, never the real keychain."""
+    monkeypatch.setenv("LEXI_KEY_STORE", "file")
+
+
 @pytest.fixture
 def mock(tmp_path, monkeypatch):
     m = Mock()

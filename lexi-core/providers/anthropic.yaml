@@ -29,3 +29,16 @@ catalog:
     context_window: { path: max_input_tokens }
     max_output_tokens: { path: max_tokens }
   name: { path: display_name }
+
+# Getting a key (the desktop app's setup wizard shows this).
+setup:
+  name: Anthropic
+  about: Claude chat models.
+  site: https://platform.claude.com
+  keys_url: https://platform.claude.com/settings/keys
+  key_prefix: sk-ant-
+  steps:
+    - Sign in to the Claude Console, or create an account.
+    - API use is billed separately from a Claude subscription — add credits under Settings → Billing.
+    - Open Settings → API keys and choose Create Key.
+    - Copy the key straight away — the Console shows it only once.

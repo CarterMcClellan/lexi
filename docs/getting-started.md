@@ -58,11 +58,34 @@ Type `help` (or `?`) to see available commands, `help <command>` for details on 
 
 ## Setting Up API Keys
 
-Before you can send prompts, you need API keys from your providers. Lexi supports two methods:
+Before you can send prompts, you need API keys from your providers. Each provider's `api_key` in `~/.lexi-cli/providers/providers-config.yaml` says where its key comes from: a list of places, tried in order.
 
-### Environment Variables (recommended)
+### Where a key comes from
 
-Set the environment variable for each provider you want to use:
+```yaml
+providers:
+  openai:
+    template: openai
+    api_key:
+      - env: OPENAI_API_KEY            # an environment variable, used when set
+      - keychain: openai               # a system keychain item (service Lexi)
+  nvidia:
+    template: nvidia
+    api_key:
+      - file: ~/.config/secrets/nvidia.key   # a file holding the key
+```
+
+| Source | Meaning |
+|---|---|
+| `env: VAR` | The environment variable `VAR` (`"${VAR}"` is the same, the older form). |
+| `keychain: NAME` | The system keychain item with service `Lexi` and account `NAME`: the login Keychain on macOS, Credential Manager on Windows. The key is encrypted at rest, and macOS asks before another program reads it, so a new build of `lexi` or the desktop app may ask once. |
+| `file: PATH` | A file holding the key. A relative path is under `~/.lexi-cli`, and `~/` is your home folder. Lexi writes its own key files with owner-only permissions (mode 0600). |
+
+The first source that has a key wins. Only a *missing* key moves on to the next one: an unset variable, no keychain item, no file. A read error — a locked keychain, access refused, an unreadable file — stops the lookup and is reported, so Lexi never quietly switches to a different key (and bills a different account). When no source has a key, the error lists every place Lexi looked.
+
+A single source can be written without the list (`api_key: {keychain: openai}`). A literal key (`api_key: sk-…`) still works but isn't recommended.
+
+The shipped templates read the usual environment variable (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `NVIDIA_API_KEY`), so setting it is enough to get started:
 
 ```bash
 export OPENAI_API_KEY="sk-..."
@@ -70,11 +93,11 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 export NVIDIA_API_KEY="nvapi-..."
 ```
 
-Add these to your shell profile (`~/.zshrc`, `~/.bashrc`, etc.) to persist them.
+Add these to your shell profile (`~/.zshrc`, `~/.bashrc`, etc.) to persist them. Apps opened from the macOS Dock or Finder don't see variables set in your shell profile. For the desktop app to use one, run `launchctl setenv OPENAI_API_KEY "…"` and reopen it, or save the key instead.
 
-### Stored API Keys
+### Saving a key
 
-You can also store keys in Lexi's config directory:
+Lexi can save a key for you (the desktop app's **Setup Wizard**, on the Providers tab, does this too):
 
 ```bash
 # Inside the Lexi shell
@@ -82,25 +105,41 @@ providers api-key set openai --value sk-...
 providers api-key set anthropic --value sk-ant-...
 ```
 
-Stored keys are saved to `~/.lexi-cli/providers/<provider>/api-key` with owner-only permissions (mode 0600). Without `--value`, the key is prompted for (or read from stdin). Keys are stored as plain text — there is no encryption option.
+The key goes in the first keychain item or file the provider's `api_key` lists. If it lists neither, Lexi adds one to the end of the list: a keychain item named after the provider on macOS and Windows, else `providers/<provider>/api-key`. Because sources are tried in order, a saved key that comes after a set environment variable isn't used — `set` says so when that happens. Without `--value`, the key is prompted for (or read from stdin).
 
-### Key Resolution Order
+`LEXI_KEY_STORE=file` turns the keychain off (tests and CI set it): keychain sources count as missing, and saved keys go in files. A non-default `$LEXI_HOME` gets its own keychain items (account `<provider> (<home>)`).
 
-When Lexi needs an API key, it checks these sources in order:
+To move a saved key between a file and the keychain (the config is updated to match, and the old copy deleted):
 
-1. **Stored key file** — `~/.lexi-cli/providers/<provider>/api-key`
-2. **Config `api_key`** — Either a `${VAR}` reference to an environment variable (e.g., `${OPENAI_API_KEY}`) or a literal key in `providers-config.yaml`
+```bash
+providers api-key move openai --to keychain
+```
 
-The first non-empty value wins. This means a stored key file takes precedence over an environment variable.
+Lexi 0.2.0 and earlier read `providers/<provider>/api-key` before the config. When a newer Lexi first runs, a provider with such a file gets `api_key: [{file: providers/<provider>/api-key}, …]`, so the same key keeps being used.
+
+### A different key for one API or model
+
+A provider's APIs and configured models can each have their own `api_key`, which replaces the provider's:
+
+```yaml
+  openai:
+    template: openai
+    api_key: [{env: OPENAI_API_KEY}]
+    apis:
+      - api: image-generations
+        api_key: [{keychain: openai/image-generations}]
+```
+
+`providers api-key set openai --api image-generations` saves a key for that API and adds its `api_key` for you; `show`, `remove` and `move` take `--api` too. For a model, add `api_key:` to its entry in `providers/<provider>/configured-models.yaml`.
 
 ### Checking API Key Status
 
 View whether a key is configured and where it comes from:
 
 ```bash
-providers api-key show openai          # Shows the key in use, masked
+providers api-key show openai          # Each source in order, and the key in use (masked)
 providers api-key show openai --reveal # Shows the actual key value
-providers api-key remove openai        # Deletes the stored key file
+providers api-key remove openai        # Deletes the saved key (the config is unchanged)
 ```
 
 To check that the key actually works (makes a live call to the provider's models endpoint):
@@ -110,7 +149,7 @@ providers status openai
 ```
 
 `providers status` reports:
-- **Source** — Where the key was found (`file`, `env`, `config`, or none)
+- **Source** — Where the key was found: the variable, keychain item or file (or none)
 - **Status** — `ready` (key works), `no api-key` (no key found), or `invalid api-key` (key was rejected by the provider)
 
 ## Working with Prompts

@@ -52,3 +52,15 @@ catalog:
     feature:thinking: { path: supports_thinking }
   limits:
     context_window: { path: context_window }
+
+# Getting a key (the desktop app's setup wizard shows this).
+setup:
+  name: NVIDIA
+  about: Open chat, vision, embedding and image models hosted on build.nvidia.com.
+  site: https://build.nvidia.com
+  keys_url: https://build.nvidia.com/settings/api-keys
+  key_prefix: nvapi-
+  steps:
+    - Sign in to build.nvidia.com with an NVIDIA account, or create one (free for prototyping).
+    - Open your account's API Keys page (or choose Get API Key on any model's page).
+    - Generate a key and copy it straight away — it's shown only once.

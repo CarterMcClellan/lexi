@@ -147,7 +147,7 @@ providers:
   openai:
     template: openai                 # shipped defaults (§4.4); everything below overrides
     url: https://api.openai.com/v1
-    api_key: ${OPENAI_API_KEY}
+    api_key: [{env: OPENAI_API_KEY}, {keychain: openai}]   # tried in order
     apis:
       - api: responses               # no `for:` → the catch-all
         default_model: gpt-5.5
@@ -163,6 +163,7 @@ providers:
 | `default_model` | the model used when a request asks for this binding's output without naming one |
 | `url` | base-URL override (NVIDIA image models on `ai.api.nvidia.com`) |
 | `auth`, `request`, `response` | deep-merged over the API definition, as provider entries are today |
+| `api_key` | this API's own key sources (`[{env: …}, {keychain: …}, {file: …}]`, tried in order); replaces the provider's `api_key` — never merged with it. A configured model's `api_key` replaces both |
 
 Bindings are ordered; the first whose `for:` tags a model has wins. The catch-all
 only takes models whose `kind:` it can serve (its API's `kind:` default), so an
@@ -342,7 +343,9 @@ Adding Gemini should need **no Rust changes**:
    `capabilities` and `response.artifacts`.
 2. **A provider template**: `url`, `auth`, bindings, tag rules, and a catalog
    mapping (`supportedGenerationMethods` → `kind:` tags,
-   `inputTokenLimit`/`outputTokenLimit` → limits).
+   `inputTokenLimit`/`outputTokenLimit` → limits), and a `setup:` block for
+   the desktop app's setup wizard — `name`, `about`, `site`, `keys_url`,
+   `key_prefix`, and `steps` (how to get a key, one line each).
 3. **Conformance cases** for its tag derivation.
 
 Anything a template can't express is a reason to extend the config language (a

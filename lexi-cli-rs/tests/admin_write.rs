@@ -190,37 +190,57 @@ fn providers_add_keys_rename_rm() {
     )
     .contains("unknown API"));
 
-    // Keys: masked by default, file wins over config, set via stdin, remove.
+    // Keys: the config lists where the key is; masked by default, set via
+    // stdin, remove.
+    let config = std::fs::read_to_string(h.join("providers/providers-config.yaml")).unwrap();
+    assert!(config.contains("file: providers/groq/api-key"), "{config}");
     assert_eq!(
         ok(h, &["providers", "api-key", "show", "groq"]),
-        "gsk-**********abcd\n"
+        "api_key sources, in order:\n  1. providers/groq/api-key — used\nKey: gsk-**********abcd\n"
     );
-    assert_eq!(
-        ok(h, &["providers", "api-key", "show", "groq", "--reveal"]),
-        "gsk-1234567890abcd\n"
-    );
+    assert!(ok(h, &["providers", "api-key", "show", "groq", "--reveal"])
+        .ends_with("Key: gsk-1234567890abcd\n"));
     let o = lexi(h)
         .args(["providers", "api-key", "set", "groq"])
         .write_stdin("piped-key-value\n")
         .output()
         .unwrap();
     assert!(o.status.success(), "{}", stderr(&o));
-    assert_eq!(
-        ok(h, &["providers", "api-key", "show", "groq", "-r"]),
-        "piped-key-value\n"
+    assert!(
+        ok(h, &["providers", "api-key", "show", "groq", "-r"]).ends_with("Key: piped-key-value\n")
     );
     assert_eq!(
         ok(h, &["providers", "api-key", "remove", "groq"]),
-        "Removed API key for groq.\n"
+        "Removed the saved API key for groq.\n"
     );
     assert_eq!(
         ok(h, &["providers", "api-key", "remove", "groq"]),
-        "No API key file found for groq.\n"
+        "No saved API key for groq.\n"
     );
     assert_eq!(
         ok(h, &["providers", "api-key", "show", "groq"]),
-        "No API key configured for groq.\n"
+        "api_key sources, in order:\n  1. providers/groq/api-key — missing: no file\nNo API key configured for groq.\n"
     );
+    // A key for one API, and moving keys (no keychain under LEXI_KEY_STORE=file).
+    assert!(ok(
+        h,
+        &[
+            "providers",
+            "api-key",
+            "set",
+            "groq",
+            "-v",
+            "emb",
+            "--api",
+            "chat-completions"
+        ]
+    )
+    .starts_with("Saved the API key for groq in providers/groq/api-key-chat-completions."));
+    assert!(fails(
+        h,
+        &["providers", "api-key", "move", "groq", "--to", "keychain"]
+    )
+    .contains("keychain")); // turned off here, or none on Linux
     assert!(
         fails(h, &["providers", "api-key", "set", "nope", "-v", "k"]).contains("unknown provider")
     );
@@ -279,7 +299,7 @@ async fn providers_status_checks_the_key_live() {
     std::fs::write(h.join("providers/p/api-key"), "good").unwrap();
     assert_eq!(
         stdout(&status(vec!["providers", "status", "p"]).await),
-        "p: ready (file)\n"
+        "p: ready (key from providers/p/api-key)\n"
     );
 
     std::fs::write(h.join("providers/p/api-key"), "bad").unwrap();
@@ -287,7 +307,7 @@ async fn providers_status_checks_the_key_live() {
     let v: Value = serde_json::from_slice(&o.stdout).unwrap();
     assert_eq!(
         v,
-        json!({"provider": "p", "status": "invalid api-key", "source": "file"})
+        json!({"provider": "p", "status": "invalid api-key", "source": "file", "from": "providers/p/api-key"})
     );
 }
 
