@@ -240,7 +240,7 @@ fn providers_add_keys_rename_rm() {
         h,
         &["providers", "api-key", "move", "groq", "--to", "keychain"]
     )
-    .contains("LEXI_KEY_STORE=file"));
+    .contains("keychain")); // turned off here, or none on Linux
     assert!(
         fails(h, &["providers", "api-key", "set", "nope", "-v", "k"]).contains("unknown provider")
     );

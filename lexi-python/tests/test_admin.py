@@ -264,6 +264,7 @@ def test_key_sources_per_api_keys_and_move(home, monkeypatch):
     own = lexi.providers.show_key("mine", api="chat-completions", reveal=True)
     assert own["own"] and own["key"] == "chat-only"
 
-    # The keychain is off in tests (LEXI_KEY_STORE=file), so it can't be the target.
-    with pytest.raises(lexi.LexiError, match="LEXI_KEY_STORE=file"):
+    # The keychain is off in tests (LEXI_KEY_STORE=file; Linux has none), so it
+    # can't be the target.
+    with pytest.raises(lexi.LexiError, match="keychain"):
         lexi.providers.move_key("mine", "keychain")
