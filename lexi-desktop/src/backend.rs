@@ -303,25 +303,102 @@ fn themes() -> Value {
     themes_in(&config::lexi_home(), selected.as_deref())
 }
 
+/// The themes shipped before `themes.json` recorded `offered`.
+const THEMES_BEFORE_OFFERED: &[&str] = &["dark-cyan", "dark-purple", "nvidia-dark", "nvidia-light"];
+
+/// The ids of the themes in a themes file.
+fn theme_ids(file: &Value) -> Vec<String> {
+    file["themes"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|t| t["id"].as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Adds to the user's file the shipped themes it has never offered (themes
+/// new in this version), recording every shipped id in `offered` so a shipped
+/// theme the user deleted stays deleted. A file without `offered` counts the
+/// themes it has as offered. Returns the names of the added themes, and
+/// whether the file changed.
+///
+/// A file without `offered` was written before it existed, by the version
+/// that shipped [`THEMES_BEFORE_OFFERED`]; those count as offered.
+fn add_new_shipped_themes(file: &mut Value, shipped: &Value) -> (Vec<String>, bool) {
+    let had_offered = file.get("offered").and_then(Value::as_array).is_some();
+    let mut offered: Vec<String> = match file.get("offered").and_then(Value::as_array) {
+        Some(a) => a
+            .iter()
+            .filter_map(|x| x.as_str().map(str::to_string))
+            .collect(),
+        None => THEMES_BEFORE_OFFERED
+            .iter()
+            .map(|s| s.to_string())
+            .chain(theme_ids(file))
+            .collect(),
+    };
+    let mut seen = std::collections::HashSet::new();
+    offered.retain(|id| seen.insert(id.clone()));
+    let present = theme_ids(file);
+    let mut added = Vec::new();
+    for t in shipped["themes"].as_array().into_iter().flatten() {
+        let Some(id) = t["id"].as_str() else { continue };
+        if offered.iter().any(|o| o == id) {
+            continue;
+        }
+        if !present.iter().any(|p| p == id) {
+            if let Some(list) = file["themes"].as_array_mut() {
+                list.push(t.clone());
+                added.push(t["name"].as_str().unwrap_or(id).to_string());
+            }
+        }
+        offered.push(id.to_string());
+    }
+    let changed = !added.is_empty() || !had_offered;
+    if changed {
+        file["offered"] = json!(offered);
+    }
+    (added, changed)
+}
+
 /// The themes in `<home>/themes.json`, writing the shipped file there first
-/// when there is none. An unreadable or empty file falls back to the shipped
-/// themes, with a `warning`. `selected` is used when it names a theme, else
-/// the file's `default`, else its first theme.
+/// when there is none, and adding shipped themes it has never offered. An
+/// unreadable or empty file falls back to the shipped themes, with a
+/// `warning`. `selected` is used when it names a theme, else the file's
+/// `default`, else its first theme.
 fn themes_in(home: &std::path::Path, selected: Option<&str>) -> Value {
     let path = home.join("themes.json");
     let shipped: Value =
         serde_json::from_str(SHIPPED_THEMES).expect("the shipped themes.json is valid JSON");
     let mut warning: Option<String> = None;
+    let mut added: Vec<String> = Vec::new();
+    let write = |v: &Value| {
+        std::fs::create_dir_all(home).and_then(|_| {
+            std::fs::write(
+                &path,
+                serde_json::to_string_pretty(v).unwrap_or_default() + "\n",
+            )
+        })
+    };
     let file = if path.exists() {
         let parsed = std::fs::read_to_string(&path)
             .map_err(|e| e.to_string())
             .and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string()));
         match parsed {
-            Ok(v)
+            Ok(mut v)
                 if v.get("themes")
                     .and_then(Value::as_array)
                     .is_some_and(|t| !t.is_empty()) =>
             {
+                let (new, changed) = add_new_shipped_themes(&mut v, &shipped);
+                if changed {
+                    if let Err(e) = write(&v) {
+                        warning = Some(format!("Couldn't update {} ({e}).", path.display()));
+                    }
+                }
+                added = new;
                 v
             }
             Ok(_) => {
@@ -340,9 +417,9 @@ fn themes_in(home: &std::path::Path, selected: Option<&str>) -> Value {
             }
         }
     } else {
-        if let Err(e) =
-            std::fs::create_dir_all(home).and_then(|_| std::fs::write(&path, SHIPPED_THEMES))
-        {
+        let mut seeded = shipped.clone();
+        seeded["offered"] = json!(theme_ids(&shipped));
+        if let Err(e) = write(&seeded) {
             warning = Some(format!("Couldn't create {} ({e}).", path.display()));
         }
         shipped.clone()
@@ -372,6 +449,7 @@ fn themes_in(home: &std::path::Path, selected: Option<&str>) -> Value {
         "selected": selected,
         "themes": themes,
         "elements": file.get("elements").cloned().unwrap_or(Value::Null),
+        "added": added,
         "warning": warning,
     })
 }
@@ -984,7 +1062,13 @@ mod tests {
             .collect();
         assert_eq!(
             ids,
-            ["dark-cyan", "dark-purple", "nvidia-dark", "nvidia-light"]
+            [
+                "system",
+                "dark-cyan",
+                "dark-purple",
+                "nvidia-dark",
+                "nvidia-light"
+            ]
         );
         // A saved choice that exists is kept.
         assert_eq!(
@@ -994,12 +1078,48 @@ mod tests {
         // The user's file is what's read: an added theme shows up.
         std::fs::write(
             home.path().join("themes.json"),
-            r##"{"default":"mine","themes":[{"id":"mine","name":"Mine","vars":{"--bg":"#000"}}]}"##,
+            r##"{"default":"mine","offered":["system","dark-cyan","dark-purple","nvidia-dark","nvidia-light"],"themes":[{"id":"mine","name":"Mine","vars":{"--bg":"#000"}}]}"##,
         )
         .unwrap();
         let t = themes_in(home.path(), None);
         assert_eq!(t["selected"], "mine");
         assert_eq!(t["themes"].as_array().unwrap().len(), 1);
+        // A file from before a theme shipped gets it added once; a shipped
+        // theme the user deleted stays deleted.
+        std::fs::write(
+            home.path().join("themes.json"),
+            r##"{"themes":[{"id":"dark-cyan","name":"Dark Cyan","vars":{"--bg":"#000"}}]}"##,
+        )
+        .unwrap();
+        let t = themes_in(home.path(), None);
+        assert!(t["added"].as_array().unwrap().iter().any(|n| n == "System"));
+        assert!(!t["added"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|n| n == "Dark Cyan"));
+        let saved: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(home.path().join("themes.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(saved["offered"].as_array().unwrap().len(), 5);
+        let mut pruned = saved.clone();
+        pruned["themes"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|t| t["id"] != "system");
+        std::fs::write(
+            home.path().join("themes.json"),
+            serde_json::to_string(&pruned).unwrap(),
+        )
+        .unwrap();
+        let t = themes_in(home.path(), None);
+        assert!(t["added"].as_array().unwrap().is_empty());
+        assert!(!t["themes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t["id"] == "system"));
         // A broken file falls back to the shipped themes, with a warning.
         std::fs::write(home.path().join("themes.json"), "{not json").unwrap();
         let t = themes_in(home.path(), Some("nvidia-light"));
