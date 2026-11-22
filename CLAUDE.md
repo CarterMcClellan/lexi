@@ -35,7 +35,7 @@ Surface principle (`docs/cli-consolidation-plan.md` §3): library, language bind
 - Main provider config: `providers/providers-config.yaml`
 - Per-provider: `providers/<provider>/configured-models.yaml`, `model-aliases.yaml`, `default-model.yaml`, `model-tags.yaml` (your tags), `catalog.json` (cached listing), `api-key` (0600)
 - Command aliases: `aliases.json`; CLI settings: `config.json`; shell history: `history`
-- Desktop themes: `themes.json` (every theme's colours; copied from the shipped `lexi-desktop/themes.json` on first use, then the user's copy is what's read); the chosen theme is `theme` in `config.json` (default `dark-cyan`)
+- Desktop themes: `themes.json` (every theme's colours; copied from the shipped `lexi-desktop/themes.json` on first use, then the user's copy is what's read); the chosen theme is `theme` in `config.json` (default `dark-cyan`). A colour may be a list (the first value the web engine supports wins) and `scheme: auto` follows the OS Light/Dark setting; the System theme uses WebKit's `-apple-system-*` colours (accent, labels, backgrounds) with CSS system-colour fallbacks
 - Prompts: individual JSON files in `prompts/` (the active prompt is `$$`)
 - API definitions: shipped ones are embedded in the binary (`lexi-core/apis/`) and always win; `apis/` holds custom definitions only
 

@@ -984,7 +984,13 @@ mod tests {
             .collect();
         assert_eq!(
             ids,
-            ["dark-cyan", "dark-purple", "nvidia-dark", "nvidia-light"]
+            [
+                "system",
+                "dark-cyan",
+                "dark-purple",
+                "nvidia-dark",
+                "nvidia-light"
+            ]
         );
         // A saved choice that exists is kept.
         assert_eq!(

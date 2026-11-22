@@ -7,6 +7,7 @@
   <style>
     /* Dark Cyan, the default theme, until the themes load (themes.json). */
     :root {
+      color-scheme: dark;
       --bg: #0a1628;
       --card: #0f1f36;
       --input-bg: #0c1a2e;
@@ -312,7 +313,7 @@
     .btn[disabled]:active { transform: none; }
     .btn-primary {
       background: linear-gradient(135deg, var(--accent), var(--accent-2));
-      color: #0b1020;
+      color: var(--on-accent, #0b1020);
       box-shadow: 0 12px 30px color-mix(in srgb, var(--accent) 30%, transparent);
     }
     .btn-ghost {
@@ -451,7 +452,7 @@
     }
     /* Headings and labels in the open tab inherit this; a theme can set
        --heading (the NVIDIA themes use their brand green). */
-    .content.active { color: var(--heading, var(--success)); }
+    .content.active, .subtab-panel.active { color: var(--heading, var(--success)); }
     .muted {
       color: var(--muted);
       font-size: 0.95rem;
@@ -4762,6 +4763,25 @@
       renderThemeGrid();
     }
 
+    // A theme value is a CSS value or a list of them; the first one this web
+    // engine supports is used (e.g. a macOS system colour, then a fallback).
+    function themeValue(v, prop = 'color') {
+      if (!Array.isArray(v)) return v == null ? '' : String(v);
+      const ok = v.find((x) => typeof x === 'string' && CSS.supports(prop, x));
+      return ok !== undefined ? ok : String(v[v.length - 1] ?? '');
+    }
+
+    // "auto" themes follow the system's Light/Dark setting.
+    const systemDark = matchMedia('(prefers-color-scheme: dark)');
+    function themeScheme(theme) {
+      if (theme.scheme === 'auto') return systemDark.matches ? 'dark' : 'light';
+      return theme.scheme === 'light' ? 'light' : 'dark';
+    }
+    systemDark.addEventListener('change', () => {
+      const theme = THEMES[currentTheme];
+      if (theme && theme.scheme === 'auto') document.documentElement.dataset.scheme = themeScheme(theme);
+    });
+
     function applyTheme(id) {
       const theme = THEMES[id];
       if (!theme) return;
@@ -4769,10 +4789,14 @@
       const root = document.documentElement;
       THEME_VARS.forEach((k) => { if (!(k in theme.vars)) root.style.removeProperty(k); });
       // Only CSS custom properties: the file can't set arbitrary styles.
-      Object.entries(theme.vars).forEach(([k, v]) => { if (k.startsWith('--')) root.style.setProperty(k, String(v)); });
+      Object.entries(theme.vars).forEach(([k, v]) => { if (k.startsWith('--')) root.style.setProperty(k, themeValue(v)); });
       root.dataset.theme = id;
-      root.dataset.scheme = theme.scheme === 'light' ? 'light' : 'dark';
-      root.style.background = theme.background || theme.vars['--bg'] || '';
+      root.dataset.scheme = themeScheme(theme);
+      // Native controls (checkboxes, drop-downs, scrollbars) and system
+      // colours follow the theme's scheme; "auto" lets light-dark() values and
+      // the system colours track the system setting.
+      root.style.colorScheme = theme.scheme === 'auto' ? 'light dark' : themeScheme(theme);
+      root.style.background = themeValue(theme.background, 'background') || themeValue(theme.vars['--bg']);
       document.querySelectorAll('.theme-card').forEach((card) => {
         card.classList.toggle('selected', card.dataset.theme === id);
       });
@@ -4790,7 +4814,7 @@
         card.setAttribute('data-tip', `Use the ${name} theme`);
         const swatch = document.createElement('div');
         swatch.className = 'theme-swatch';
-        swatch.style.background = theme.swatch || theme.vars['--accent'] || '';
+        swatch.style.background = themeValue(theme.swatch, 'background') || themeValue(theme.vars['--accent']);
         const label = document.createElement('div');
         label.className = 'theme-label';
         label.textContent = name;

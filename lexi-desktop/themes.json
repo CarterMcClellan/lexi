@@ -10,15 +10,79 @@
     "--heading": "Headings and labels in the open tab",
     "--accent": "Primary colour: main buttons, selected items, focus",
     "--accent-2": "Highlight colour: links, hover, active markers (primary buttons blend --accent into it)",
+    "--on-accent": "Text on primary buttons (default dark #0b1020)",
     "--border": "Borders and dividers",
     "--success": "Success messages and badges",
     "--danger": "Errors, delete actions and failure badges",
     "--warning": "Warnings and partial results",
     "background": "CSS background for the whole window (a colour or gradient)",
     "swatch": "CSS background of the theme's sample in Configure → Theme",
-    "scheme": "\"dark\" or \"light\" (light themes put the logo on a dark badge)"
+    "scheme": "\"dark\", \"light\", or \"auto\" (follow the system's Light/Dark setting; use light-dark(LIGHT, DARK) values)",
+    "values": "Each colour is a CSS colour, or a list of them: the first one the app's web engine supports is used (e.g. a macOS system colour, then a fallback)"
   },
   "themes": [
+    {
+      "id": "system",
+      "name": "System",
+      "scheme": "auto",
+      "source": "The operating system's own colours: on macOS your accent colour and Light/Dark appearance (WebKit's -apple-system-* colours, which follow System Settings live), with the macOS window background; other engines use the CSS system colours (Canvas, CanvasText, AccentColor).",
+      "vars": {
+        "--bg": "light-dark(#ececec, #323232)",
+        "--card": [
+          "-apple-system-control-background",
+          "Canvas"
+        ],
+        "--input-bg": [
+          "color-mix(in srgb, -apple-system-control-background 94%, -apple-system-label)",
+          "color-mix(in srgb, Canvas 94%, CanvasText)"
+        ],
+        "--shell-bg": "light-dark(#ececec, #323232)",
+        "--text": [
+          "-apple-system-label",
+          "CanvasText"
+        ],
+        "--muted": [
+          "-apple-system-secondary-label",
+          "GrayText"
+        ],
+        "--heading": [
+          "-apple-system-header-text",
+          "CanvasText"
+        ],
+        "--accent": [
+          "-apple-system-control-accent",
+          "AccentColor",
+          "light-dark(#007aff, #0a84ff)"
+        ],
+        "--accent-2": [
+          "-apple-system-control-accent",
+          "AccentColor",
+          "light-dark(#007aff, #0a84ff)"
+        ],
+        "--on-accent": "#ffffff",
+        "--border": [
+          "-apple-system-container-border",
+          "color-mix(in srgb, CanvasText 25%, transparent)"
+        ],
+        "--success": [
+          "light-dark(color-mix(in srgb, -apple-system-green 65%, black), -apple-system-green)",
+          "light-dark(#1b8a2c, #32d74b)"
+        ],
+        "--danger": [
+          "light-dark(color-mix(in srgb, -apple-system-red 85%, black), -apple-system-red)",
+          "light-dark(#d93025, #ff453a)"
+        ],
+        "--warning": [
+          "light-dark(color-mix(in srgb, -apple-system-orange 70%, black), -apple-system-orange)",
+          "light-dark(#b36800, #ff9f0a)"
+        ]
+      },
+      "background": "light-dark(#ececec, #323232)",
+      "swatch": [
+        "linear-gradient(135deg, -apple-system-control-accent 0 30%, #ececec 30% 65%, #323232 65%)",
+        "linear-gradient(135deg, #007aff 0 30%, #ececec 30% 65%, #323232 65%)"
+      ]
+    },
     {
       "id": "dark-cyan",
       "name": "Dark Cyan",
