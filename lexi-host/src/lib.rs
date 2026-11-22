@@ -13,6 +13,7 @@ pub mod embed;
 pub mod generate;
 pub mod hosted;
 pub mod image;
+mod keystore;
 pub mod models;
 pub mod respond;
 pub mod upload;

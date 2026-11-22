@@ -346,13 +346,13 @@ lexi providers add [OPTIONS] --url <URL> --default_model <DEFAULT_MODEL> <NAME>
 - `<NAME>`
 - `--url` — Base URL, e.g. https://api.example.com/v1
 - `--default_model` — The model used when none is given
-- `--api_key` — API key (stored in the provider's key file, not the config)
+- `--api_key` — API key (saved in the system keychain or the provider's key file, never the config)
 - `--api` — API definition the provider speaks
 - `--hosted_models` — Path of the provider's models endpoint
 
 #### `providers api-key set`
 
-Store an API key (prompted for, or read from stdin, without --value)
+Save an API key in the system keychain (macOS, Windows) or the provider's key file (prompted for, or read from stdin, without --value)
 
 ```
 lexi providers api-key set [OPTIONS] <NAME>
@@ -374,7 +374,7 @@ lexi providers api-key show [OPTIONS] <NAME>
 
 #### `providers api-key remove`
 
-Delete the stored key file
+Delete the saved key (keychain item and key file)
 
 ```
 lexi providers api-key remove <NAME>
@@ -450,7 +450,7 @@ lexi providers rename <OLD> <NEW>
 
 Aliases: `del`, `delete`
 
-Remove a provider and its models, aliases and key file
+Remove a provider and its models, aliases and saved key
 
 ```
 lexi providers rm <NAME>

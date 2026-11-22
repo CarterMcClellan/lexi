@@ -72,9 +72,9 @@ export NVIDIA_API_KEY="nvapi-..."
 
 Add these to your shell profile (`~/.zshrc`, `~/.bashrc`, etc.) to persist them.
 
-### Stored API Keys
+### Saved API Keys
 
-You can also store keys in Lexi's config directory:
+You can also save keys with Lexi (the desktop app's **Setup Wizard**, on the Providers tab, does this for you):
 
 ```bash
 # Inside the Lexi shell
@@ -82,16 +82,24 @@ providers api-key set openai --value sk-...
 providers api-key set anthropic --value sk-ant-...
 ```
 
-Stored keys are saved to `~/.lexi-cli/providers/<provider>/api-key` with owner-only permissions (mode 0600). Without `--value`, the key is prompted for (or read from stdin). Keys are stored as plain text — there is no encryption option.
+Where a saved key goes:
+
+- **macOS:** the login Keychain (service `Lexi`, account `<provider>`). The key is encrypted at rest, and macOS asks before another app reads it, so a new build of `lexi` or the desktop app may ask once.
+- **Windows:** Windows Credential Manager.
+- **Linux, or with `LEXI_KEY_STORE=file`:** `~/.lexi-cli/providers/<provider>/api-key`, a plain-text file with owner-only permissions (mode 0600).
+
+On macOS and Windows, a key file saved by an earlier version moves into the keychain the first time Lexi reads it. Without `--value`, the key is prompted for (or read from stdin). A non-default `$LEXI_HOME` gets its own keychain items (account `<provider> (<home>)`).
 
 ### Key Resolution Order
 
 When Lexi needs an API key, it checks these sources in order:
 
-1. **Stored key file** — `~/.lexi-cli/providers/<provider>/api-key`
+1. **Saved key** — the system keychain, then `~/.lexi-cli/providers/<provider>/api-key`
 2. **Config `api_key`** — Either a `${VAR}` reference to an environment variable (e.g., `${OPENAI_API_KEY}`) or a literal key in `providers-config.yaml`
 
-The first non-empty value wins. This means a stored key file takes precedence over an environment variable.
+The first non-empty value wins. This means a saved key takes precedence over an environment variable.
+
+Apps opened from the macOS Dock or Finder don't see variables set in your shell profile. For the desktop app to use one, run `launchctl setenv OPENAI_API_KEY "…"` and reopen it, or save the key instead.
 
 ### Checking API Key Status
 
@@ -100,7 +108,7 @@ View whether a key is configured and where it comes from:
 ```bash
 providers api-key show openai          # Shows the key in use, masked
 providers api-key show openai --reveal # Shows the actual key value
-providers api-key remove openai        # Deletes the stored key file
+providers api-key remove openai        # Deletes the saved key
 ```
 
 To check that the key actually works (makes a live call to the provider's models endpoint):
@@ -110,7 +118,7 @@ providers status openai
 ```
 
 `providers status` reports:
-- **Source** — Where the key was found (`file`, `env`, `config`, or none)
+- **Source** — Where the key was found (`keychain`, `file`, `env`, `config`, or none)
 - **Status** — `ready` (key works), `no api-key` (no key found), or `invalid api-key` (key was rejected by the provider)
 
 ## Working with Prompts

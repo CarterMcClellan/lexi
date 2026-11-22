@@ -54,17 +54,23 @@ def remove(name: str) -> Dict[str, Any]:
 
 
 def set_key(name: str, key: str) -> Dict[str, Any]:
-    """Store an API key in the provider's key file (mode 0600)."""
+    """Save an API key: in the OS keychain on macOS and Windows, else the
+    provider's key file (mode 0600); ``LEXI_KEY_STORE=file`` forces the file.
+    ``{provider, store}`` where ``store`` is ``"keychain"`` or ``"file"``."""
     return call("providers.set_key", name=name, key=key)
 
 
 def show_key(name: str, *, reveal: bool = False) -> Dict[str, Any]:
-    """``{provider, source, key}`` — the key masked unless ``reveal``."""
+    """``{provider, source, key, store, store_label, env}`` — the key masked
+    unless ``reveal``; ``source`` is ``keychain``/``file``/``env``/``config``
+    (or None), ``store`` where a saved key goes, ``env`` the variable the
+    config reads it from."""
     return call("providers.show_key", name=name, reveal=reveal)
 
 
 def remove_key(name: str) -> Dict[str, Any]:
-    """Delete the provider's key file: ``{"removed": bool}``."""
+    """Delete the provider's saved key (keychain item and key file):
+    ``{"removed": bool}``."""
     return call("providers.remove_key", name=name)
 
 

@@ -72,8 +72,8 @@ pub fn provider_summaries() -> Result<Vec<Value>, HostError> {
 }
 
 /// Add a provider (`providers add`): checks the API definition exists, writes
-/// the entry, stores `api_key` in the provider's owner-only key file (never the
-/// config), and makes `default_model` its default.
+/// the entry, saves `api_key` (in the OS keychain, or the provider's owner-only
+/// key file — never the config), and makes `default_model` its default.
 pub fn create_provider(
     name: &str,
     url: &str,
@@ -106,16 +106,32 @@ fn mask(key: &str) -> String {
     }
 }
 
-/// `{provider, source, key}` — the key masked unless `reveal`; `source` and
-/// `key` are null when no key is configured.
+/// `{provider, source, key, store, store_label, env}` — the key masked unless
+/// `reveal`; `source` and `key` are null when no key is configured. `store` is
+/// where `providers api-key set` saves keys (`keychain` or `file`, named by
+/// `store_label`); `env` is the environment variable the config reads the key
+/// from (`${VAR}`), if any.
 pub fn api_key_info(name: &str, reveal: bool) -> Result<Value, HostError> {
     let cfg = provider_config(name)?;
-    let Some(source) = config::api_key_source(name, &cfg)? else {
-        return Ok(json!({ "provider": name, "source": null, "key": null }));
-    };
-    let key = config::resolve_api_key(name, &cfg)?;
-    let shown = if reveal { key } else { mask(&key) };
-    Ok(json!({ "provider": name, "source": source, "key": shown }))
+    let store = crate::keystore::KeyStore::current();
+    let env = cfg
+        .get("api_key")
+        .and_then(Value::as_str)
+        .and_then(|raw| raw.strip_prefix("${").and_then(|s| s.strip_suffix('}')));
+    let mut info = json!({
+        "provider": name,
+        "source": null,
+        "key": null,
+        "store": store.id(),
+        "store_label": store.label(),
+        "env": env,
+    });
+    if let Some(source) = config::api_key_source(name, &cfg)? {
+        let key = config::resolve_api_key(name, &cfg)?;
+        info["source"] = json!(source);
+        info["key"] = json!(if reveal { key } else { mask(&key) });
+    }
+    Ok(info)
 }
 
 /// A new prompt's fields before any are set.

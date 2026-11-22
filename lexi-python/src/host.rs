@@ -508,8 +508,8 @@ fn _admin<'py>(py: Python<'py>, op: &str, args: &Bound<'py, PyAny>) -> PyResult<
         "providers.set_key" => {
             let name = a.str("name")?;
             require_provider(name).map_err(e)?;
-            cfg::set_api_key(name, a.str("key")?).map_err(e)?;
-            json!({ "provider": name })
+            let store = cfg::set_api_key(name, a.str("key")?).map_err(e)?;
+            json!({ "provider": name, "store": store })
         }
         "providers.show_key" => admin::api_key_info(a.str("name")?, a.flag("reveal")).map_err(e)?,
         "providers.upgrade" => {

@@ -215,7 +215,7 @@ fn providers_add_keys_rename_rm() {
     );
     assert_eq!(
         ok(h, &["providers", "api-key", "remove", "groq"]),
-        "No API key file found for groq.\n"
+        "No saved API key for groq.\n"
     );
     assert_eq!(
         ok(h, &["providers", "api-key", "show", "groq"]),

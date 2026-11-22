@@ -285,7 +285,7 @@ pub enum ProvidersCmd {
         /// The model used when none is given.
         #[arg(long = "default_model", visible_alias = "default-model")]
         default_model: String,
-        /// API key (stored in the provider's key file, not the config).
+        /// API key (saved in the system keychain or the provider's key file, never the config).
         #[arg(long = "api_key", visible_alias = "api-key")]
         api_key: Option<String>,
         /// API definition the provider speaks.
@@ -299,7 +299,7 @@ pub enum ProvidersCmd {
         )]
         hosted_models: String,
     },
-    /// Manage a provider's stored API key.
+    /// Manage a provider's saved API key (system keychain, or its key file).
     #[command(name = "api-key")]
     ApiKey {
         #[command(subcommand)]
@@ -327,7 +327,7 @@ pub enum ProvidersCmd {
     },
     /// Rename a provider.
     Rename { old: String, new: String },
-    /// Remove a provider and its models, aliases and key file.
+    /// Remove a provider and its models, aliases and saved key.
     #[command(visible_aliases = ["del", "delete"])]
     Rm { name: String },
 }
@@ -361,7 +361,7 @@ pub enum ProviderApiCmd {
 
 #[derive(Debug, Subcommand)]
 pub enum ApiKeyCmd {
-    /// Store an API key (prompted for, or read from stdin, without --value).
+    /// Save an API key in the system keychain (macOS, Windows) or the provider's key file (prompted for, or read from stdin, without --value).
     Set {
         name: String,
         #[arg(short, long)]
@@ -373,7 +373,7 @@ pub enum ApiKeyCmd {
         #[arg(short, long)]
         reveal: bool,
     },
-    /// Delete the stored key file.
+    /// Delete the saved key (keychain item and key file).
     Remove { name: String },
 }
 

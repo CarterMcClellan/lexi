@@ -18,6 +18,13 @@ base64 = "0.22"
 thiserror = "1"
 dirs = "5"
 
+# Saved API keys go in the OS credential store (src/keystore.rs).
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3.6", features = ["windows-native"] }
+
 [dev-dependencies]
 wiremock = "0.6"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }

@@ -252,6 +252,10 @@ pub struct KeyStatus {
     pub status: &'static str,
     /// Where the key comes from (see [`config::api_key_source`]).
     pub source: Option<&'static str>,
+    /// Whether the provider answered and accepted the key; `false` when no key
+    /// is set, the key was refused, or the check couldn't reach a verdict
+    /// (timeout, 5xx, no models endpoint) — then `status` is still `"ready"`.
+    pub verified: bool,
 }
 
 /// How long `check_api_key` waits for the models endpoint.
@@ -272,6 +276,7 @@ pub async fn check_api_key(provider: &str) -> Result<KeyStatus, HostError> {
         return Ok(KeyStatus {
             status: "no api-key",
             source: None,
+            verified: false,
         });
     };
     let api_key = config::resolve_api_key(provider, &provider_cfg)?;
@@ -279,14 +284,16 @@ pub async fn check_api_key(provider: &str) -> Result<KeyStatus, HostError> {
     let client = reqwest::Client::builder()
         .timeout(KEY_CHECK_TIMEOUT)
         .build()?;
-    let status = match fetch_hosted_models_with(&client, &eff, &api_key).await {
+    let (status, verified) = match fetch_hosted_models_with(&client, &eff, &api_key).await {
+        Ok(_) => ("ready", true),
         Err(HostError::HttpStatus {
             status: 401 | 403, ..
-        }) => "invalid api-key",
-        _ => "ready",
+        }) => ("invalid api-key", false),
+        Err(_) => ("ready", false),
     };
     Ok(KeyStatus {
         status,
         source: Some(source),
+        verified,
     })
 }

@@ -29,7 +29,10 @@ def test_providers_lifecycle(home):
     assert lexi.providers.show_key("mine", reveal=True)["key"] == "sk-abcdefghij"
     assert lexi.providers.rename("mine", "yours") == {"renamed": "mine", "to": "yours"}
     assert lexi.providers.remove_key("yours") == {"removed": True}
-    assert lexi.providers.show_key("yours") == {"provider": "yours", "source": None, "key": None}
+    assert lexi.providers.show_key("yours") == {
+        "provider": "yours", "source": None, "key": None,
+        "store": "file", "store_label": "an owner-only key file", "env": None,
+    }
     lexi.providers.set_key("yours", "k2")
     assert lexi.providers.show_key("yours", reveal=True)["key"] == "k2"
     assert lexi.providers.remove("yours") == {"removed": "yours"}

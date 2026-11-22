@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Map as JsonMap, Value};
 
+use crate::keystore::{self, current_secrets, KeyStore, Secrets};
 use crate::HostError;
 
 /// A JSON object map (shorthand used by the config writers).
@@ -179,9 +180,9 @@ pub fn effective_config(provider_name: &str, provider_cfg: &Value) -> Result<Val
     binding_config(provider_cfg, binding)
 }
 
-/// Provider keys that describe the provider's APIs and models rather than
-/// configure a request; not merged into an effective config.
-const CLASSIFICATION_KEYS: &[&str] = &["apis", "api", "tag_rules", "template", "replace"];
+/// Provider keys that describe the provider (its APIs and models, how to get a
+/// key) rather than configure a request; not merged into an effective config.
+const CLASSIFICATION_KEYS: &[&str] = &["apis", "api", "tag_rules", "template", "replace", "setup"];
 
 /// Effective config for one binding: its API definition, then the provider
 /// entry, then the binding's own keys (`url`, `auth`, `request`, `response`,
@@ -204,68 +205,131 @@ pub fn binding_config(provider_cfg: &Value, binding: &Value) -> Result<Value, Ho
     Ok(eff)
 }
 
-/// Resolve a provider's API key: the per-provider key file
-/// (`~/.lexi-cli/providers/<name>/api-key`, written by `providers api-key set`)
-/// first, else the config's `api_key` (with `${VAR}` env expansion).
+/// Resolve a provider's API key: the saved key (the OS keychain on macOS and
+/// Windows, else `~/.lexi-cli/providers/<name>/api-key`; written by
+/// `providers api-key set`) first, else the config's `api_key` (with `${VAR}`
+/// env expansion).
 pub fn resolve_api_key(provider_name: &str, provider_cfg: &Value) -> Result<String, HostError> {
-    find_api_key(&lexi_home(), provider_name, provider_cfg)?
-        .map(|(key, _)| key)
-        .ok_or_else(|| HostError::MissingApiKey(provider_name.to_string()))
+    match find_api_key(&lexi_home(), provider_name, provider_cfg, current_secrets())? {
+        (Some((key, _)), _) => Ok(key),
+        (None, Some(err)) => Err(HostError::Config(format!(
+            "missing API key for provider {provider_name:?} (couldn't read the {}: {err})",
+            KeyStore::Keychain.label()
+        ))),
+        (None, None) => Err(HostError::MissingApiKey(provider_name.to_string())),
+    }
 }
 
 /// Where a provider's API key would come from, without revealing it:
-/// `"file"` (`providers/<name>/api-key`), `"env"` (a `${VAR}` reference that is
-/// set), `"config"` (a literal in providers-config.yaml), or `None`. Same
-/// precedence as [`resolve_api_key`].
+/// `"keychain"` (the OS credential store), `"file"` (`providers/<name>/api-key`),
+/// `"env"` (a `${VAR}` reference that is set), `"config"` (a literal in
+/// providers-config.yaml), or `None`. Same precedence as [`resolve_api_key`].
 pub fn api_key_source(
     provider_name: &str,
     provider_cfg: &Value,
 ) -> Result<Option<&'static str>, HostError> {
-    Ok(find_api_key(&lexi_home(), provider_name, provider_cfg)?.map(|(_, source)| source))
+    let (found, _) = find_api_key(&lexi_home(), provider_name, provider_cfg, current_secrets())?;
+    Ok(found.map(|(_, source)| source))
 }
 
 fn api_key_path(home: &Path, provider_name: &str) -> PathBuf {
     home.join("providers").join(provider_name).join("api-key")
 }
 
+/// The key and its source, plus the keychain's error when it couldn't be read
+/// (a locked keychain, access denied) — then the other sources are still tried.
+type FoundKey = (Option<(String, &'static str)>, Option<String>);
+
 fn find_api_key(
     home: &Path,
     provider_name: &str,
     provider_cfg: &Value,
-) -> Result<Option<(String, &'static str)>, HostError> {
+    secrets: Option<&dyn Secrets>,
+) -> Result<FoundKey, HostError> {
+    let mut keychain_err = None;
+    if let Some(store) = secrets {
+        match store.get(&keystore::account(home, provider_name)) {
+            Ok(Some(k)) if !k.trim().is_empty() => {
+                return Ok((Some((k.trim().to_string(), "keychain")), None))
+            }
+            Ok(_) => {}
+            Err(e) => keychain_err = Some(e),
+        }
+    }
     let key_file = api_key_path(home, provider_name);
     if key_file.exists() {
         let s = std::fs::read_to_string(&key_file)?.trim().to_string();
         if !s.is_empty() {
-            return Ok(Some((s, "file")));
+            // A key saved before the keychain was used: move it there.
+            if let (Some(store), None) = (secrets, &keychain_err) {
+                if move_key_file_to(store, home, provider_name, &s) {
+                    return Ok((Some((s, "keychain")), None));
+                }
+            }
+            return Ok((Some((s, "file")), keychain_err));
         }
     }
     if let Some(raw) = provider_cfg.get("api_key").and_then(Value::as_str) {
         if let Some(var) = raw.strip_prefix("${").and_then(|s| s.strip_suffix('}')) {
             if let Ok(val) = std::env::var(var) {
                 if !val.is_empty() {
-                    return Ok(Some((val, "env")));
+                    return Ok((Some((val, "env")), keychain_err));
                 }
             }
         } else if !raw.is_empty() {
-            return Ok(Some((raw.to_string(), "config")));
+            return Ok((Some((raw.to_string(), "config")), keychain_err));
         }
     }
-    Ok(None)
+    Ok((None, keychain_err))
 }
 
-/// Store a provider's API key in its key file (owner-only permissions on Unix).
-pub fn set_api_key(provider_name: &str, key: &str) -> Result<(), HostError> {
-    set_api_key_in(&lexi_home(), provider_name, key)
+/// Save a key file's key in the keychain and delete the file — only once the
+/// keychain reads it back. Whether it moved.
+fn move_key_file_to(store: &dyn Secrets, home: &Path, provider_name: &str, key: &str) -> bool {
+    let account = keystore::account(home, provider_name);
+    if store.set(&account, key).is_err() {
+        return false;
+    }
+    if store.get(&account).ok().flatten().as_deref() != Some(key) {
+        return false;
+    }
+    std::fs::remove_file(api_key_path(home, provider_name)).is_ok()
 }
 
-fn set_api_key_in(home: &Path, provider_name: &str, key: &str) -> Result<(), HostError> {
+/// Save a provider's API key: in the OS keychain on macOS and Windows (unless
+/// `LEXI_KEY_STORE=file`), else in its key file (owner-only on Unix). Returns
+/// where it went: `"keychain"` or `"file"`.
+pub fn set_api_key(provider_name: &str, key: &str) -> Result<&'static str, HostError> {
+    set_api_key_in(&lexi_home(), provider_name, key, current_secrets())
+}
+
+fn set_api_key_in(
+    home: &Path,
+    provider_name: &str,
+    key: &str,
+    secrets: Option<&dyn Secrets>,
+) -> Result<&'static str, HostError> {
     check_provider_name(provider_name)?;
     let key = key.trim();
     if key.is_empty() {
         return Err(HostError::Config("API key cannot be empty".into()));
     }
     let path = api_key_path(home, provider_name);
+    if let Some(store) = secrets {
+        store
+            .set(&keystore::account(home, provider_name), key)
+            .map_err(|e| {
+                HostError::Config(format!(
+                    "couldn't save the API key in the {}: {e} (set LEXI_KEY_STORE=file to keep keys in an owner-only file instead)",
+                    KeyStore::Keychain.label()
+                ))
+            })?;
+        // Don't leave an older plain-text copy behind.
+        if path.exists() {
+            std::fs::remove_file(&path)?;
+        }
+        return Ok("keychain");
+    }
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -275,22 +339,38 @@ fn set_api_key_in(home: &Path, provider_name: &str, key: &str) -> Result<(), Hos
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
     }
-    Ok(())
+    Ok("file")
 }
 
-/// Delete a provider's key file; returns whether one existed.
+/// Delete a provider's saved key (keychain item and key file); returns whether
+/// there was one.
 pub fn remove_api_key(provider_name: &str) -> Result<bool, HostError> {
-    remove_api_key_in(&lexi_home(), provider_name)
+    remove_api_key_in(&lexi_home(), provider_name, current_secrets())
 }
 
-fn remove_api_key_in(home: &Path, provider_name: &str) -> Result<bool, HostError> {
+fn remove_api_key_in(
+    home: &Path,
+    provider_name: &str,
+    secrets: Option<&dyn Secrets>,
+) -> Result<bool, HostError> {
     check_provider_name(provider_name)?;
-    let path = api_key_path(home, provider_name);
-    if !path.exists() {
-        return Ok(false);
+    let mut removed = false;
+    if let Some(store) = secrets {
+        removed = store
+            .delete(&keystore::account(home, provider_name))
+            .map_err(|e| {
+                HostError::Config(format!(
+                    "couldn't remove the API key from the {}: {e}",
+                    KeyStore::Keychain.label()
+                ))
+            })?;
     }
-    std::fs::remove_file(path)?;
-    Ok(true)
+    let path = api_key_path(home, provider_name);
+    if path.exists() {
+        std::fs::remove_file(path)?;
+        removed = true;
+    }
+    Ok(removed)
 }
 
 /// Extract provider names from a loaded providers config (declaration order).
@@ -1049,10 +1129,15 @@ fn add_provider_in(home: &Path, name: &str, provider_cfg: &Map) -> Result<(), Ho
 /// Rename a provider: its config entry (position kept) and its
 /// `providers/<name>/` directory.
 pub fn rename_provider(old: &str, new: &str) -> Result<(), HostError> {
-    rename_provider_in(&lexi_home(), old, new)
+    rename_provider_in(&lexi_home(), old, new, current_secrets())
 }
 
-fn rename_provider_in(home: &Path, old: &str, new: &str) -> Result<(), HostError> {
+fn rename_provider_in(
+    home: &Path,
+    old: &str,
+    new: &str,
+    secrets: Option<&dyn Secrets>,
+) -> Result<(), HostError> {
     check_provider_name(new)?;
     let mut doc = read_providers_doc(home)?;
     let providers = providers_mut(&mut doc);
@@ -1075,25 +1160,65 @@ fn rename_provider_in(home: &Path, old: &str, new: &str) -> Result<(), HostError
         })
         .collect();
     *providers = renamed;
+    // A keychain key is filed under the provider's name: copy it to the new
+    // name first (nothing changes if that fails), drop the old one after.
+    let keychain_err = |e: String| {
+        HostError::Config(format!(
+            "couldn't move the API key in the {}: {e}",
+            KeyStore::Keychain.label()
+        ))
+    };
+    let moved_key = match secrets {
+        Some(store) => match store
+            .get(&keystore::account(home, old))
+            .map_err(keychain_err)?
+        {
+            Some(key) => {
+                store
+                    .set(&keystore::account(home, new), &key)
+                    .map_err(keychain_err)?;
+                Some(store)
+            }
+            None => None,
+        },
+        None => None,
+    };
     write_yaml(&providers_config_path(home), &Value::Object(doc))?;
     let old_dir = home.join("providers").join(old);
     if old_dir.exists() {
         std::fs::rename(&old_dir, home.join("providers").join(new))?;
     }
+    if let Some(store) = moved_key {
+        store
+            .delete(&keystore::account(home, old))
+            .map_err(keychain_err)?;
+    }
     Ok(())
 }
 
-/// Remove a provider: its config entry and its `providers/<name>/` directory
-/// (models, aliases, default model, API key file).
+/// Remove a provider: its config entry, its `providers/<name>/` directory
+/// (models, aliases, default model, API key file) and its keychain key.
 pub fn remove_provider(name: &str) -> Result<(), HostError> {
-    remove_provider_in(&lexi_home(), name)
+    remove_provider_in(&lexi_home(), name, current_secrets())
 }
 
-fn remove_provider_in(home: &Path, name: &str) -> Result<(), HostError> {
+fn remove_provider_in(
+    home: &Path,
+    name: &str,
+    secrets: Option<&dyn Secrets>,
+) -> Result<(), HostError> {
     check_provider_name(name)?;
     let mut doc = read_providers_doc(home)?;
     if providers_mut(&mut doc).shift_remove(name).is_none() {
         return Err(HostError::UnknownProvider(name.to_string()));
+    }
+    if let Some(store) = secrets {
+        store.delete(&keystore::account(home, name)).map_err(|e| {
+            HostError::Config(format!(
+                "couldn't remove the API key from the {}: {e}",
+                KeyStore::Keychain.label()
+            ))
+        })?;
     }
     write_yaml(&providers_config_path(home), &Value::Object(doc))?;
     let dir = home.join("providers").join(name);
@@ -1820,20 +1945,36 @@ mod tests {
 
         std::fs::create_dir_all(home.join("providers/mid")).unwrap();
         std::fs::write(home.join("providers/mid/api-key"), "k").unwrap();
-        rename_provider_in(home, "first", "alpha").unwrap();
-        rename_provider_in(home, "mid", "middle").unwrap();
+        let kc = crate::keystore::test_support::MemSecrets::default();
+        set_api_key_in(home, "first", "first-key", Some(&kc)).unwrap();
+        rename_provider_in(home, "first", "alpha", Some(&kc)).unwrap();
+        rename_provider_in(home, "mid", "middle", None).unwrap();
         assert!(home.join("providers/middle/api-key").exists());
-        assert!(rename_provider_in(home, "nope", "x").is_err());
-        assert!(rename_provider_in(home, "alpha", "last").is_err());
+        // The keychain key follows the provider to its new name.
+        assert_eq!(
+            find_api_key(home, "alpha", &json!({}), Some(&kc))
+                .unwrap()
+                .0,
+            Some(("first-key".into(), "keychain"))
+        );
+        assert!(!kc
+            .items
+            .borrow()
+            .contains_key(&keystore::account(home, "first")));
+        assert!(rename_provider_in(home, "nope", "x", None).is_err());
+        assert!(rename_provider_in(home, "alpha", "last", None).is_err());
 
         let doc = read_providers_doc(home).unwrap();
         let names: Vec<&String> = doc["providers"].as_object().unwrap().keys().collect();
         assert_eq!(names, ["alpha", "last", "middle"]);
         assert_eq!(doc["defaults"]["max_tokens"], 1); // other sections kept
 
-        remove_provider_in(home, "middle").unwrap();
+        remove_provider_in(home, "middle", None).unwrap();
         assert!(!home.join("providers/middle").exists());
-        assert!(remove_provider_in(home, "middle").is_err());
+        assert!(remove_provider_in(home, "middle", None).is_err());
+        // Removing a provider deletes its keychain key too.
+        remove_provider_in(home, "alpha", Some(&kc)).unwrap();
+        assert!(kc.items.borrow().is_empty());
     }
 
     #[test]
@@ -1868,12 +2009,15 @@ mod tests {
         let home = dir.path();
         let cfg = json!({"api_key": "from-config"});
         assert_eq!(
-            find_api_key(home, "p", &cfg).unwrap(),
+            find_api_key(home, "p", &cfg, None).unwrap().0,
             Some(("from-config".into(), "config"))
         );
-        set_api_key_in(home, "p", "  from-file \n").unwrap();
         assert_eq!(
-            find_api_key(home, "p", &cfg).unwrap(),
+            set_api_key_in(home, "p", "  from-file \n", None).unwrap(),
+            "file"
+        );
+        assert_eq!(
+            find_api_key(home, "p", &cfg, None).unwrap().0,
             Some(("from-file".into(), "file"))
         );
         #[cfg(unix)]
@@ -1885,10 +2029,85 @@ mod tests {
                 .mode();
             assert_eq!(mode & 0o777, 0o600);
         }
-        assert!(set_api_key_in(home, "p", "  ").is_err());
-        assert!(remove_api_key_in(home, "p").unwrap());
-        assert!(!remove_api_key_in(home, "p").unwrap());
-        assert_eq!(find_api_key(home, "p", &json!({})).unwrap(), None);
+        assert!(set_api_key_in(home, "p", "  ", None).is_err());
+        assert!(remove_api_key_in(home, "p", None).unwrap());
+        assert!(!remove_api_key_in(home, "p", None).unwrap());
+        assert_eq!(find_api_key(home, "p", &json!({}), None).unwrap().0, None);
+    }
+
+    #[test]
+    fn keychain_keys_win_and_old_key_files_move_into_it() {
+        use crate::keystore::test_support::MemSecrets;
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let kc = MemSecrets::default();
+        let account = keystore::account(home, "p");
+        assert!(account.starts_with("p (") && account.contains(&home.display().to_string()));
+        let cfg = json!({"api_key": "from-config"});
+
+        // Saving goes to the keychain, never a file, and wins over the config.
+        assert_eq!(
+            set_api_key_in(home, "p", " k1 ", Some(&kc)).unwrap(),
+            "keychain"
+        );
+        assert!(!api_key_path(home, "p").exists());
+        assert_eq!(kc.items.borrow()[&account], "k1");
+        assert_eq!(
+            find_api_key(home, "p", &cfg, Some(&kc)).unwrap().0,
+            Some(("k1".into(), "keychain"))
+        );
+
+        // A key file from before the keychain is moved into it when read.
+        set_api_key_in(home, "q", "old-key", None).unwrap();
+        assert_eq!(
+            find_api_key(home, "q", &json!({}), Some(&kc)).unwrap().0,
+            Some(("old-key".into(), "keychain"))
+        );
+        assert!(!api_key_path(home, "q").exists());
+        assert_eq!(kc.items.borrow()[&keystore::account(home, "q")], "old-key");
+
+        // Saving over a leftover key file removes the plain-text copy.
+        set_api_key_in(home, "r", "plain", None).unwrap();
+        set_api_key_in(home, "r", "secure", Some(&kc)).unwrap();
+        assert!(!api_key_path(home, "r").exists());
+
+        // Remove clears the keychain item (and any file).
+        assert!(remove_api_key_in(home, "p", Some(&kc)).unwrap());
+        assert!(!remove_api_key_in(home, "p", Some(&kc)).unwrap());
+        assert_eq!(
+            find_api_key(home, "p", &cfg, Some(&kc)).unwrap().0,
+            Some(("from-config".into(), "config"))
+        );
+    }
+
+    #[test]
+    fn an_unreadable_keychain_falls_back_and_is_reported() {
+        use crate::keystore::test_support::MemSecrets;
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let locked = MemSecrets {
+            fail: true,
+            ..Default::default()
+        };
+
+        // A key file is still used (and not moved) when the keychain fails.
+        set_api_key_in(home, "p", "file-key", None).unwrap();
+        let (found, err) = find_api_key(home, "p", &json!({}), Some(&locked)).unwrap();
+        assert_eq!(found, Some(("file-key".into(), "file")));
+        assert_eq!(err.as_deref(), Some("keychain locked"));
+        assert!(api_key_path(home, "p").exists());
+
+        // Nothing anywhere: the keychain's error is what's reported.
+        let (found, err) = find_api_key(home, "none", &json!({}), Some(&locked)).unwrap();
+        assert_eq!(found, None);
+        assert!(err.is_some());
+
+        // Saving to a failing keychain is an error, not a silent plain-text file.
+        let e = set_api_key_in(home, "s", "k", Some(&locked))
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("LEXI_KEY_STORE=file"), "{e}");
+        assert!(!api_key_path(home, "s").exists());
     }
 
     #[test]

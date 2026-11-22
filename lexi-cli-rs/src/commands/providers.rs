@@ -115,9 +115,16 @@ fn key_set(io: &mut Io<'_>, name: &str, value: Option<String>) -> u8 {
         },
     };
     match lexi_host::config::set_api_key(name, &key) {
-        Ok(()) => io.result(
-            format!("Saved API key for {name}."),
-            json!({ "provider": name }),
+        Ok(store) => io.result(
+            format!(
+                "Saved API key for {name} {}.",
+                if store == "keychain" {
+                    "in the system keychain"
+                } else {
+                    "in its key file"
+                }
+            ),
+            json!({ "provider": name, "store": store }),
         ),
         Err(e) => io.fail(e),
     }
@@ -144,7 +151,7 @@ fn key_remove(io: &mut Io<'_>, name: &str) -> u8 {
             json!({ "removed": true }),
         ),
         Ok(false) => io.result(
-            format!("No API key file found for {name}."),
+            format!("No saved API key for {name}."),
             json!({ "removed": false }),
         ),
         Err(e) => io.fail(e),
