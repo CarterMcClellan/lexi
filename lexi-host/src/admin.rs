@@ -117,17 +117,24 @@ fn mask(key: &str) -> String {
 ///   `own` is false when the API has no list of its own and uses the
 ///   provider's.
 /// - `source`/`from`: the kind and place of the key that's used, and `key` it
-///   (masked unless `reveal`) — all null when there's none; `error` is a read
-///   error that stopped the lookup.
+///   (masked unless `reveal` is `Some(true)`) — all null when there's none;
+///   `error` is a read error that stopped the lookup. With `reveal: None` a
+///   keychain item's secret isn't read (so macOS never asks for access):
+///   `key` is then null and `key_hidden` true when the key is in the keychain.
 /// - `save_to`: where `providers api-key set` would save a key — `store` is
 ///   its kind (`keychain`/`file`, named by `store_label`) and `adds_source`
 ///   whether that place would be added to the config.
 /// - `env`: the first environment variable the list reads, if any.
 /// - `keychain`: whether the OS keychain can be used here (named by
 ///   `keychain_label`) — false without one or with `LEXI_KEY_STORE=file`.
-pub fn api_key_info(name: &str, api: Option<&str>, reveal: bool) -> Result<Value, HostError> {
+pub fn api_key_info(
+    name: &str,
+    api: Option<&str>,
+    reveal: Option<bool>,
+) -> Result<Value, HostError> {
     provider_config(name)?;
-    let plan = config::key_plan(name, api)?;
+    let plan = config::key_plan(name, api, reveal.is_some())?;
+    let reveal = reveal.unwrap_or(false);
     let lookup = &plan.lookup;
     let used = lookup.used();
     let env = plan.sources.iter().find_map(|s| match s {
@@ -146,6 +153,7 @@ pub fn api_key_info(name: &str, api: Option<&str>, reveal: bool) -> Result<Value
         "source": used.map(Source::kind),
         "from": used.map(Source::describe),
         "key": lookup.key.as_deref().map(|k| if reveal { k.to_string() } else { mask(k) }),
+        "key_hidden": used.is_some() && lookup.key.is_none(),
         "error": lookup.failure().map(|(s, e)| format!("couldn't read {}: {e}", s.describe())),
         "sources": lookup.to_value(),
         "save_to": plan.save_to.describe(),

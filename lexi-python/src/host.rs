@@ -526,7 +526,8 @@ fn _admin<'py>(py: Python<'py>, op: &str, args: &Bound<'py, PyAny>) -> PyResult<
             moved
         }
         "providers.show_key" => {
-            admin::api_key_info(a.str("name")?, a.opt_str("api"), a.flag("reveal")).map_err(e)?
+            admin::api_key_info(a.str("name")?, a.opt_str("api"), Some(a.flag("reveal")))
+                .map_err(e)?
         }
         "providers.upgrade" => {
             cfg::upgrade_provider(a.str("name")?, a.opt_str("template"), a.flag("apply"))

@@ -32,7 +32,7 @@ def test_providers_lifecycle(home):
     # The key file followed the rename, and the config names it.
     assert lexi.providers.show_key("yours") == {
         "provider": "yours", "api": None, "own": True,
-        "source": None, "from": None, "key": None, "error": None,
+        "source": None, "from": None, "key": None, "key_hidden": False, "error": None,
         "sources": [{
             "kind": "file", "from": "providers/yours/api-key",
             "state": "missing", "note": "no file",

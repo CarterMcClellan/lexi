@@ -570,13 +570,16 @@ fn provider_credentials(name: &str) -> Value {
         "setup": setup,
         "url": cfg.get("url"),
     });
-    match lexi_host::admin::api_key_info(name, None, false) {
+    // Status only: a keychain item is checked for, not read, so opening the
+    // app never makes macOS ask for Keychain access.
+    match lexi_host::admin::api_key_info(name, None, None) {
         Ok(info) => {
             let env = info.get("env").and_then(Value::as_str);
             for k in [
                 "source",
                 "from",
                 "key",
+                "key_hidden",
                 "error",
                 "sources",
                 "save_to",
@@ -663,11 +666,16 @@ fn provider_api_key(body: Value) -> Result<Value, String> {
     let mut result = json!({});
     match action {
         "show" => {
-            let reveal = body.get("reveal").and_then(Value::as_bool).unwrap_or(false);
-            let info = lexi_host::admin::api_key_info(provider, None, reveal)
-                .map_err(|e| e.to_string())?;
+            // Reading a keychain key (which macOS may ask about) only when the
+            // key is to be shown in clear.
             let mut creds = provider_credentials(provider);
-            creds["key"] = info["key"].clone();
+            if body.get("reveal").and_then(Value::as_bool) == Some(true) {
+                let info = lexi_host::admin::api_key_info(provider, None, Some(true))
+                    .map_err(|e| e.to_string())?;
+                for k in ["key", "key_hidden", "error", "sources"] {
+                    creds[k] = info[k].clone();
+                }
+            }
             return Ok(creds);
         }
         "set" => {

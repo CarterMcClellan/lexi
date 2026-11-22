@@ -73,7 +73,8 @@ def show_key(name: str, *, reveal: bool = False, api: Optional[str] = None) -> D
     own, source, from, key, error, sources, save_to, store, store_label,
     adds_source, env}``. ``sources`` is its ``api_key`` list in order, each
     ``{kind, from, state, note?}``; ``source``/``from``/``key`` describe the key
-    that's used (masked unless ``reveal``; None when there's none);
+    that's used (masked unless ``reveal``; None when there's none; reading a
+    keychain key may make macOS ask for access, once);
     ``save_to`` is where :func:`set_key` would save one; ``keychain`` whether
     the OS keychain can be used here."""
     return call("providers.show_key", name=name, reveal=reveal, api=api)

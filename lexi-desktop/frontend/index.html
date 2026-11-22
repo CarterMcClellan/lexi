@@ -3598,7 +3598,12 @@
         if (apiKeyProviderEl.value !== provider) return;
         apiKeyInfo = data;
         const hasKey = !!data.source;
-        apiKeyStatusEl.textContent = hasKey ? data.key : (data.error ? `Couldn't read the key: ${data.error}` : 'No API key set.');
+        // A Keychain key isn't read just to show this panel (macOS would ask
+        // for access); it's read when it's used, revealed or tested.
+        apiKeyStatusEl.textContent = data.error ? `Couldn't read the key: ${data.error}`
+          : !hasKey ? 'No API key set.'
+          : data.key_hidden ? `Saved in the ${data.keychain_label || 'system keychain'}; not read yet. Lexi reads it when you use ${providerDisplay(provider)}, or click Clear Text or Test (macOS may ask once).`
+          : data.key;
         apiKeySourceEl.innerHTML = keySourcesHtml(data);
         apiKeySaveBtn.dataset.tip = `Save this key ${storePhrase(data)}`;
         apiKeyRevealBtn.disabled = !hasKey;

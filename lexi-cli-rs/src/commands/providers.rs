@@ -150,7 +150,7 @@ fn key_set(io: &mut Io<'_>, name: &str, value: Option<String>, api: Option<&str>
 /// Each `api_key` source in order with what was found there, then the key
 /// (`sk-a…wxyz`-style masking unless --reveal).
 fn key_show(io: &mut Io<'_>, name: &str, reveal: bool, api: Option<&str>) -> u8 {
-    let info = match lexi_host::admin::api_key_info(name, api, reveal) {
+    let info = match lexi_host::admin::api_key_info(name, api, Some(reveal)) {
         Ok(info) => info,
         Err(e) => return io.fail(e),
     };

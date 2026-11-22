@@ -283,10 +283,30 @@ impl Lookup {
 
 /// Look through `sources` in order for a key.
 pub(crate) fn lookup(home: &Path, sources: &[Source], secrets: Option<&dyn Secrets>) -> Lookup {
+    lookup_with(home, sources, secrets, false)
+}
+
+/// Like [`lookup`], but a keychain item is only checked for — its secret
+/// isn't read, so macOS doesn't ask for access. Which source would be used
+/// is the same; `key` is `None` when that's a keychain item. For status
+/// (does a provider have a key, and where from), not for requests.
+pub(crate) fn probe(home: &Path, sources: &[Source], secrets: Option<&dyn Secrets>) -> Lookup {
+    lookup_with(home, sources, secrets, true)
+}
+
+fn lookup_with(
+    home: &Path,
+    sources: &[Source],
+    secrets: Option<&dyn Secrets>,
+    probe: bool,
+) -> Lookup {
     let mut key = None;
-    let mut checked = Vec::new();
+    let mut checked: Vec<(Source, Outcome)> = Vec::new();
     for source in sources {
-        if key.is_some() || checked.iter().any(|(_, o)| matches!(o, Outcome::Failed(_))) {
+        let decided = checked
+            .iter()
+            .any(|(_, o)| matches!(o, Outcome::Used | Outcome::Failed(_)));
+        if decided {
             checked.push((source.clone(), Outcome::NotChecked));
             continue;
         }
@@ -301,6 +321,11 @@ pub(crate) fn lookup(home: &Path, sources: &[Source], secrets: Option<&dyn Secre
             Source::Keychain(account) => match secrets {
                 None if NATIVE => Outcome::Unavailable("LEXI_KEY_STORE=file"),
                 None => Outcome::Unavailable("no keychain on this platform"),
+                Some(store) if probe => match store.exists(account) {
+                    Ok(true) => Outcome::Used,
+                    Ok(false) => Outcome::Missing("no item"),
+                    Err(e) => Outcome::Failed(e),
+                },
                 Some(store) => match store.get(account) {
                     Ok(Some(v)) if !v.trim().is_empty() => {
                         key = Some(v.trim().to_string());
@@ -339,36 +364,106 @@ pub(crate) fn lookup(home: &Path, sources: &[Source], secrets: Option<&dyn Secre
 pub(crate) trait Secrets {
     /// The saved secret, `None` when there's no item.
     fn get(&self, account: &str) -> Result<Option<String>, String>;
+    /// Whether there's an item, without reading its secret where the store
+    /// can tell (on macOS reading the secret is what asks for access).
+    fn exists(&self, account: &str) -> Result<bool, String> {
+        self.get(account)
+            .map(|s| s.is_some_and(|v| !v.trim().is_empty()))
+    }
     fn set(&self, account: &str, secret: &str) -> Result<(), String>;
     /// Delete the item; whether there was one.
     fn delete(&self, account: &str) -> Result<bool, String>;
 }
 
-/// The OS credential store.
+/// The OS credential store. Every call goes through one lock, so the app's
+/// concurrent requests never stack several "allow access" prompts, and a
+/// secret read once is remembered for the rest of the process: macOS asks
+/// at most once per item per launch (and not again after "Always Allow").
 pub(crate) struct OsSecrets;
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+static READ: std::sync::Mutex<Option<std::collections::HashMap<String, Option<String>>>> =
+    std::sync::Mutex::new(None);
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn with_cache<T>(f: impl FnOnce(&mut std::collections::HashMap<String, Option<String>>) -> T) -> T {
+    let mut guard = READ.lock().unwrap_or_else(|p| p.into_inner());
+    f(guard.get_or_insert_with(Default::default))
+}
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 impl Secrets for OsSecrets {
     fn get(&self, account: &str) -> Result<Option<String>, String> {
-        let entry = keyring::Entry::new(SERVICE, account).map_err(|e| e.to_string())?;
-        match entry.get_password() {
-            Ok(s) => Ok(Some(s)),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(e.to_string()),
-        }
+        with_cache(|cache| {
+            if let Some(known) = cache.get(account) {
+                return Ok(known.clone());
+            }
+            let entry = keyring::Entry::new(SERVICE, account).map_err(|e| e.to_string())?;
+            let read = match entry.get_password() {
+                Ok(s) => Some(s),
+                Err(keyring::Error::NoEntry) => None,
+                Err(e) => return Err(e.to_string()),
+            };
+            cache.insert(account.to_string(), read.clone());
+            Ok(read)
+        })
+    }
+    fn exists(&self, account: &str) -> Result<bool, String> {
+        with_cache(|cache| match cache.get(account) {
+            Some(known) => Ok(known.as_deref().is_some_and(|v| !v.trim().is_empty())),
+            None => item_exists(account),
+        })
     }
     fn set(&self, account: &str, secret: &str) -> Result<(), String> {
-        keyring::Entry::new(SERVICE, account)
-            .and_then(|e| e.set_password(secret))
-            .map_err(|e| e.to_string())
+        with_cache(|cache| {
+            keyring::Entry::new(SERVICE, account)
+                .and_then(|e| e.set_password(secret))
+                .map_err(|e| e.to_string())?;
+            cache.insert(account.to_string(), Some(secret.to_string()));
+            Ok(())
+        })
     }
     fn delete(&self, account: &str) -> Result<bool, String> {
-        let entry = keyring::Entry::new(SERVICE, account).map_err(|e| e.to_string())?;
-        match entry.delete_credential() {
-            Ok(()) => Ok(true),
-            Err(keyring::Error::NoEntry) => Ok(false),
-            Err(e) => Err(e.to_string()),
-        }
+        with_cache(|cache| {
+            let entry = keyring::Entry::new(SERVICE, account).map_err(|e| e.to_string())?;
+            let had = match entry.delete_credential() {
+                Ok(()) => true,
+                Err(keyring::Error::NoEntry) => false,
+                Err(e) => return Err(e.to_string()),
+            };
+            cache.insert(account.to_string(), None);
+            Ok(had)
+        })
+    }
+}
+
+/// Whether the Keychain has Lexi's item for `account`, from its attributes
+/// only: they aren't encrypted, so this never asks for access.
+#[cfg(target_os = "macos")]
+fn item_exists(account: &str) -> Result<bool, String> {
+    use security_framework::item::{ItemClass, ItemSearchOptions};
+    const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
+    match ItemSearchOptions::new()
+        .class(ItemClass::generic_password())
+        .service(SERVICE)
+        .account(account)
+        .load_attributes(true)
+        .limit(1)
+        .search()
+    {
+        Ok(found) => Ok(!found.is_empty()),
+        Err(e) if e.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(false),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Credential Manager doesn't ask before a read, so reading is the check.
+#[cfg(target_os = "windows")]
+fn item_exists(account: &str) -> Result<bool, String> {
+    match keyring::Entry::new(SERVICE, account).and_then(|e| e.get_password()) {
+        Ok(s) => Ok(!s.trim().is_empty()),
+        Err(keyring::Error::NoEntry) => Ok(false),
+        Err(e) => Err(e.to_string()),
     }
 }
 
@@ -398,11 +493,13 @@ pub(crate) mod test_support {
     use std::cell::RefCell;
     use std::collections::HashMap;
 
-    /// An in-memory secret store; `fail` makes every call error.
+    /// An in-memory secret store; `fail` makes every call error. `reads`
+    /// counts secret reads (what makes macOS ask for access).
     #[derive(Default)]
     pub(crate) struct MemSecrets {
         pub(crate) items: RefCell<HashMap<String, String>>,
         pub(crate) fail: bool,
+        pub(crate) reads: std::cell::Cell<usize>,
     }
 
     impl super::Secrets for MemSecrets {
@@ -410,7 +507,14 @@ pub(crate) mod test_support {
             if self.fail {
                 return Err("keychain locked".into());
             }
+            self.reads.set(self.reads.get() + 1);
             Ok(self.items.borrow().get(account).cloned())
+        }
+        fn exists(&self, account: &str) -> Result<bool, String> {
+            if self.fail {
+                return Err("keychain locked".into());
+            }
+            Ok(self.items.borrow().contains_key(account))
         }
         fn set(&self, account: &str, secret: &str) -> Result<(), String> {
             if self.fail {

@@ -261,13 +261,14 @@ fn read_error(provider_name: &str, source: &Source, err: &str) -> HostError {
 
 /// Which kind of source the key comes from — `"env"`, `"keychain"`,
 /// `"file"`, `"config"` (a literal) — without revealing it; `None` when no
-/// source has one. Same lookup as [`resolve_api_key`] (a read error is an
-/// error).
+/// source has one. Same order as [`resolve_api_key`] (a read error is an
+/// error), but a keychain item is only checked for, not read, so this never
+/// makes macOS ask for Keychain access.
 pub fn api_key_source(
     provider_name: &str,
     provider_cfg: &Value,
 ) -> Result<Option<&'static str>, HostError> {
-    let lookup = lookup_api_key(provider_cfg)?;
+    let lookup = keystore::probe(&lexi_home(), &key_sources(provider_cfg)?, current_secrets());
     if let Some((source, err)) = lookup.failure() {
         return Err(read_error(provider_name, source, err));
     }
@@ -543,7 +544,7 @@ fn used_source(
     secrets: Option<&dyn Secrets>,
 ) -> Option<String> {
     let scope = key_scope(home, provider, api).ok()?;
-    let lookup = keystore::lookup(home, &scope.sources, secrets);
+    let lookup = keystore::probe(home, &scope.sources, secrets);
     lookup.used().map(Source::describe)
 }
 
@@ -559,7 +560,13 @@ pub(crate) struct KeyPlan {
     pub(crate) lookup: Lookup,
 }
 
-pub(crate) fn key_plan(provider: &str, api: Option<&str>) -> Result<KeyPlan, HostError> {
+/// `read`: read the key that's used (a keychain item's secret too — macOS may
+/// ask for access); otherwise keychain items are only checked for.
+pub(crate) fn key_plan(
+    provider: &str,
+    api: Option<&str>,
+    read: bool,
+) -> Result<KeyPlan, HostError> {
     let home = lexi_home();
     let secrets = current_secrets();
     let scope = key_scope(&home, provider, api)?;
@@ -575,7 +582,11 @@ pub(crate) fn key_plan(provider: &str, api: Option<&str>) -> Result<KeyPlan, Hos
             true,
         ),
     };
-    let lookup = keystore::lookup(&home, &sources, secrets);
+    let lookup = if read {
+        keystore::lookup(&home, &sources, secrets)
+    } else {
+        keystore::probe(&home, &sources, secrets)
+    };
     Ok(KeyPlan {
         sources,
         own: scope.own,
@@ -2553,6 +2564,37 @@ mod tests {
         assert!(key_sources(&json!({"api_key": {"vault": "x"}})).is_err());
         assert!(key_sources(&json!({"api_key": [{"env": ""}]})).is_err());
         assert!(key_sources(&json!({})).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_status_check_never_reads_a_keychain_secret() {
+        use crate::keystore::test_support::MemSecrets;
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let kc = MemSecrets::default();
+        kc.items.borrow_mut().insert("p".into(), "secret".into());
+        let sources = key_sources(&json!({"api_key": [
+            "${LEXI_TEST_SURELY_UNSET_VAR}", {"keychain": "p"}, {"file": "never-read"},
+        ]}))
+        .unwrap();
+        let probed = keystore::probe(home, &sources, Some(&kc));
+        assert_eq!(probed.used().map(Source::kind), Some("keychain"));
+        assert_eq!(probed.key, None);
+        assert_eq!(kc.reads.get(), 0); // macOS wouldn't have asked
+        let read = keystore::lookup(home, &sources, Some(&kc));
+        assert_eq!(read.key.as_deref(), Some("secret"));
+        assert_eq!(kc.reads.get(), 1);
+        // Missing and locked items probe the same as they read.
+        assert!(keystore::probe(home, &sources[..1], Some(&kc))
+            .used()
+            .is_none());
+        let locked = MemSecrets {
+            fail: true,
+            ..Default::default()
+        };
+        assert!(keystore::probe(home, &sources, Some(&locked))
+            .failure()
+            .is_some());
     }
 
     #[test]
