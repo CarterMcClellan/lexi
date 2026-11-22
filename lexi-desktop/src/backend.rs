@@ -20,6 +20,11 @@ pub async fn handle(method: &str, path: &str, body: Option<Value>) -> Result<Val
         ("GET", "/api/providers") | ("GET", "/api/providers/") => providers(),
         ("GET", "/api/config") | ("GET", "/api/config/") => Ok(config_get()),
         ("GET", "/api/themes") => Ok(themes()),
+        ("GET", "/api/startup") => startup(path),
+        ("POST", "/api/startup/seen") => startup_seen(),
+        ("POST", "/api/providers/api-key") => provider_api_key(body.unwrap_or(Value::Null)),
+        ("POST", "/api/providers/check") => provider_check(body.unwrap_or(Value::Null)).await,
+        ("POST", "/api/open-url") => open_url(body.unwrap_or(Value::Null)),
         ("GET", "/api/prompts") => prompts_list(),
         ("GET", p) if p.starts_with("/api/models/default") => models_default_get(path),
         ("GET", p) if p.starts_with("/api/models/aliases") => models_aliases_get(path),
@@ -61,7 +66,6 @@ pub async fn handle(method: &str, path: &str, body: Option<Value>) -> Result<Val
 /// `GET /api/providers` — the normalized provider list the chat tab renders.
 fn providers() -> Result<Value, String> {
     let cfg = config::load_providers().map_err(|e| e.to_string())?;
-    let home = config::lexi_home();
     let empty = Map::new();
     let providers = cfg
         .get("providers")
@@ -83,12 +87,8 @@ fn providers() -> Result<Value, String> {
         let url = meta.get("url").and_then(Value::as_str).unwrap_or("");
         let default_model = field("default_model");
         let api = field("api");
-        let has_key_meta = meta
-            .get("api_key")
-            .and_then(Value::as_str)
-            .map(|s| !s.is_empty())
-            .unwrap_or(false);
-        let has_key = has_key_meta || home.join("providers").join(name).join("api-key").exists();
+        // A `${VAR}` key counts only when the variable is set.
+        let has_key = config::api_key_source(name, meta).ok().flatten().is_some();
         let configured = !url.is_empty() && has_key && !default_model.is_empty();
         // Whether it can chat: a binding that produces text, serving a chat
         // model by default. The Chat tab lists only these providers.
@@ -483,6 +483,223 @@ fn config_set(body: Value) -> Result<Value, String> {
         .ok_or_else(|| "config body must be an object".to_string())?;
     config::set_config(updates).map_err(|e| e.to_string())?;
     Ok(config_get())
+}
+
+/// The release notes (`CHANGELOG.md`): one section per release, newest first.
+const RELEASE_NOTES: &str = include_str!("../../CHANGELOG.md");
+
+/// This app's version.
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// `(version, heading, body)` for each `## ` section of the release notes;
+/// `version` is the heading's first word (`0.2.0`, or `Unreleased`).
+fn release_sections(text: &str) -> Vec<(String, String, String)> {
+    let mut out: Vec<(String, String, String)> = Vec::new();
+    for line in text.lines() {
+        if let Some(heading) = line.strip_prefix("## ") {
+            let heading = heading.trim().to_string();
+            let version = heading.split_whitespace().next().unwrap_or("").to_string();
+            out.push((version, heading, String::new()));
+        } else if let Some((_, _, body)) = out.last_mut() {
+            body.push_str(line);
+            body.push('\n');
+        }
+    }
+    for (_, _, body) in &mut out {
+        *body = body.trim().to_string();
+    }
+    out
+}
+
+/// `1.2.3` → `[1, 2, 3]`; `None` for anything else.
+fn version_key(v: &str) -> Option<Vec<u64>> {
+    v.split('.').map(|p| p.parse().ok()).collect()
+}
+
+/// The release notes someone moving from `seen` (the last version they opened,
+/// if any) to `current` hasn't read: unreleased changes, then each release
+/// after `seen` up to `current` — or just `current`'s on a first run.
+fn unseen_notes(text: &str, seen: Option<&str>, current: &str) -> Vec<Value> {
+    let cur = version_key(current);
+    let seen = seen.and_then(version_key);
+    release_sections(text)
+        .into_iter()
+        .filter(|(version, _, body)| {
+            if body.is_empty() {
+                return false;
+            }
+            if version.eq_ignore_ascii_case("unreleased") {
+                return true;
+            }
+            let Some(v) = version_key(version) else {
+                return false;
+            };
+            match (&cur, &seen) {
+                (Some(c), Some(s)) => v <= *c && v > *s,
+                (Some(c), None) => v == *c,
+                (None, _) => false,
+            }
+        })
+        .map(|(version, heading, body)| json!({ "version": version, "title": heading, "notes": body }))
+        .collect()
+}
+
+/// One provider's credential state for the startup screen and setup wizard:
+/// where its key comes from (if anywhere), the environment variable it reads,
+/// where a saved key goes, and the template's `setup` help.
+fn provider_credentials(name: &str) -> Value {
+    let cfg = lexi_host::admin::provider_config(name).unwrap_or(Value::Null);
+    let setup = cfg.get("setup").cloned().unwrap_or(Value::Null);
+    let mut out = json!({
+        "name": name,
+        "display": setup.get("name").and_then(Value::as_str).unwrap_or(name),
+        "setup": setup,
+        "url": cfg.get("url"),
+    });
+    match lexi_host::admin::api_key_info(name, false) {
+        Ok(info) => {
+            let env = info.get("env").and_then(Value::as_str);
+            out["source"] = info["source"].clone();
+            out["key"] = info["key"].clone();
+            out["env"] = json!(env);
+            out["env_set"] =
+                json!(env.is_some_and(|v| std::env::var(v).is_ok_and(|s| !s.is_empty())));
+            out["store"] = info["store"].clone();
+            out["store_label"] = info["store_label"].clone();
+        }
+        Err(e) => {
+            out["source"] = Value::Null;
+            out["error"] = json!(e.to_string());
+        }
+    }
+    out
+}
+
+/// `GET /api/startup` — what the startup screen needs: this version and the
+/// last one opened (`seen_version` in `config.json`), the release notes not yet
+/// seen, and each provider's credentials. `?about=1` (the header logo) gives
+/// this version's notes whether or not they've been seen.
+fn startup(path: &str) -> Result<Value, String> {
+    let about = query_param(path, "about").is_some_and(|v| v == "1");
+    let cfg = config_get();
+    let seen = cfg.get("seen_version").and_then(Value::as_str);
+    let names = config::load_providers()
+        .map(|p| config::provider_names(&p))
+        .map_err(|e| e.to_string())?;
+    let providers: Vec<Value> = names.iter().map(|n| provider_credentials(n)).collect();
+    let has_credentials = providers.iter().any(|p| !p["source"].is_null());
+    let store = providers
+        .first()
+        .map(|p| (p["store"].clone(), p["store_label"].clone()))
+        .unwrap_or((Value::Null, Value::Null));
+    let new_version = seen != Some(APP_VERSION);
+    let notes = if about {
+        unseen_notes(RELEASE_NOTES, None, APP_VERSION)
+    } else if new_version {
+        unseen_notes(RELEASE_NOTES, seen, APP_VERSION)
+    } else {
+        Vec::new()
+    };
+    Ok(json!({
+        "version": APP_VERSION,
+        "seen_version": seen,
+        "new_version": new_version,
+        "notes": notes,
+        "providers": providers,
+        "has_credentials": has_credentials,
+        "store": store.0,
+        "store_label": store.1,
+        "platform": std::env::consts::OS,
+    }))
+}
+
+/// `POST /api/startup/seen` — remember that this version has been opened.
+fn startup_seen() -> Result<Value, String> {
+    let mut updates = Map::new();
+    updates.insert("seen_version".into(), json!(APP_VERSION));
+    config::set_config(&updates).map_err(|e| e.to_string())?;
+    Ok(json!({ "seen_version": APP_VERSION }))
+}
+
+/// `POST /api/providers/api-key` `{action: show|set|remove, provider, reveal?,
+/// value?}` — a provider's saved API key (the OS keychain, or its key file).
+/// Every action answers with the provider's credentials afterwards.
+fn provider_api_key(body: Value) -> Result<Value, String> {
+    let provider = body
+        .get("provider")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "provider is required".to_string())?;
+    lexi_host::admin::provider_config(provider).map_err(|e| e.to_string())?;
+    let action = body.get("action").and_then(Value::as_str).unwrap_or("show");
+    let mut result = json!({});
+    match action {
+        "show" => {
+            let reveal = body.get("reveal").and_then(Value::as_bool).unwrap_or(false);
+            let info =
+                lexi_host::admin::api_key_info(provider, reveal).map_err(|e| e.to_string())?;
+            let mut creds = provider_credentials(provider);
+            creds["key"] = info["key"].clone();
+            return Ok(creds);
+        }
+        "set" => {
+            let value = body.get("value").and_then(Value::as_str).unwrap_or("");
+            let store = config::set_api_key(provider, value).map_err(|e| e.to_string())?;
+            result["saved"] = json!(store);
+        }
+        "remove" => {
+            let removed = config::remove_api_key(provider).map_err(|e| e.to_string())?;
+            result["removed"] = json!(removed);
+        }
+        other => return Err(format!("unknown api-key action {other:?}")),
+    }
+    let mut creds = provider_credentials(provider);
+    if let (Some(c), Some(r)) = (creds.as_object_mut(), result.as_object()) {
+        c.extend(r.clone());
+    }
+    Ok(creds)
+}
+
+/// `POST /api/providers/check` `{provider}` — test the provider's key against
+/// its models endpoint (a listing; nothing is generated or billed).
+async fn provider_check(body: Value) -> Result<Value, String> {
+    let provider = body
+        .get("provider")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "provider is required".to_string())?;
+    let st = lexi_host::check_api_key(provider)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(json!({
+        "provider": provider,
+        "status": st.status,
+        "source": st.source,
+        "verified": st.verified,
+    }))
+}
+
+/// `POST /api/open-url` `{url}` — open a web page in the default browser
+/// (http and https only).
+fn open_url(body: Value) -> Result<Value, String> {
+    use std::process::Command;
+    let url = body
+        .get("url")
+        .and_then(Value::as_str)
+        .filter(|u| u.starts_with("https://") || u.starts_with("http://"))
+        .filter(|u| !u.chars().any(|c| c.is_whitespace() || c.is_control()))
+        .ok_or_else(|| "only http(s) links can be opened".to_string())?;
+    let status = if cfg!(target_os = "macos") {
+        Command::new("open").arg(url).status()
+    } else if cfg!(target_os = "windows") {
+        Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", url])
+            .status()
+    } else {
+        Command::new("xdg-open").arg(url).status()
+    };
+    status.map_err(|e| e.to_string())?;
+    Ok(json!({}))
 }
 
 /// `POST /api/prompts` — save a prompt (named, or the active `$$` slot when
@@ -1181,8 +1398,12 @@ mod tests {
     /// The Images tab's calls end to end against a mock image API: the
     /// provider is found, its settings listed, and a generation sends the
     /// chosen settings and saves the images to `images_dir`.
+    /// Tests that point `$LEXI_HOME` somewhere take turns.
+    static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     #[tokio::test]
     async fn images_generate_against_a_mock_provider() {
+        let _env = ENV_LOCK.lock().await;
         use serde_json::json;
         use wiremock::matchers::{body_partial_json, method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -1275,5 +1496,164 @@ mod tests {
             .unwrap()
             .starts_with("data:image/png;base64,"));
         assert!(out.join("a-calm-fox-1.png").exists() && out.join("a-calm-fox-2.png").exists());
+    }
+
+    #[test]
+    fn release_notes_have_a_section_for_this_version() {
+        let sections = super::release_sections(super::RELEASE_NOTES);
+        assert!(
+            sections
+                .iter()
+                .any(|(v, _, body)| v == super::APP_VERSION && !body.is_empty()),
+            "CHANGELOG.md needs a `## {}` section with notes",
+            super::APP_VERSION
+        );
+    }
+
+    #[test]
+    fn unseen_notes_are_the_releases_since_the_last_one_opened() {
+        let text = "# Notes\nintro\n\n## Unreleased\n- next\n\n## 0.3.0 — 2026-12-01\n- three\n\n## 0.2.0\n- two\n\n## 0.1.0\n- one\n";
+        let versions = |seen: Option<&str>, cur: &str| -> Vec<String> {
+            super::unseen_notes(text, seen, cur)
+                .iter()
+                .map(|n| n["version"].as_str().unwrap().to_string())
+                .collect()
+        };
+        // First run: unreleased changes and this version's notes only.
+        assert_eq!(versions(None, "0.3.0"), ["Unreleased", "0.3.0"]);
+        // An upgrade shows every release since the last one opened.
+        assert_eq!(
+            versions(Some("0.1.0"), "0.3.0"),
+            ["Unreleased", "0.3.0", "0.2.0"]
+        );
+        assert_eq!(versions(Some("0.2.0"), "0.2.0"), ["Unreleased"]);
+        let notes = super::unseen_notes(text, None, "0.3.0");
+        assert_eq!(notes[1]["title"], "0.3.0 — 2026-12-01");
+        assert_eq!(notes[1]["notes"], "- three");
+        // An empty Unreleased section is left out.
+        let quiet = "## Unreleased\n\n## 0.2.0\n- two\n";
+        assert_eq!(super::unseen_notes(quiet, None, "0.2.0").len(), 1);
+    }
+
+    /// The startup screen's calls: credentials per provider, saving / testing
+    /// / removing a key, and remembering the version once it's been opened.
+    #[tokio::test]
+    async fn startup_reports_credentials_and_the_wizard_saves_keys() {
+        let _env = ENV_LOCK.lock().await;
+        use serde_json::json;
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/models"))
+            .and(header("authorization", "Bearer sk-good-key-1234"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({ "data": [{ "id": "m" }] })),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/models"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+
+        let home = tempfile::tempdir().unwrap();
+        std::env::set_var("LEXI_HOME", home.path());
+        std::env::set_var("LEXI_KEY_STORE", "file");
+        std::fs::create_dir_all(home.path().join("providers")).unwrap();
+        std::fs::write(
+            home.path().join("providers/providers-config.yaml"),
+            format!(
+                "providers:\n  openai:\n    template: openai\n    url: {}\n    api_key: ${{LEXI_TEST_UNSET_KEY_VAR}}\n",
+                server.uri()
+            ),
+        )
+        .unwrap();
+
+        let start = super::handle("GET", "/api/startup", None).await.unwrap();
+        assert_eq!(start["version"], super::APP_VERSION);
+        assert_eq!(start["new_version"], true);
+        assert_eq!(start["has_credentials"], false);
+        assert_eq!(start["store"], "file");
+        assert!(start["notes"].as_array().is_some_and(|n| !n.is_empty()));
+        let openai = &start["providers"][0];
+        assert_eq!(openai["display"], "OpenAI");
+        assert_eq!(openai["env"], "LEXI_TEST_UNSET_KEY_VAR");
+        assert_eq!(openai["env_set"], false);
+        assert!(openai["source"].is_null());
+        assert!(openai["setup"]["keys_url"]
+            .as_str()
+            .unwrap()
+            .starts_with("https://"));
+        // ...and the provider list doesn't count the unset variable as a key.
+        let list = super::handle("GET", "/api/providers", None).await.unwrap();
+        assert_eq!(list["providers"][0]["api_key"], "[missing]");
+
+        // A wrong key is refused by the provider; the right one is verified.
+        let key = |action: &str, value: &str| json!({ "action": action, "provider": "openai", "value": value, "reveal": true });
+        let saved = super::handle("POST", "/api/providers/api-key", Some(key("set", "sk-bad")))
+            .await
+            .unwrap();
+        assert_eq!(saved["saved"], "file");
+        assert_eq!(saved["source"], "file");
+        let check = super::handle(
+            "POST",
+            "/api/providers/check",
+            Some(json!({ "provider": "openai" })),
+        )
+        .await
+        .unwrap();
+        assert_eq!(check["status"], "invalid api-key");
+        super::handle(
+            "POST",
+            "/api/providers/api-key",
+            Some(key("set", "sk-good-key-1234")),
+        )
+        .await
+        .unwrap();
+        let check = super::handle(
+            "POST",
+            "/api/providers/check",
+            Some(json!({ "provider": "openai" })),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            (check["status"].as_str(), check["verified"].as_bool()),
+            (Some("ready"), Some(true))
+        );
+        let shown = super::handle("POST", "/api/providers/api-key", Some(key("show", "")))
+            .await
+            .unwrap();
+        assert_eq!(shown["key"], "sk-good-key-1234");
+
+        // Opened once: no notes next time, and a key is set.
+        super::handle("POST", "/api/startup/seen", None)
+            .await
+            .unwrap();
+        let again = super::handle("GET", "/api/startup", None).await.unwrap();
+        assert_eq!(again["new_version"], false);
+        assert_eq!(again["notes"], json!([]));
+        assert_eq!(again["has_credentials"], true);
+        // ...but the header logo's About view still has this version's notes.
+        let about = super::handle("GET", "/api/startup?about=1", None)
+            .await
+            .unwrap();
+        assert!(about["notes"].as_array().is_some_and(|n| !n.is_empty()));
+
+        let removed = super::handle("POST", "/api/providers/api-key", Some(key("remove", "")))
+            .await
+            .unwrap();
+        assert_eq!(removed["removed"], true);
+        assert!(removed["source"].is_null());
+        assert!(super::handle(
+            "POST",
+            "/api/open-url",
+            Some(json!({ "url": "file:///etc/passwd" }))
+        )
+        .await
+        .is_err());
     }
 }

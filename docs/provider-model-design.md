@@ -342,7 +342,9 @@ Adding Gemini should need **no Rust changes**:
    `capabilities` and `response.artifacts`.
 2. **A provider template**: `url`, `auth`, bindings, tag rules, and a catalog
    mapping (`supportedGenerationMethods` → `kind:` tags,
-   `inputTokenLimit`/`outputTokenLimit` → limits).
+   `inputTokenLimit`/`outputTokenLimit` → limits), and a `setup:` block for
+   the desktop app's setup wizard — `name`, `about`, `site`, `keys_url`,
+   `key_prefix`, and `steps` (how to get a key, one line each).
 3. **Conformance cases** for its tag derivation.
 
 Anything a template can't express is a reason to extend the config language (a

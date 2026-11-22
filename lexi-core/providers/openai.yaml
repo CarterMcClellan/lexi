@@ -41,3 +41,16 @@ catalog:
   fields: [id, created, owned_by]
   tags:
     status:deprecated: { path: shutdown_date, present: true }
+
+# Getting a key (the desktop app's setup wizard shows this).
+setup:
+  name: OpenAI
+  about: GPT chat models and gpt-image image generation.
+  site: https://platform.openai.com
+  keys_url: https://platform.openai.com/api-keys
+  key_prefix: sk-
+  steps:
+    - Sign in to the OpenAI Platform, or create an account.
+    - API use is billed separately from a ChatGPT subscription — add credits under Settings → Billing.
+    - Open API keys and choose Create new secret key.
+    - Copy the key straight away — OpenAI shows it only once.
