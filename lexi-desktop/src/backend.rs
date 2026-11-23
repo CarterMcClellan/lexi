@@ -291,6 +291,7 @@ fn config_get() -> Value {
         "prompt": "lexi",
         "prompt_delimiter": ">",
         "edit_mode": "emacs",
+        "request_timeout": config::DEFAULT_REQUEST_TIMEOUT,
     });
     if let Ok(Value::Object(saved)) = config::load_config() {
         let base = cfg.as_object_mut().unwrap();

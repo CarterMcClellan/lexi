@@ -53,6 +53,10 @@ pub enum HostError {
     OperationFailed(String),
     #[error("background operation did not finish within the poll budget")]
     OperationTimeout,
+    /// A provider request ran past `request_timeout` (the message says
+    /// whether it was a whole request or a silent stream).
+    #[error("{0}")]
+    RequestTimeout(String),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("yaml error: {0}")]

@@ -933,13 +933,43 @@ pub fn set_config(updates: &Map) -> Result<Value, HostError> {
     set_config_in(&lexi_home(), updates)
 }
 
+/// `request_timeout` when it isn't set: 5 minutes.
+pub const DEFAULT_REQUEST_TIMEOUT: u64 = 300;
+
+/// A `request_timeout` value as seconds (a number, or its text).
+fn timeout_secs(v: &Value) -> Option<u64> {
+    v.as_u64()
+        .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
+}
+
+/// How long a provider request may wait: config.json's `request_timeout`
+/// in seconds (default [`DEFAULT_REQUEST_TIMEOUT`]; 0 = no limit). A
+/// buffered request must finish within it; a streamed one may run as long as
+/// it keeps sending, but stops after that long with nothing received.
+pub(crate) fn request_timeout() -> Option<std::time::Duration> {
+    let secs = load_config()
+        .ok()
+        .and_then(|c| c.get("request_timeout").and_then(timeout_secs))
+        .unwrap_or(DEFAULT_REQUEST_TIMEOUT);
+    (secs > 0).then(|| std::time::Duration::from_secs(secs))
+}
+
 fn set_config_in(home: &Path, updates: &Map) -> Result<Value, HostError> {
     let mut cfg = match load_config_in(home)? {
         Value::Object(m) => m,
         _ => Map::new(),
     };
     for (k, v) in updates {
-        cfg.insert(k.clone(), v.clone());
+        let v = if k == "request_timeout" {
+            Value::from(timeout_secs(v).ok_or_else(|| {
+                HostError::Invalid(format!(
+                    "request_timeout is a whole number of seconds (0 = no limit), not {v}"
+                ))
+            })?)
+        } else {
+            v.clone()
+        };
+        cfg.insert(k.clone(), v);
     }
     write_json(&home.join("config.json"), &Value::Object(cfg.clone()))?;
     Ok(Value::Object(cfg))

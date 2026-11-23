@@ -23,6 +23,10 @@ pub fn settings() -> Result<Map<String, Value>, HostError> {
         .iter()
         .map(|(k, v)| (k.to_string(), Value::from(*v)))
         .collect();
+    merged.insert(
+        "request_timeout".into(),
+        Value::from(config::DEFAULT_REQUEST_TIMEOUT),
+    );
     if let Value::Object(saved) = config::load_config()? {
         merged.extend(saved);
     }

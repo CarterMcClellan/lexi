@@ -80,6 +80,7 @@ Default config values:
 | `prompt` | `cmd` |
 | `prompt_delimiter` | `>` |
 | `edit_mode` | `vi` |
+| `request_timeout` | `300` (seconds; 0 = no limit) |
 
 Config is read from `~/.lexi-cli/config.json` and layered over these defaults (`commands/config.rs`). The `config list|set|rm` commands modify this file.
 
