@@ -51,20 +51,23 @@ pub async fn embed(provider: &str, req: &EmbedRequest) -> Result<Value, HostErro
     .map_err(HostError::Compose)?;
 
     let client = reqwest::Client::new();
-    let resp = client
-        .post(endpoint_url(eff))
-        .headers(auth::build_headers(eff, &api_key))
-        .json(&body)
-        .send()
-        .await?;
-    let status = resp.status();
-    if !status.is_success() {
-        return Err(HostError::HttpStatus {
-            status: status.as_u16(),
-            body: resp.text().await.unwrap_or_default(),
-        });
-    }
-    let raw: Value = resp.json().await?;
+    let raw: Value = crate::respond::within_limit(async {
+        let resp = client
+            .post(endpoint_url(eff))
+            .headers(auth::build_headers(eff, &api_key))
+            .json(&body)
+            .send()
+            .await?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(HostError::HttpStatus {
+                status: status.as_u16(),
+                body: resp.text().await.unwrap_or_default(),
+            });
+        }
+        Ok(resp.json().await?)
+    })
+    .await?;
     let vectors = lexi_core::extract_embeddings(&raw, eff.pointer("/response/embeddings"));
     let mut metadata = Map::new();
     if let Some(paths) = eff.pointer("/response/metadata").and_then(Value::as_object) {

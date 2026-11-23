@@ -111,20 +111,23 @@ pub async fn generate_images_with_effective(
         &[],
         &json!({ "model": model }),
     )?;
-    let resp = client
-        .post(endpoint_url(effective_cfg))
-        .headers(auth::build_headers(effective_cfg, api_key))
-        .json(&body)
-        .send()
-        .await?;
-    if !resp.status().is_success() {
-        let status = resp.status().as_u16();
-        return Err(HostError::HttpStatus {
-            status,
-            body: resp.text().await.unwrap_or_default(),
-        });
-    }
-    let raw: Value = resp.json().await?;
+    let raw: Value = crate::respond::within_limit(async {
+        let resp = client
+            .post(endpoint_url(effective_cfg))
+            .headers(auth::build_headers(effective_cfg, api_key))
+            .json(&body)
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            return Err(HostError::HttpStatus {
+                status,
+                body: resp.text().await.unwrap_or_default(),
+            });
+        }
+        Ok(resp.json().await?)
+    })
+    .await?;
 
     materialize(client, effective_cfg, &raw, out_dir, &slug(prompt)).await
 }
@@ -145,15 +148,18 @@ async fn materialize(
     let mut saved = Vec::new();
     for art in &artifacts {
         let bytes: Vec<u8> = if let Some(url) = art.get("url").and_then(Value::as_str) {
-            let r = client.get(url).send().await?;
-            if !r.status().is_success() {
-                let status = r.status().as_u16();
-                return Err(HostError::HttpStatus {
-                    status,
-                    body: format!("downloading artifact {url}"),
-                });
-            }
-            r.bytes().await?.to_vec()
+            crate::respond::within_limit(async {
+                let r = client.get(url).send().await?;
+                if !r.status().is_success() {
+                    let status = r.status().as_u16();
+                    return Err(HostError::HttpStatus {
+                        status,
+                        body: format!("downloading artifact {url}"),
+                    });
+                }
+                Ok(r.bytes().await?.to_vec())
+            })
+            .await?
         } else if let Some(b64) = art.get("b64").and_then(Value::as_str) {
             BASE64_STANDARD
                 .decode(b64)

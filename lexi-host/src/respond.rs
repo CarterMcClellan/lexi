@@ -134,6 +134,30 @@ async fn check_status(resp: reqwest::Response) -> Result<reqwest::Response, Host
     })
 }
 
+/// Run one provider request — sending it and reading the whole reply —
+/// within `request_timeout` (config.json), if there is one.
+pub(crate) async fn within_limit<T>(
+    fut: impl std::future::Future<Output = Result<T, HostError>>,
+) -> Result<T, HostError> {
+    match config::request_timeout() {
+        None => fut.await,
+        Some(limit) => tokio::time::timeout(limit, fut).await.unwrap_or_else(|_| {
+            Err(HostError::RequestTimeout(format!(
+                "no answer from the provider within {} seconds, so Lexi stopped waiting (request_timeout in config.json; 0 = no limit)",
+                limit.as_secs()
+            )))
+        }),
+    }
+}
+
+/// A stream that went quiet for longer than `request_timeout`.
+fn silent_for(limit: std::time::Duration) -> HostError {
+    HostError::RequestTimeout(format!(
+        "the provider sent nothing for {} seconds, so Lexi stopped the stream (request_timeout in config.json; 0 = no limit)",
+        limit.as_secs()
+    ))
+}
+
 /// POST a composed body and extract the text from the JSON reply.
 async fn post_buffered(
     client: &reqwest::Client,
@@ -141,19 +165,25 @@ async fn post_buffered(
     api_key: &str,
     body: &Value,
 ) -> Result<RespondResult, HostError> {
-    let resp = client
-        .post(endpoint_url(effective_cfg))
-        .headers(auth::build_headers(effective_cfg, api_key))
-        .json(body)
-        .send()
-        .await?;
-    let raw: Value = check_status(resp).await?.json().await?;
+    let raw: Value = within_limit(async {
+        let resp = client
+            .post(endpoint_url(effective_cfg))
+            .headers(auth::build_headers(effective_cfg, api_key))
+            .json(body)
+            .send()
+            .await?;
+        Ok(check_status(resp).await?.json().await?)
+    })
+    .await?;
     let text = lexi_core::extract_text(&raw, text_extract(effective_cfg));
     Ok(RespondResult { text, raw })
 }
 
 /// POST a composed body and consume the SSE reply: deltas and activity labels
 /// go to `on_event`; the final response event (if any) becomes `raw`.
+/// `request_timeout` limits each silence — waiting for the reply to start, or
+/// for its next piece — not the stream's length; deltas already passed to
+/// `on_event` stay delivered when it runs out.
 async fn post_stream<F: FnMut(StreamEvent)>(
     client: &reqwest::Client,
     effective_cfg: &Value,
@@ -161,13 +191,19 @@ async fn post_stream<F: FnMut(StreamEvent)>(
     body: &Value,
     mut on_event: F,
 ) -> Result<RespondResult, HostError> {
-    let resp = client
+    let limit = config::request_timeout();
+    let send = client
         .post(endpoint_url(effective_cfg))
         .headers(auth::build_headers(effective_cfg, api_key))
         .header(reqwest::header::ACCEPT, "text/event-stream")
         .json(body)
-        .send()
-        .await?;
+        .send();
+    let resp = match limit {
+        Some(d) => tokio::time::timeout(d, send)
+            .await
+            .map_err(|_| silent_for(d))??,
+        None => send.await?,
+    };
     let resp = check_status(resp).await?;
 
     let stream_cfg = effective_cfg
@@ -186,7 +222,14 @@ async fn post_stream<F: FnMut(StreamEvent)>(
     let mut final_response = Value::Null;
     let mut bytes = resp.bytes_stream();
 
-    'outer: while let Some(chunk) = bytes.next().await {
+    'outer: loop {
+        let next = match limit {
+            Some(d) => tokio::time::timeout(d, bytes.next())
+                .await
+                .map_err(|_| silent_for(d))?,
+            None => bytes.next().await,
+        };
+        let Some(chunk) = next else { break };
         buffer.push_str(&String::from_utf8_lossy(&chunk?));
         // An SSE event block ends at a blank line.
         while let Some(idx) = buffer.find("\n\n") {
@@ -284,13 +327,16 @@ async fn submit_background(
     body: &Value,
 ) -> Result<OperationStatus, HostError> {
     let op_cfg = operation_cfg(effective_cfg)?;
-    let resp = client
-        .post(endpoint_url(effective_cfg))
-        .headers(auth::build_headers(effective_cfg, api_key))
-        .json(body)
-        .send()
-        .await?;
-    let response: Value = check_status(resp).await?.json().await?;
+    let response: Value = within_limit(async {
+        let resp = client
+            .post(endpoint_url(effective_cfg))
+            .headers(auth::build_headers(effective_cfg, api_key))
+            .json(body)
+            .send()
+            .await?;
+        Ok(check_status(resp).await?.json().await?)
+    })
+    .await?;
     Ok(operation_status_of(effective_cfg, &op_cfg, response))
 }
 
@@ -307,12 +353,15 @@ async fn poll_operation(
         .and_then(Value::as_str)
         .unwrap_or("");
     let poll_url = format!("{base_url}{}", lexi_core::poll_path(&op_cfg, id));
-    let resp = client
-        .get(&poll_url)
-        .headers(auth::build_headers(effective_cfg, api_key))
-        .send()
-        .await?;
-    let response: Value = check_status(resp).await?.json().await?;
+    let response: Value = within_limit(async {
+        let resp = client
+            .get(&poll_url)
+            .headers(auth::build_headers(effective_cfg, api_key))
+            .send()
+            .await?;
+        Ok(check_status(resp).await?.json().await?)
+    })
+    .await?;
     Ok(operation_status_of(effective_cfg, &op_cfg, response))
 }
 

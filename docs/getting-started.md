@@ -304,6 +304,7 @@ View and modify CLI settings:
 config list                     # Show all settings
 config set edit_mode emacs      # Switch to emacs keybindings
 config set prompt_delimiter $   # Change the prompt delimiter
+config set request_timeout 120  # Give up on a provider after 2 minutes (0 = no limit)
 ```
 
 Default settings:
@@ -314,6 +315,7 @@ Default settings:
 | `prompt` | `cmd` | Prompt label |
 | `prompt_delimiter` | `>` | Character after the prompt label |
 | `edit_mode` | `vi` | Input editing mode (`vi` or `emacs`) |
+| `request_timeout` | `300` | How long to wait for a provider, in seconds (0 = no limit). A request that isn't streamed must finish within it; a streamed one may run as long as it keeps sending, and stops after this long with nothing arriving. Used by the CLI, the Python library and the desktop app (Configure → Requests). |
 
 ## Shell Integration
 

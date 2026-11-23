@@ -16,6 +16,7 @@ go under **Unreleased**; at release time that heading becomes the version
 - **Chat's model lists stay current.** Models you add or remove on the Models tab show up in Chat's pickers when you go back to it.
 - **A key per API or model.** An API (say, OpenAI's image generation) or a model can have its own `api_key`, for example to bill images to a different project.
 - **Images tab.** Generate images from several providers at once. Each provider has its own model and settings, and images are saved to a folder you choose.
+- **A time limit for slow providers.** Lexi gives up on a provider that hasn't answered within 5 minutes and says so, instead of waiting forever. When streaming, the limit is on silence, so a long answer that keeps coming is never cut off. Change it on the Configure tab (Requests), or with `lexi config set request_timeout <seconds>` (0 = no limit).
 - **Stop really stops.** In Chat, Stop cancels the requests still waiting (a provider that never answers no longer leaves Chat stuck), and each provider's answer shows as soon as it arrives instead of waiting for the slowest.
 - **Chat and Images list only the right models.** Chat lists only chat models, and Images lists only image models. Providers with no suitable model are hidden.
 - **Prompt editing.** Chat and Images share one way of handling prompts:

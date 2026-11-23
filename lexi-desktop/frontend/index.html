@@ -1540,7 +1540,7 @@
       gap: 0 12px;
     }
     .lexi-dialog-body .span-2 { grid-column: 1 / -1; }
-    #themeFileHint { margin: 12px 0 0; font-size: 0.85rem; color: var(--muted); }
+    #themeFileHint, .panel-hint { margin: 12px 0 0; font-size: 0.85rem; color: var(--muted); line-height: 1.45; }
     #themeFileHint:empty { display: none; }
     .lexi-dialog-body .hint {
       font-size: 0.8rem;
@@ -2333,6 +2333,17 @@
           <h2>Theme / Appearance</h2>
           <div class="theme-grid" id="themeGrid"></div>
           <p class="hint" id="themeFileHint"></p>
+        </section>
+        <section class="panel">
+          <h2>Requests</h2>
+          <div class="config-form">
+            <label for="cfgRequestTimeout">Time limit (seconds)</label>
+            <input id="cfgRequestTimeout" type="number" min="0" step="1" placeholder="300" data-tip="How long Lexi waits for a provider before giving up; 0 means no limit">
+            <div class="config-actions">
+              <button class="btn btn-primary" id="cfgTimeoutSaveBtn" type="button">Save</button>
+            </div>
+          </div>
+          <p class="panel-hint">How long Lexi waits for a provider before it stops and says so. Without <em>Stream</em>, the whole answer must arrive within this time. With <em>Stream</em>, it's the longest Lexi waits with nothing arriving (before the answer starts, or between its pieces), so a long answer that keeps coming is never cut off. 0 means no limit; the default is 300 (5 minutes). The <code>lexi</code> command line and the Python library use the same setting (<code>lexi config set request_timeout 120</code>).</p>
         </section>
       </div>
       <div class="subtab-panel" id="subtab-cli">
@@ -5662,6 +5673,7 @@
     const cfgPromptEl = document.getElementById('cfgPrompt');
     const cfgPromptDelimiterEl = document.getElementById('cfgPromptDelimiter');
     const cfgEditModeEl = document.getElementById('cfgEditMode');
+    const cfgRequestTimeoutEl = document.getElementById('cfgRequestTimeout');
     const cfgSaveBtn = document.getElementById('cfgSaveBtn');
     const cfgResetBtn = document.getElementById('cfgResetBtn');
 
@@ -5677,6 +5689,8 @@
       cfgPromptEl.value = cfg.prompt || CONFIG_DEFAULTS.prompt;
       cfgPromptDelimiterEl.value = cfg.prompt_delimiter || CONFIG_DEFAULTS.prompt_delimiter;
       cfgEditModeEl.value = cfg.edit_mode || CONFIG_DEFAULTS.edit_mode;
+      // (The CLI page's Reset leaves the time limit alone.)
+      if ('request_timeout' in cfg) cfgRequestTimeoutEl.value = String(cfg.request_timeout);
     }
 
     async function fetchConfig() {
@@ -5687,6 +5701,22 @@
         populateConfigForm(CONFIG_DEFAULTS);
       }
     }
+
+    document.getElementById('cfgTimeoutSaveBtn').addEventListener('click', async () => {
+      const raw = cfgRequestTimeoutEl.value.trim();
+      if (!/^\d+$/.test(raw)) {
+        setStatus('The time limit is a whole number of seconds (0 means no limit).', 'error');
+        cfgRequestTimeoutEl.focus();
+        return;
+      }
+      try {
+        const saved = await api('/api/config', { method: 'POST', body: JSON.stringify({ request_timeout: Number(raw) }) });
+        const secs = Number(saved.request_timeout);
+        setStatus(secs === 0 ? 'Requests now wait with no time limit.' : `Requests now give up after ${secs} seconds without an answer.`, 'success');
+      } catch (err) {
+        setStatus(err.message, 'error');
+      }
+    });
 
     cfgSaveBtn.addEventListener('click', async () => {
       try {
