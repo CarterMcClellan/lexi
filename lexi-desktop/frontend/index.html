@@ -2020,14 +2020,22 @@
   <script src="/vendor/purify.min.js"></script>
   <script>
     // fetch-shim: route the frontend's /api/* calls to the Tauri `api` command
-    // (desktop build has no HTTP server). Streaming is handled in a later slice.
+    // (desktop build has no HTTP server). A call with an abort `signal` (the
+    // Stop button) gets a request id: aborting rejects at once with an
+    // AbortError, as fetch does, and tells the backend to drop the request.
     (function () {
       const origFetch = window.fetch.bind(window);
+      let lastId = 0;
+      const stopped = () => new DOMException("The request was stopped.", "AbortError");
       window.fetch = async function (input, init) {
         const url = typeof input === "string" ? input : (input && input.url) || "";
         if (!url.startsWith("/api/")) return origFetch(input, init);
         init = init || {};
         const method = (init.method || "GET").toUpperCase();
+        const signal = init.signal || null;
+        if (signal && signal.aborted) throw stopped();
+        const requestId = signal ? `r${Date.now()}-${++lastId}` : null;
+        const cancel = () => window.__TAURI__.core.invoke("cancel_request", { requestId }).catch(() => {});
         if (url.startsWith("/api/respond/stream")) {
           let sbody = null;
           if (init.body) { try { sbody = JSON.parse(init.body); } catch (e) { sbody = null; } }
@@ -2039,7 +2047,8 @@
                 if (chunk === "__LEXI_STREAM_END__") { try { controller.close(); } catch (e) {} return; }
                 try { controller.enqueue(enc.encode(chunk)); } catch (e) {}
               };
-              window.__TAURI__.core.invoke("api_stream", { body: sbody, onEvent: channel })
+              if (signal) signal.addEventListener("abort", () => { cancel(); try { controller.error(stopped()); } catch (x) {} }, { once: true });
+              window.__TAURI__.core.invoke("api_stream", { body: sbody, onEvent: channel, requestId })
                 .catch((e) => { try { controller.error(new Error((e && e.message) || String(e))); } catch (x) {} });
             },
           });
@@ -2047,10 +2056,17 @@
         }
         let body = null;
         if (init.body) { try { body = JSON.parse(init.body); } catch (e) { body = null; } }
+        const call = window.__TAURI__.core.invoke("api", { method, path: url, body, requestId });
+        const answer = !signal ? call : new Promise((resolve, reject) => {
+          const stop = () => { cancel(); reject(stopped()); };
+          signal.addEventListener("abort", stop, { once: true });
+          call.then(resolve, reject).finally(() => signal.removeEventListener("abort", stop));
+        });
         try {
-          const data = await window.__TAURI__.core.invoke("api", { method, path: url, body });
+          const data = await answer;
           return new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
         } catch (e) {
+          if (e && e.name === "AbortError") throw e;
           const msg = (e && e.message) || String(e);
           return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { "Content-Type": "application/json" } });
         }
@@ -3298,29 +3314,35 @@
 
     async function runRespondBlocked(payload, providers, signal) {
       providers.forEach((p) => updateProviderState(p, { status: 'in_progress', streaming: false }));
-      // The shared api() helper doesn't accept a signal — use fetch directly
-      // so we can wire the AbortController for the Stop button.
-      const res = await fetch('/api/respond', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || `respond failed (${res.status})`);
-      }
-      (data.responses || []).forEach((r) => {
-        if (r.error) {
-          updateProviderState(r.provider, { status: 'error', error: r.error });
-        } else {
-          updateProviderState(r.provider, {
-            status: 'done',
-            text: r.output || '',
-            activity: r.stderr ? r.stderr.split(/\r?\n/).filter(Boolean) : [],
+      // One request per provider, so each answer shows as soon as it arrives
+      // (a slow provider doesn't hold back the others), and Stop cancels them
+      // all. The shared api() helper doesn't take a signal, so fetch directly.
+      await Promise.all(providers.map(async (provider) => {
+        try {
+          const res = await fetch('/api/respond', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...payload, providers: [provider] }),
+            signal,
           });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || `respond failed (${res.status})`);
+          (data.responses || []).forEach((r) => {
+            if (r.error) {
+              updateProviderState(r.provider, { status: 'error', error: r.error });
+            } else {
+              updateProviderState(r.provider, {
+                status: 'done',
+                text: r.output || '',
+                activity: r.stderr ? r.stderr.split(/\r?\n/).filter(Boolean) : [],
+              });
+            }
+          });
+        } catch (err) {
+          if (err && err.name === 'AbortError') throw err;
+          updateProviderState(provider, { status: 'error', error: err.message });
         }
-      });
+      }));
     }
 
     async function runRespondStreaming(payload, providers, signal) {

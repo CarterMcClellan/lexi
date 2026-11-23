@@ -15,6 +15,7 @@ go under **Unreleased**; at release time that heading becomes the version
 - **Keys in the Keychain.** Keys you save go in the Keychain, encrypted, instead of a plain-text file. A key file saved by an earlier version keeps working (the config now lists it), and **Move to Keychain** moves it there. The CLI and Python library read the same places.
 - **A key per API or model.** An API (say, OpenAI's image generation) or a model can have its own `api_key`, for example to bill images to a different project.
 - **Images tab.** Generate images from several providers at once. Each provider has its own model and settings, and images are saved to a folder you choose.
+- **Stop really stops.** In Chat, Stop cancels the requests still waiting (a provider that never answers no longer leaves Chat stuck), and each provider's answer shows as soon as it arrives instead of waiting for the slowest.
 - **Chat and Images list only the right models.** Chat lists only chat models, and Images lists only image models. Providers with no suitable model are hidden.
 - **Prompt editing.** Chat and Images share one way of handling prompts:
   - *Load* lights up when you pick a saved prompt.
