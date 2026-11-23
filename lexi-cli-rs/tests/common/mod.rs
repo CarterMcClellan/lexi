@@ -9,8 +9,6 @@ use assert_cmd::Command;
 pub fn lexi(home: &Path) -> Command {
     let mut cmd = Command::cargo_bin("lexi").unwrap();
     cmd.env("LEXI_HOME", home);
-    // Saved keys go to the temp home's key file, never the real keychain.
-    cmd.env("LEXI_KEY_STORE", "file");
     cmd
 }
 

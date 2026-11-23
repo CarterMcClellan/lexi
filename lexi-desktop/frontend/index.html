@@ -2215,7 +2215,6 @@
           <span>Current API Key</span>
           <button class="btn btn-ghost" id="apiKeyRevealBtn" type="button" disabled data-tip="Show or hide the saved key">Redacted</button>
           <button class="btn btn-ghost" id="apiKeyTestBtn" type="button" disabled data-tip="Ask the provider whether it accepts this key (lists its models; nothing is generated or billed)">Test</button>
-          <button class="btn btn-ghost" id="apiKeyMoveBtn" type="button" hidden data-tip="Move the saved key from its file into the system keychain, and point providers-config.yaml at it">Move to Keychain</button>
           <button class="btn btn-danger" id="apiKeyRemoveBtn" type="button" disabled data-tip="Delete the saved API key for this provider (providers-config.yaml is left as it is)">Remove</button>
         </div>
         <div class="api-key-status api-key-box" id="apiKeyStatus"></div>
@@ -2458,7 +2457,6 @@
     const apiKeySaveBtn = document.getElementById('apiKeySaveBtn');
     const apiKeyRevealBtn = document.getElementById('apiKeyRevealBtn');
     const apiKeyRemoveBtn = document.getElementById('apiKeyRemoveBtn');
-    const apiKeyMoveBtn = document.getElementById('apiKeyMoveBtn');
     let apiKeyRevealed = false;
     function setApiKeyRevealed(value) {
       apiKeyRevealed = !!value;
@@ -3553,21 +3551,17 @@
     // place, `from` the place itself).
     function keySourceText(p) {
       switch (p.source) {
-        case 'keychain': return `From the ${p.from || p.store_label || 'system keychain'}`;
         case 'file': return `From the file ${p.from || 'providers/…/api-key'} (readable only by you)`;
         case 'env': return `From the environment variable ${p.from || ''}`;
         case 'config': return 'Written in providers-config.yaml';
         default: return 'No key';
       }
     }
-    // Where a saved key goes: "in the macOS Keychain item Lexi/openai" / "in
-    // the file providers/openai/api-key" (a credentials row), or just the kind
-    // of store (the startup summary).
+    // Where a saved key goes: "in the file providers/openai/api-key" (a
+    // provider's credentials, or what was just saved).
     function storePhrase(p) {
-      const kind = p.saved || p.store;
       const place = p.location || p.save_to;
-      if (place) return kind === 'keychain' ? `in the ${place}` : `in the file ${place}`;
-      return kind === 'keychain' ? `in the ${p.store_label}` : `in ${p.store_label || 'a key file'}`;
+      return place ? `in the file ${place}` : 'in a key file only you can read';
     }
     // After saving: a warning when an earlier source (a set variable) wins.
     function shadowNote(saved) {
@@ -3622,7 +3616,6 @@
       apiKeyRevealBtn.disabled = true;
       apiKeyTestBtn.disabled = true;
       apiKeyRemoveBtn.disabled = true;
-      apiKeyMoveBtn.hidden = true;
       try {
         const data = await api('/api/providers/api-key', {
           method: 'POST',
@@ -3631,21 +3624,16 @@
         if (apiKeyProviderEl.value !== provider) return;
         apiKeyInfo = data;
         const hasKey = !!data.source;
-        // A Keychain key isn't read just to show this panel (macOS would ask
-        // for access); it's read when it's used, revealed or tested.
         apiKeyStatusEl.textContent = data.error ? `Couldn't read the key: ${data.error}`
           : !hasKey ? 'No API key set.'
-          : data.key_hidden ? `Saved in the ${data.keychain_label || 'system keychain'}; not read yet. Lexi reads it when you use ${providerDisplay(provider)}, or click Clear Text or Test (macOS may ask once).`
           : data.key;
         apiKeySourceEl.innerHTML = keySourcesHtml(data);
         apiKeySaveBtn.dataset.tip = `Save this key ${storePhrase(data)}`;
         apiKeyRevealBtn.disabled = !hasKey;
         apiKeyTestBtn.disabled = !hasKey;
-        // Remove and Move work on the first keychain item or file listed.
-        const savedSource = (data.sources || []).find((x) => x.kind === 'keychain' || x.kind === 'file');
+        // Remove works on the first file listed.
+        const savedSource = (data.sources || []).find((x) => x.kind === 'file');
         apiKeyRemoveBtn.disabled = !savedSource;
-        apiKeyMoveBtn.hidden = !(data.keychain && savedSource && savedSource.kind === 'file' && savedSource.state === 'used');
-        apiKeyMoveBtn.textContent = `Move to ${data.keychain_label || 'Keychain'}`;
       } catch (err) {
         apiKeyStatusEl.textContent = 'No API key set.';
         apiKeySourceEl.textContent = err.message;
@@ -3707,24 +3695,6 @@
           body: JSON.stringify({ action: 'remove', provider }),
         });
         setStatus(data.removed ? `Removed the saved API key for ${provider}.` : `${provider} had no saved API key.`, 'success');
-        afterKeyChange();
-      } catch (err) {
-        setStatus(err.message, 'error');
-      }
-    });
-
-    apiKeyMoveBtn.addEventListener('click', async () => {
-      const provider = apiKeyProviderEl.value;
-      if (!provider || !apiKeyInfo) return;
-      const label = apiKeyInfo.keychain_label || 'system keychain';
-      if (!await confirmDialog(`Move to ${label}`, `Move ${provider}'s API key from its file into the ${label}? Lexi points providers-config.yaml at the new place and deletes the file. macOS may ask whether Lexi may use the Keychain.`, 'Move')) return;
-      setStatus(`Moving ${provider}'s API key…`, 'busy');
-      try {
-        const data = await api('/api/providers/api-key', {
-          method: 'POST',
-          body: JSON.stringify({ action: 'move', provider, to: 'keychain' }),
-        });
-        setStatus(`Moved ${provider}'s API key to the ${data.location}.`, 'success');
         afterKeyChange();
       } catch (err) {
         setStatus(err.message, 'error');
@@ -4057,7 +4027,7 @@
           let have = '';
           const srcs = p.sources || [];
           const usedAt = srcs.findIndex((x) => x.state === 'used');
-          let saveAt = srcs.findIndex((x) => x.kind === 'keychain' || x.kind === 'file');
+          let saveAt = srcs.findIndex((x) => x.kind === 'file');
           if (saveAt < 0) saveAt = srcs.length;
           if (p.source && usedAt < saveAt) {
             have = `<p class="notice">${esc(p.display)} already gets a key from <code>${esc(p.from)}</code>, which comes first in its <code>api_key</code> list. A key you save is used only when that has none.</p>`;
@@ -4084,7 +4054,7 @@
             : `<p class="muted">Then quit and reopen Lexi so it sees the variable.</p>`;
           page.innerHTML = `
             <label class="choice"><input type="radio" name="wzMode" value="save" ${mode === 'save' ? 'checked' : ''}>
-              <div style="flex:1;"><div class="choice-title">Save the key ${esc(storePhrase(p))}${p.store === 'keychain' ? ' (recommended)' : ''}</div>
+              <div style="flex:1;"><div class="choice-title">Save the key ${esc(storePhrase(p))}</div>
                 <div class="muted" style="font-size:0.85rem;">Lexi, the <code>lexi</code> command line and the Python library all read it from there.${p.adds_source ? ` Lexi adds it to the end of ${esc(p.display)}'s <code>api_key</code> list in providers-config.yaml.` : ''}</div>
                 <div class="choice-detail" data-for="save">
                   <div class="key-row">

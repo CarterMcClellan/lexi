@@ -68,7 +68,7 @@ providers:
     template: openai
     api_key:
       - env: OPENAI_API_KEY            # an environment variable, used when set
-      - keychain: openai               # a system keychain item (service Lexi)
+      - file: providers/openai/api-key # else the key file Lexi saved
   nvidia:
     template: nvidia
     api_key:
@@ -78,12 +78,11 @@ providers:
 | Source | Meaning |
 |---|---|
 | `env: VAR` | The environment variable `VAR` (`"${VAR}"` is the same, the older form). |
-| `keychain: NAME` | The system keychain item with service `Lexi` and account `NAME`: the login Keychain on macOS, Credential Manager on Windows. The key is encrypted at rest, and macOS asks before another program reads it, so a new build of `lexi` or the desktop app may ask once. |
 | `file: PATH` | A file holding the key. A relative path is under `~/.lexi-cli`, and `~/` is your home folder. Lexi writes its own key files with owner-only permissions (mode 0600). |
 
-The first source that has a key wins. Only a *missing* key moves on to the next one: an unset variable, no keychain item, no file. A read error — a locked keychain, access refused, an unreadable file — stops the lookup and is reported, so Lexi never quietly switches to a different key (and bills a different account). When no source has a key, the error lists every place Lexi looked.
+The first source that has a key wins. Only a *missing* key moves on to the next one: an unset variable, no file, an empty file. A read error — an unreadable file — stops the lookup and is reported, so Lexi never quietly switches to a different key (and bills a different account). When no source has a key, the error lists every place Lexi looked.
 
-A single source can be written without the list (`api_key: {keychain: openai}`). A literal key (`api_key: sk-…`) still works but isn't recommended.
+A single source can be written without the list (`api_key: {env: OPENAI_API_KEY}`). A literal key (`api_key: sk-…`) still works but isn't recommended.
 
 The shipped templates read the usual environment variable (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `NVIDIA_API_KEY`), so setting it is enough to get started:
 
@@ -105,15 +104,9 @@ providers api-key set openai --value sk-...
 providers api-key set anthropic --value sk-ant-...
 ```
 
-The key goes in the first keychain item or file the provider's `api_key` lists. If it lists neither, Lexi adds one to the end of the list: a keychain item named after the provider on macOS and Windows, else `providers/<provider>/api-key`. Because sources are tried in order, a saved key that comes after a set environment variable isn't used — `set` says so when that happens. Without `--value`, the key is prompted for (or read from stdin).
+The key goes in a file only you can read (mode 0600): the first file the provider's `api_key` lists, else `providers/<provider>/api-key` in `~/.lexi-cli`, which Lexi adds to the end of the list. It's never written into providers-config.yaml itself. Because sources are tried in order, a saved key that comes after a set environment variable isn't used — `set` says so when that happens. Without `--value`, the key is prompted for (or read from stdin).
 
-`LEXI_KEY_STORE=file` turns the keychain off (tests and CI set it): keychain sources count as missing, and saved keys go in files. A non-default `$LEXI_HOME` gets its own keychain items (account `<provider> (<home>)`).
-
-To move a saved key between a file and the keychain (the config is updated to match, and the old copy deleted):
-
-```bash
-providers api-key move openai --to keychain
-```
+Lexi doesn't use the system keychain: on macOS it would have to ask for your login password each time Lexi is updated, for no real protection over an owner-only file. (A development build briefly did; Lexi rewrites a `{keychain: …}` entry to the provider's key file, so save the key again.)
 
 Lexi 0.2.0 and earlier read `providers/<provider>/api-key` before the config. When a newer Lexi first runs, a provider with such a file gets `api_key: [{file: providers/<provider>/api-key}, …]`, so the same key keeps being used.
 
@@ -127,10 +120,10 @@ A provider's APIs and configured models can each have their own `api_key`, which
     api_key: [{env: OPENAI_API_KEY}]
     apis:
       - api: image-generations
-        api_key: [{keychain: openai/image-generations}]
+        api_key: [{file: providers/openai/api-key-image-generations}]
 ```
 
-`providers api-key set openai --api image-generations` saves a key for that API and adds its `api_key` for you; `show`, `remove` and `move` take `--api` too. For a model, add `api_key:` to its entry in `providers/<provider>/configured-models.yaml`.
+`providers api-key set openai --api image-generations` saves a key for that API (in `providers/openai/api-key-image-generations`) and adds its `api_key` for you; `show` and `remove` take `--api` too. For a model, add `api_key:` to its entry in `providers/<provider>/configured-models.yaml`.
 
 ### Checking API Key Status
 
@@ -149,7 +142,7 @@ providers status openai
 ```
 
 `providers status` reports:
-- **Source** — Where the key was found: the variable, keychain item or file (or none)
+- **Source** — Where the key was found: the variable or file (or none)
 - **Status** — `ready` (key works), `no api-key` (no key found), or `invalid api-key` (key was rejected by the provider)
 
 ## Working with Prompts
