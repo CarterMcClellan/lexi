@@ -29,7 +29,6 @@ pub(crate) async fn run(io: &mut Io<'_>, cmd: ProvidersCmd) -> u8 {
             ApiKeyCmd::Set { name, value, api } => key_set(io, &name, value, api.as_deref()),
             ApiKeyCmd::Show { name, reveal, api } => key_show(io, &name, reveal, api.as_deref()),
             ApiKeyCmd::Remove { name, api } => key_remove(io, &name, api.as_deref()),
-            ApiKeyCmd::Move { name, to, api } => key_move(io, &name, &to, api.as_deref()),
         },
         ProvidersCmd::Api { cmd } => api(io, cmd),
         ProvidersCmd::Upgrade {
@@ -150,7 +149,7 @@ fn key_set(io: &mut Io<'_>, name: &str, value: Option<String>, api: Option<&str>
 /// Each `api_key` source in order with what was found there, then the key
 /// (`sk-a…wxyz`-style masking unless --reveal).
 fn key_show(io: &mut Io<'_>, name: &str, reveal: bool, api: Option<&str>) -> u8 {
-    let info = match lexi_host::admin::api_key_info(name, api, Some(reveal)) {
+    let info = match lexi_host::admin::api_key_info(name, api, reveal) {
         Ok(info) => info,
         Err(e) => return io.fail(e),
     };
@@ -198,23 +197,6 @@ fn key_remove(io: &mut Io<'_>, name: &str, api: Option<&str>) -> u8 {
             format!("No saved API key for {name}."),
             json!({ "removed": false }),
         ),
-        Err(e) => io.fail(e),
-    }
-}
-
-fn key_move(io: &mut Io<'_>, name: &str, to: &str, api: Option<&str>) -> u8 {
-    if let Err(code) = provider_cfg(io, name) {
-        return code;
-    }
-    match lexi_host::config::move_api_key(name, api, to) {
-        Ok(saved) => {
-            let mut json = saved.to_value();
-            json["provider"] = json!(name);
-            io.result(
-                saved_message(&format!("Moved {name}'s API key to"), &saved),
-                json,
-            )
-        }
         Err(e) => io.fail(e),
     }
 }

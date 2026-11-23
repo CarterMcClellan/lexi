@@ -66,7 +66,7 @@ pub fn provider_summaries() -> Result<Vec<Value>, HostError> {
                     .or(pcfg.get("default_model")),
                 "hosted_models": crate::hosted::catalog_cfg(pcfg).get("path").cloned(),
                 "hosted_model_fields": crate::hosted::catalog_cfg(pcfg).get("fields").cloned(),
-                // A key that can't be read (a locked keychain) shows as none.
+                // A key that can't be read (an unreadable file) shows as none.
                 "key_source": config::api_key_source(name, pcfg).ok().flatten(),
             }))
         })
@@ -74,8 +74,8 @@ pub fn provider_summaries() -> Result<Vec<Value>, HostError> {
 }
 
 /// Add a provider (`providers add`): checks the API definition exists, writes
-/// the entry, saves `api_key` (in the OS keychain, or the provider's owner-only
-/// key file — never the config, which gets the source), and makes
+/// the entry, saves `api_key` (in the provider's owner-only key file — never
+/// the config, which gets the source), and makes
 /// `default_model` its default.
 pub fn create_provider(
     name: &str,
@@ -110,42 +110,25 @@ fn mask(key: &str) -> String {
 }
 
 /// A provider's (or, with `api`, one API's) API key: `{provider, api, own,
-/// source, from, key, error, sources, save_to, store, store_label, adds_source,
-/// env}`.
+/// source, from, key, error, sources, save_to, adds_source, env}`.
 /// - `sources`: its `api_key` list in order, each `{kind, from, state, note?}`
-///   (`state`: `used`, `missing`, `unavailable`, `error`, `not checked`);
-///   `own` is false when the API has no list of its own and uses the
-///   provider's.
+///   (`state`: `used`, `missing`, `error`, `not checked`); `own` is false
+///   when the API has no list of its own and uses the provider's.
 /// - `source`/`from`: the kind and place of the key that's used, and `key` it
-///   (masked unless `reveal` is `Some(true)`) — all null when there's none;
-///   `error` is a read error that stopped the lookup. With `reveal: None` a
-///   keychain item's secret isn't read (so macOS never asks for access):
-///   `key` is then null and `key_hidden` true when the key is in the keychain.
-/// - `save_to`: where `providers api-key set` would save a key — `store` is
-///   its kind (`keychain`/`file`, named by `store_label`) and `adds_source`
-///   whether that place would be added to the config.
+///   (masked unless `reveal`) — all null when there's none; `error` is a read
+///   error that stopped the lookup.
+/// - `save_to`: the file `providers api-key set` would save a key in, and
+///   `adds_source` whether that file would be added to the config.
 /// - `env`: the first environment variable the list reads, if any.
-/// - `keychain`: whether the OS keychain can be used here (named by
-///   `keychain_label`) — false without one or with `LEXI_KEY_STORE=file`.
-pub fn api_key_info(
-    name: &str,
-    api: Option<&str>,
-    reveal: Option<bool>,
-) -> Result<Value, HostError> {
+pub fn api_key_info(name: &str, api: Option<&str>, reveal: bool) -> Result<Value, HostError> {
     provider_config(name)?;
-    let plan = config::key_plan(name, api, reveal.is_some())?;
-    let reveal = reveal.unwrap_or(false);
+    let plan = config::key_plan(name, api)?;
     let lookup = &plan.lookup;
     let used = lookup.used();
     let env = plan.sources.iter().find_map(|s| match s {
         Source::Env(v) => Some(v.clone()),
         _ => None,
     });
-    let store = if plan.save_to.kind() == "keychain" {
-        crate::keystore::KeyStore::Keychain
-    } else {
-        crate::keystore::KeyStore::File
-    };
     Ok(json!({
         "provider": name,
         "api": api,
@@ -153,16 +136,11 @@ pub fn api_key_info(
         "source": used.map(Source::kind),
         "from": used.map(Source::describe),
         "key": lookup.key.as_deref().map(|k| if reveal { k.to_string() } else { mask(k) }),
-        "key_hidden": used.is_some() && lookup.key.is_none(),
         "error": lookup.failure().map(|(s, e)| format!("couldn't read {}: {e}", s.describe())),
         "sources": lookup.to_value(),
         "save_to": plan.save_to.describe(),
-        "store": store.id(),
-        "store_label": store.label(),
         "adds_source": plan.adds,
         "env": env,
-        "keychain": crate::keystore::current_secrets().is_some(),
-        "keychain_label": crate::keystore::KeyStore::Keychain.label(),
     }))
 }
 

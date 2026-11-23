@@ -346,13 +346,13 @@ lexi providers add [OPTIONS] --url <URL> --default_model <DEFAULT_MODEL> <NAME>
 - `<NAME>`
 - `--url` — Base URL, e.g. https://api.example.com/v1
 - `--default_model` — The model used when none is given
-- `--api_key` — API key (saved in the system keychain or the provider's key file, never the config)
+- `--api_key` — API key (saved in the provider's owner-only key file, never the config)
 - `--api` — API definition the provider speaks
 - `--hosted_models` — Path of the provider's models endpoint
 
 #### `providers api-key set`
 
-Save an API key in the first keychain item or file the provider's api_key lists, adding one (a keychain item on macOS and Windows, else an owner-only file) when it lists neither. Prompted for, or read from stdin, without --value
+Save an API key in an owner-only file: the first file the provider's api_key lists, else providers/<name>/api-key, which is added to api_key. Prompted for, or read from stdin, without --value
 
 ```
 lexi providers api-key set [OPTIONS] <NAME>
@@ -376,25 +376,13 @@ lexi providers api-key show [OPTIONS] <NAME>
 
 #### `providers api-key remove`
 
-Delete the saved key (in the first keychain item or file api_key lists); the config is left as it is
+Delete the saved key (the first file api_key lists, if it's in Lexi's folder); the config is left as it is
 
 ```
 lexi providers api-key remove [OPTIONS] <NAME>
 ```
 
 - `<NAME>`
-- `--api` — The API's own key
-
-#### `providers api-key move`
-
-Move the saved key to the system keychain or an owner-only file, and point api_key at it
-
-```
-lexi providers api-key move [OPTIONS] --to <TO> <NAME>
-```
-
-- `<NAME>`
-- `--to` — Where to: keychain or file
 - `--api` — The API's own key
 
 #### `providers api list`

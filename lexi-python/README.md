@@ -56,7 +56,7 @@ The same operations as the CLI's admin commands, over the same files:
 lexi.providers.list()                         # [{name, url, api, default_model, key_source, …}]
 lexi.providers.add("local", "http://localhost:8000/v1", "llama-3", api_key="…")
 lexi.providers.status("openai")               # {"status": "ready", "source": "env", …}
-lexi.providers.set_key("openai", "sk-…")      # where api_key says: a keychain item or a 0600 file, never the config itself
+lexi.providers.set_key("openai", "sk-…")      # in a 0600 key file (where api_key says), never the config itself
 
 lexi.models.list("openai"); lexi.models.hosted("openai")
 lexi.models.add("openai", "gpt-4.1", name="GPT-4.1", default=True)
