@@ -252,7 +252,7 @@ pub struct KeyStatus {
     pub status: &'static str,
     /// Where the key comes from (see [`config::api_key_source`]).
     pub source: Option<&'static str>,
-    /// The keychain item, file or variable it was read from.
+    /// The file or variable it was read from.
     pub from: Option<String>,
     /// Whether the provider answered and accepted the key; `false` when no key
     /// is set, the key was refused, or the check couldn't reach a verdict

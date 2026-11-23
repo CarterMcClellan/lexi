@@ -221,7 +221,7 @@ fn providers_add_keys_rename_rm() {
         ok(h, &["providers", "api-key", "show", "groq"]),
         "api_key sources, in order:\n  1. providers/groq/api-key — missing: no file\nNo API key configured for groq.\n"
     );
-    // A key for one API, and moving keys (no keychain under LEXI_KEY_STORE=file).
+    // A key for one API.
     assert!(ok(
         h,
         &[
@@ -236,11 +236,6 @@ fn providers_add_keys_rename_rm() {
         ]
     )
     .starts_with("Saved the API key for groq in providers/groq/api-key-chat-completions."));
-    assert!(fails(
-        h,
-        &["providers", "api-key", "move", "groq", "--to", "keychain"]
-    )
-    .contains("keychain")); // turned off here, or none on Linux
     assert!(
         fails(h, &["providers", "api-key", "set", "nope", "-v", "k"]).contains("unknown provider")
     );

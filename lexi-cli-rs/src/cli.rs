@@ -285,7 +285,7 @@ pub enum ProvidersCmd {
         /// The model used when none is given.
         #[arg(long = "default_model", visible_alias = "default-model")]
         default_model: String,
-        /// API key (saved in the system keychain or the provider's key file, never the config).
+        /// API key (saved in the provider's owner-only key file, never the config).
         #[arg(long = "api_key", visible_alias = "api-key")]
         api_key: Option<String>,
         /// API definition the provider speaks.
@@ -299,7 +299,7 @@ pub enum ProvidersCmd {
         )]
         hosted_models: String,
     },
-    /// Manage a provider's API key: where api_key in providers-config.yaml says it comes from (environment variables, keychain items, files, tried in order).
+    /// Manage a provider's API key: where api_key in providers-config.yaml says it comes from (environment variables and files, tried in order).
     #[command(name = "api-key")]
     ApiKey {
         #[command(subcommand)]
@@ -361,7 +361,7 @@ pub enum ProviderApiCmd {
 
 #[derive(Debug, Subcommand)]
 pub enum ApiKeyCmd {
-    /// Save an API key in the first keychain item or file the provider's api_key lists, adding one (a keychain item on macOS and Windows, else an owner-only file) when it lists neither. Prompted for, or read from stdin, without --value.
+    /// Save an API key in an owner-only file: the first file the provider's api_key lists, else providers/<name>/api-key, which is added to api_key. Prompted for, or read from stdin, without --value.
     Set {
         name: String,
         #[arg(short, long)]
@@ -379,19 +379,9 @@ pub enum ApiKeyCmd {
         #[arg(long)]
         api: Option<String>,
     },
-    /// Delete the saved key (in the first keychain item or file api_key lists); the config is left as it is.
+    /// Delete the saved key (the first file api_key lists, if it's in Lexi's folder); the config is left as it is.
     Remove {
         name: String,
-        /// The API's own key.
-        #[arg(long)]
-        api: Option<String>,
-    },
-    /// Move the saved key to the system keychain or an owner-only file, and point api_key at it.
-    Move {
-        name: String,
-        /// Where to: keychain or file.
-        #[arg(long, value_parser = ["keychain", "file"])]
-        to: String,
         /// The API's own key.
         #[arg(long)]
         api: Option<String>,

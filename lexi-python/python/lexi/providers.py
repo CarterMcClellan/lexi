@@ -18,8 +18,8 @@ def status(name: str) -> Dict[str, Any]:
     """Check the provider's API key against its models endpoint:
     ``{provider, status, source, from}``, ``status`` one of ``"ready"``,
     ``"no api-key"``, ``"invalid api-key"``; ``source`` is the kind of place
-    the key came from (``env``/``keychain``/``file``/``config``) and ``from``
-    that place (``$OPENAI_API_KEY``, a keychain item, a path)."""
+    the key came from (``env``/``file``/``config``) and ``from`` that place
+    (``$OPENAI_API_KEY``, a path)."""
     return call("providers.status", name=name)
 
 
@@ -56,41 +56,30 @@ def remove(name: str) -> Dict[str, Any]:
 
 
 def set_key(name: str, key: str, *, api: Optional[str] = None) -> Dict[str, Any]:
-    """Save an API key in the first keychain item or file the provider's
-    ``api_key`` (in providers-config.yaml) lists. When it lists neither, one is
-    added: a keychain item on macOS and Windows, else the owner-only
-    ``providers/<name>/api-key`` (``LEXI_KEY_STORE=file`` turns the keychain
-    off). With ``api``, the key is for that API only. Returns ``{provider,
-    store, location, added, used}``: ``store`` is ``"keychain"`` or
-    ``"file"``, ``added`` whether the config gained that source, ``used`` the
-    source the key is now read from (another one when an earlier source has a
-    key)."""
+    """Save an API key in an owner-only file: the first file the provider's
+    ``api_key`` (in providers-config.yaml) lists, else
+    ``providers/<name>/api-key``, which is added to ``api_key``. With ``api``,
+    the key is for that API only (``providers/<name>/api-key-<api>``). Returns
+    ``{provider, location, added, used}``: ``location`` is the file,
+    ``added`` whether the config gained it, ``used`` the source the key is now
+    read from (another one when an earlier source has a key)."""
     return call("providers.set_key", name=name, key=key, api=api)
 
 
 def show_key(name: str, *, reveal: bool = False, api: Optional[str] = None) -> Dict[str, Any]:
     """Where the provider's (or ``api``'s) key comes from: ``{provider, api,
-    own, source, from, key, error, sources, save_to, store, store_label,
-    adds_source, env}``. ``sources`` is its ``api_key`` list in order, each
-    ``{kind, from, state, note?}``; ``source``/``from``/``key`` describe the key
-    that's used (masked unless ``reveal``; None when there's none; reading a
-    keychain key may make macOS ask for access, once);
-    ``save_to`` is where :func:`set_key` would save one; ``keychain`` whether
-    the OS keychain can be used here."""
+    own, source, from, key, error, sources, save_to, adds_source, env}``.
+    ``sources`` is its ``api_key`` list in order, each ``{kind, from, state,
+    note?}``; ``source``/``from``/``key`` describe the key that's used (masked
+    unless ``reveal``; None when there's none); ``save_to`` is the file
+    :func:`set_key` would save one in."""
     return call("providers.show_key", name=name, reveal=reveal, api=api)
 
 
 def remove_key(name: str, *, api: Optional[str] = None) -> Dict[str, Any]:
-    """Delete the saved key (in the first keychain item or file ``api_key``
-    lists; the config is left as it is): ``{"removed": bool}``."""
+    """Delete the saved key (the first file ``api_key`` lists, if it's in
+    Lexi's folder; the config is left as it is): ``{"removed": bool}``."""
     return call("providers.remove_key", name=name, api=api)
-
-
-def move_key(name: str, to: str, *, api: Optional[str] = None) -> Dict[str, Any]:
-    """Move the saved key to ``to`` — ``"keychain"`` or ``"file"`` — and point
-    ``api_key`` at it (the old copy is deleted). Same result as
-    :func:`set_key`."""
-    return call("providers.move_key", name=name, to=to, api=api)
 
 
 def upgrade(name: str, *, template: Optional[str] = None, apply: bool = False) -> Dict[str, Any]:

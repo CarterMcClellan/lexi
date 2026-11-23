@@ -32,18 +32,16 @@ def test_providers_lifecycle(home):
     # The key file followed the rename, and the config names it.
     assert lexi.providers.show_key("yours") == {
         "provider": "yours", "api": None, "own": True,
-        "source": None, "from": None, "key": None, "key_hidden": False, "error": None,
+        "source": None, "from": None, "key": None, "error": None,
         "sources": [{
             "kind": "file", "from": "providers/yours/api-key",
             "state": "missing", "note": "no file",
         }],
-        "save_to": "providers/yours/api-key", "store": "file",
-        "store_label": "an owner-only key file", "adds_source": False, "env": None,
-        "keychain": False, "keychain_label": lexi.providers.show_key("yours")["keychain_label"],
+        "save_to": "providers/yours/api-key", "adds_source": False, "env": None,
     }
     saved = lexi.providers.set_key("yours", "k2")
     assert saved == {
-        "provider": "yours", "store": "file", "location": "providers/yours/api-key",
+        "provider": "yours", "location": "providers/yours/api-key",
         "added": False, "used": "providers/yours/api-key",
     }
     assert lexi.providers.show_key("yours", reveal=True)["key"] == "k2"
@@ -242,7 +240,7 @@ def test_provider_upgrade_and_apis(home):
         lexi.providers.remove_api("anthropic", "messages")
 
 
-def test_key_sources_per_api_keys_and_move(home, monkeypatch):
+def test_key_sources_and_per_api_keys(home, monkeypatch):
     lexi.providers.add("mine", "https://x.example/v1", "m1")
     monkeypatch.setenv("LEXI_TEST_MINE_KEY", "from-env")
     cfg = home / "providers" / "providers-config.yaml"
@@ -263,8 +261,6 @@ def test_key_sources_per_api_keys_and_move(home, monkeypatch):
     lexi.providers.set_key("mine", "chat-only", api="chat-completions")
     own = lexi.providers.show_key("mine", api="chat-completions", reveal=True)
     assert own["own"] and own["key"] == "chat-only"
-
-    # The keychain is off in tests (LEXI_KEY_STORE=file; Linux has none), so it
-    # can't be the target.
-    with pytest.raises(lexi.LexiError, match="keychain"):
-        lexi.providers.move_key("mine", "keychain")
+    assert own["sources"] == [{
+        "kind": "file", "from": "providers/mine/api-key-chat-completions", "state": "used",
+    }]
