@@ -82,9 +82,12 @@ def test_models_and_aliases(home):
     assert models["big"]["description"] == "the big one"
     assert models["big"]["metadata"]["tier"] == "pro"
     assert models["small"]["default"] is True
-    assert lexi.models.default("p") == {"provider": "p", "default_model": "small"}
-    lexi.models.set_default("p", "big")
+    assert lexi.models.default("p")["default_model"] == "small"
+    assert lexi.models.set_default("p", "big") == {"provider": "p", "kind": "chat", "model": "big"}
     assert lexi.models.default("p")["default_model"] == "big"
+    assert lexi.models.default("p", kind="chat") == {
+        "provider": "p", "kind": "chat", "model": "big", "source": "user",
+    }
 
     lexi.models.set_alias("p", "z", "small")
     lexi.models.set_alias("p", "a", "big")
@@ -167,6 +170,17 @@ def test_model_tags_and_resolution(home):
     assert {"tag": "kind:image-generation", "source": "rule:gpt-image-*"} in img["tags"]
     assert lexi.models.resolve("openai", output="image")["api"] == "image-generations"
     assert lexi.models.resolve("openai")["api"] == "responses"
+
+    # A default per kind: an image model becomes the image default only.
+    chat = lexi.models.resolve("openai")["model"]
+    assert lexi.models.set_default("openai", "gpt-image-9")["kind"] == "image-generation"
+    assert lexi.models.resolve("openai", output="image")["model"] == "gpt-image-9"
+    assert lexi.models.resolve("openai")["model"] == chat
+    with pytest.raises(lexi.LexiError, match="not chat"):
+        lexi.models.set_default("openai", "gpt-image-9", kind="chat")
+    cleared = lexi.models.clear_default("openai", "image-generation")
+    assert cleared["cleared"] is True and cleared["source"] == "binding"
+    assert lexi.models.resolve("openai", output="image")["model"] == cleared["model"]
 
     # NVIDIA classifiers have no API: classification says why; resolve raises.
     safety = lexi.models.tags("nvidia", "nvidia/nemotron-3.5-content-safety")

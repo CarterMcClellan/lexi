@@ -608,16 +608,17 @@ fn _admin<'py>(py: Python<'py>, op: &str, args: &Bound<'py, PyAny>) -> PyResult<
             })?)
         }
         "models.default" => {
-            let p = a.str("provider")?;
-            require_provider(p).map_err(e)?;
-            json!({ "provider": p, "default_model": cfg::default_model(p).map_err(e)? })
+            lexi_host::models::defaults(a.str("provider")?, a.opt_str("kind")).map_err(e)?
         }
         "models.set_default" => {
-            let p = a.str("provider")?;
-            require_provider(p).map_err(e)?;
-            let m = a.opt_str("model");
-            cfg::set_default_model(p, m).map_err(e)?;
-            json!({ "provider": p, "default_model": m })
+            let (p, kind) = (a.str("provider")?, a.opt_str("kind"));
+            match a.opt_str("model") {
+                Some(m) => lexi_host::models::set_default(p, m, kind).map_err(e)?,
+                None => lexi_host::models::clear_default(p, kind.unwrap_or("chat")).map_err(e)?,
+            }
+        }
+        "models.clear_default" => {
+            lexi_host::models::clear_default(a.str("provider")?, a.str("kind")?).map_err(e)?
         }
         "models.add" => {
             let (p, m) = (a.str("provider")?, a.str("model")?);

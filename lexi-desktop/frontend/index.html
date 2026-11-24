@@ -923,6 +923,7 @@
       width: auto;
       min-width: 180px;
     }
+    .nowrap { white-space: nowrap; }
     .badge-default {
       display: inline-block;
       padding: 2px 8px;
@@ -2638,19 +2639,28 @@
         return;
       }
       try {
-        const data = await api(`/api/models?provider=${encodeURIComponent(provider)}`);
+        const q = encodeURIComponent(provider);
+        const [data, def] = await Promise.all([
+          api(`/api/models?provider=${q}`),
+          api(`/api/models/default?provider=${q}&kind=chat`).catch(() => ({})),
+        ]);
         // Only models the chat API serves: image and embedding models have tabs of their own.
         const models = (data.models || []).filter((m) => m.kind === 'chat');
-        providerModelCache[provider] = models;
-        populateModelSelect(selectEl, models);
+        providerModelCache[provider] = { models, defaultModel: def.model || null };
+        populateModelSelect(selectEl, providerModelCache[provider]);
       } catch {
         // leave just the default option
       }
     }
 
-    function populateModelSelect(selectEl, models) {
+    // `{models, defaultModel}`: the picker's options, after "(default: …)".
+    function populateModelSelect(selectEl, { models, defaultModel }) {
       const prev = selectEl.value;
-      selectEl.innerHTML = '<option value="">(default)</option>';
+      selectEl.innerHTML = '';
+      const def = document.createElement('option');
+      def.value = '';
+      def.textContent = defaultModel ? `(default: ${defaultModel})` : '(default)';
+      selectEl.appendChild(def);
       models.forEach((m) => {
         const opt = document.createElement('option');
         opt.value = m.id;
@@ -4701,7 +4711,9 @@
     let mtProvider = null;
     let mtModels = [];
     let mtAliases = {};
-    let mtDefault = null;
+    let mtDefaults = []; // [{kind, model, source}] — the default model for each kind
+    // The kind a model is the default for (its row of mtDefaults), if any.
+    const defaultRow = (m) => mtDefaults.find((d) => d.model === m.id);
     let hostedAllModels = [];
     let hostedFor = null; // provider the hosted list belongs to
     let hostedSeq = 0;
@@ -4741,14 +4753,12 @@
         {
           key: '_actions', label: '', sortable: false, filterable: false, sticky: true, cls: 'dt-actions',
           render: (m) => `<button type="button" class="btn-icon mt-edit" data-id="${esc(m.id)}" aria-label="Edit ${esc(m.id)}" data-tip="Edit this model's name, limits and aliases">&#9998;</button>`
-            + (m.id !== mtDefault
-              ? `<button type="button" class="btn-icon mt-setdef" data-id="${esc(m.id)}" aria-label="Make ${esc(m.id)} the default" data-tip="Make this the default model for ${esc(mtProvider)}">&#9734;</button>`
-              : `<span class="btn-icon-slot" data-tip="This is the default model for ${esc(mtProvider)}">&#9733;</span>`)
+            + defaultStar(m)
             + `<button type="button" class="btn-icon danger mt-rm" data-id="${esc(m.id)}" aria-label="Remove ${esc(m.id)}" data-tip="Remove this model from your configured models">&#10005;</button>`,
         },
         {
           key: 'id', label: 'Model ID', sticky: true,
-          render: (m) => `${esc(m.id)}${m.id === mtDefault ? ' <span class="badge-default" data-tip="Used when you don\'t name a model">default</span>' : ''}${isNotHosted(m) ? ' <span class="badge-error" data-tip="This provider\'s model list doesn\'t include this id">not hosted</span>' : ''}`,
+          render: (m) => `${esc(m.id)}${defaultRow(m) ? ` <span class="badge-default" data-tip="Used for ${esc(defaultRow(m).kind)} requests that don't name a model">default</span>` : ''}${isNotHosted(m) ? ' <span class="badge-error" data-tip="This provider\'s model list doesn\'t include this id">not hosted</span>' : ''}`,
         },
         { key: 'name', label: 'Name' },
         { key: 'kind', label: 'Kind' },
@@ -4819,10 +4829,27 @@
       return cols;
     }
 
+    // ☆ makes a model the default for its kind; ★ marks the default — yours
+    // (click to clear it) or the provider's.
+    function defaultStar(m) {
+      const d = defaultRow(m);
+      const kind = esc(d ? d.kind : (m.kind || 'chat'));
+      const prov = esc(mtProvider);
+      if (!d) {
+        return `<button type="button" class="btn-icon mt-setdef" data-id="${esc(m.id)}" aria-label="Make ${esc(m.id)} the default ${kind} model" data-tip="Make this the default ${kind} model for ${prov}">&#9734;</button>`;
+      }
+      if (d.source === 'user') {
+        return `<button type="button" class="btn-icon mt-cleardef" data-id="${esc(m.id)}" data-kind="${kind}" aria-label="Stop using ${esc(m.id)} as the default ${kind} model" data-tip="Your default ${kind} model for ${prov}. Click to clear it, so the provider's default applies">&#9733;</button>`;
+      }
+      return `<span class="btn-icon-slot" data-tip="The provider's default ${kind} model (you haven't chosen one); ☆ on another ${kind} model makes that the default">&#9733;</span>`;
+    }
+
     function renderModelsTable() {
-      modelsDefaultLineEl.innerHTML = mtDefault
-        ? `Default: <strong>${esc(mtDefault)}</strong>`
-        : 'No default model set. Use ☆ on a model to choose one.';
+      const parts = mtDefaults.filter((d) => d.model).map((d) =>
+        `<span class="nowrap">${esc(d.kind)}: <strong>${esc(d.model)}</strong>${d.source === 'user' ? '' : ' <span class="muted" data-tip="You haven\'t chosen one; ☆ on a model makes it the default for its kind">(the provider\'s)</span>'}</span>`);
+      modelsDefaultLineEl.innerHTML = parts.length
+        ? `Defaults — ${parts.join(' · ')}`
+        : 'No default models. Use ☆ on a model to make it the default for its kind.';
       renderOrphanAliases();
       configuredTable.setRows(mtModels);
     }
@@ -4863,6 +4890,7 @@
       const id = btn.dataset.id;
       if (btn.classList.contains('mt-edit')) openModelDialog({ id, existing: mtModels.find((m) => m.id === id) });
       if (btn.classList.contains('mt-setdef')) setDefaultModel(id);
+      if (btn.classList.contains('mt-cleardef')) clearDefaultModel(btn.dataset.kind);
       if (btn.classList.contains('mt-rm')) removeModel(id);
     });
 
@@ -4877,10 +4905,21 @@
 
     async function setDefaultModel(modelId) {
       try {
-        await api('/api/models/default', { method: 'POST', body: JSON.stringify({ provider: mtProvider, model: modelId }) });
-        mtDefault = modelId;
-        renderModelsTable();
-        showModelsFeedback(`${modelId} is now the default model.`, 'success');
+        const r = await api('/api/models/default', { method: 'POST', body: JSON.stringify({ provider: mtProvider, model: modelId }) });
+        await loadConfigured();
+        showModelsFeedback(`${r.model} is now the default ${r.kind} model for ${r.provider}.`, 'success');
+      } catch (err) {
+        showModelsFeedback(err.message, 'error');
+      }
+    }
+
+    async function clearDefaultModel(kind) {
+      try {
+        const r = await api('/api/models/default', { method: 'POST', body: JSON.stringify({ provider: mtProvider, kind, clear: true }) });
+        await loadConfigured();
+        showModelsFeedback(r.model
+          ? `Cleared your default ${kind} model; ${r.provider}'s default, ${r.model}, applies.`
+          : `Cleared your default ${kind} model; ${r.provider} has no default for it.`, 'success');
       } catch (err) {
         showModelsFeedback(err.message, 'error');
       }
@@ -4939,9 +4978,9 @@
             </div>
             <div class="hint">Short names you can use in place of the model id.</div>
           </div>
-          ${m.id === mtDefault && isEdit ? '' : `
+          ${isEdit && mtDefaults.some((d) => d.model === m.id && d.source === 'user') ? '' : `
           <div class="span-2">
-            <label class="check-row"><input id="meSetDefault" type="checkbox"> Make this the default model for ${esc(provider)}</label>
+            <label class="check-row"><input id="meSetDefault" type="checkbox"> Make this the default model of its kind for ${esc(provider)}</label>
           </div>`}
         </div>`;
 
@@ -5028,7 +5067,7 @@
       const [models, def, aliases] = await Promise.all([get('/api/models'), get('/api/models/default'), get('/api/models/aliases')]);
       if (provider !== mtProvider) return; // the provider changed meanwhile
       mtModels = models.models || [];
-      mtDefault = def.default_model || null;
+      mtDefaults = def.defaults || [];
       mtAliases = aliases.aliases || {};
       renderModelsTable();
     }

@@ -160,10 +160,10 @@ fn models_list_default_and_aliases_from_seeded_files() {
     let out = stdout(&lexi_out(home.path(), &["models", "list", "openai"]));
     assert_eq!(
         out,
-        "Models for openai:\n  gpt-a: GPT A - first (default)\n  gpt-b: GPT B - second (alias: fast)\nAliases:\n  fast -> gpt-b\n"
+        "Models for openai:\n  gpt-a: GPT A - first (default chat)\n  gpt-b: GPT B - second (alias: fast)\nAliases:\n  fast -> gpt-b\n"
     );
     let details = stdout(&lexi_out(home.path(), &["models", "list", "openai", "-d"]));
-    assert!(details.contains("  gpt-a: GPT A - first (default)\n    max_tokens: 100\n"));
+    assert!(details.contains("  gpt-a: GPT A - first (default chat)\n    max_tokens: 100\n"));
 
     let v = json_out(home.path(), &["models", "list", "openai"]);
     assert_eq!(v[0]["id"], "gpt-a");
@@ -173,22 +173,96 @@ fn models_list_default_and_aliases_from_seeded_files() {
 
     assert_eq!(
         stdout(&lexi_out(home.path(), &["models", "default", "openai"])),
-        "Default model for openai: gpt-a\n"
+        "Default models for openai:\n  chat: gpt-a (yours)\n  image-generation: gpt-image-2.5-flare (the provider's)\n  embedding: text-embedding-3-small (the provider's)\n"
     );
     assert_eq!(
         stdout(&lexi_out(
             home.path(),
             &["models", "default", "openai", "gpt-b"]
         )),
-        "Set default model for openai to gpt-b.\n"
+        "gpt-b is now the default chat model for openai.\n"
+    );
+    let v = json_out(home.path(), &["models", "default", "openai"]);
+    assert_eq!(v["default_model"], "gpt-b");
+    assert_eq!(
+        v["defaults"][0],
+        json!({"kind": "chat", "model": "gpt-b", "source": "user"})
     );
     assert_eq!(
-        json_out(home.path(), &["models", "default", "openai"]),
-        json!({"provider": "openai", "default_model": "gpt-b"})
+        v["defaults"][1],
+        json!({"kind": "image-generation", "model": "gpt-image-2.5-flare", "source": "binding"})
     );
     let o = lexi_out(home.path(), &["models", "default", "openai", "nope"]);
     assert_eq!(o.status.code(), Some(1));
-    assert!(stderr(&o).contains("\"nope\" not found"));
+    assert!(stderr(&o).contains("\"nope\" is not a configured model"));
+
+    // A model is the default for its own kind; the chat default is kept.
+    write(
+        home.path(),
+        "providers/openai/configured-models.yaml",
+        "models:\n  gpt-a:\n    name: GPT A\n    description: first\n    max_tokens: 100\n  gpt-b:\n    name: GPT B\n    description: second\n  gpt-image-9:\n    name: Img\n",
+    );
+    assert_eq!(
+        stdout(&lexi_out(
+            home.path(),
+            &["models", "default", "openai", "gpt-image-9"]
+        )),
+        "gpt-image-9 is now the default image-generation model for openai.\n"
+    );
+    assert_eq!(
+        json_out(
+            home.path(),
+            &["models", "default", "openai", "--kind", "image-generation"]
+        ),
+        json!({"provider": "openai", "kind": "image-generation", "model": "gpt-image-9", "source": "user"})
+    );
+    assert_eq!(
+        json_out(
+            home.path(),
+            &["models", "default", "openai", "--kind", "chat"]
+        )["model"],
+        "gpt-b"
+    );
+    let file =
+        std::fs::read_to_string(home.path().join("providers/openai/default-model.yaml")).unwrap();
+    assert!(file.starts_with("default_model: gpt-b\n"), "{file}");
+    let v = json_out(home.path(), &["models", "list", "openai"]);
+    assert_eq!(v[2]["default_for"], json!(["image-generation"]));
+
+    // --kind must match the model's kind.
+    let o = lexi_out(
+        home.path(),
+        &[
+            "models",
+            "default",
+            "openai",
+            "gpt-a",
+            "--kind",
+            "embedding",
+        ],
+    );
+    assert_eq!(o.status.code(), Some(1));
+    assert!(
+        stderr(&o).contains("gpt-a is a chat model, not embedding"),
+        "{}",
+        stderr(&o)
+    );
+    let o = lexi_out(
+        home.path(),
+        &["models", "default", "openai", "--kind", "pictures"],
+    );
+    assert_eq!(o.status.code(), Some(1));
+
+    // Clearing goes back to the provider's default.
+    assert_eq!(
+        stdout(&lexi_out(
+            home.path(),
+            &["models", "default", "openai", "--clear", "--kind", "image-generation"]
+        )),
+        "Cleared your default image-generation model for openai; it's gpt-image-2.5-flare (the provider's) now.\n"
+    );
+    let o = lexi_out(home.path(), &["models", "default", "openai", "--clear"]);
+    assert_eq!(o.status.code(), Some(2), "--clear needs --kind");
 
     assert_eq!(
         stdout(&lexi_out(

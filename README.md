@@ -64,8 +64,9 @@ respond openai --tool web_search --cite
 # List hosted models from a provider
 models hosted nvidia --table
 
-# Set a default model
+# Set a default model (for its kind: chat, image-generation, embedding, …)
 models default anthropic claude-sonnet-4-5-20250929
+models default openai gpt-image-2
 
 # Check a provider's status and API key validity
 providers status openai

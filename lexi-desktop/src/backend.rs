@@ -140,6 +140,7 @@ fn models(path: &str) -> Result<Value, String> {
                 "name": m["name"],
                 "description": m["description"],
                 "default": m["default"],
+                "default_for": m["default_for"],
                 "aliases": m["aliases"],
                 "max_tokens": m["metadata"].get("max_tokens"),
                 "context_window": m["metadata"].get("context_window"),
@@ -152,11 +153,12 @@ fn models(path: &str) -> Result<Value, String> {
     Ok(json!({ "provider": provider, "models": models }))
 }
 
-/// `GET /api/models/default?provider=X` — the provider's current default model.
+/// `GET /api/models/default?provider=X[&kind=K]` — the provider's default
+/// model for each kind (`models::defaults`), or for kind `K`.
 fn models_default_get(path: &str) -> Result<Value, String> {
     let provider = require_provider(path)?;
-    let default = config::default_model(&provider).map_err(|e| e.to_string())?;
-    Ok(json!({ "provider": provider, "default_model": default }))
+    let kind = query_param(path, "kind");
+    lexi_host::models::defaults(&provider, kind.as_deref()).map_err(|e| e.to_string())
 }
 
 /// `GET /api/models/aliases?provider=X` — the provider's `alias -> model` map.
@@ -186,12 +188,18 @@ async fn models_hosted(path: &str) -> Result<Value, String> {
     Ok(out)
 }
 
-/// `POST /api/models/default` — set the provider's default model.
+/// `POST /api/models/default` — `{provider, model}` makes the model your
+/// default for its kind; `{provider, kind, clear: true}` clears your default
+/// for that kind.
 fn models_set_default(body: Value) -> Result<Value, String> {
     let provider = require_field(&body, "provider")?;
+    let kind = body.get("kind").and_then(Value::as_str);
+    if body.get("clear").and_then(Value::as_bool) == Some(true) {
+        let kind = kind.ok_or("kind is required to clear a default")?;
+        return lexi_host::models::clear_default(&provider, kind).map_err(|e| e.to_string());
+    }
     let model = require_field(&body, "model")?;
-    config::set_default_model(&provider, Some(&model)).map_err(|e| e.to_string())?;
-    Ok(json!({ "provider": provider, "default_model": model, "output": "" }))
+    lexi_host::models::set_default(&provider, &model, kind).map_err(|e| e.to_string())
 }
 
 /// `POST /api/models/aliases` — point an alias at a model.

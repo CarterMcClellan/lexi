@@ -625,7 +625,10 @@ pub struct ModelInfo {
     /// Display name (`name` in configured-models.yaml).
     pub name: Option<String>,
     pub description: Option<String>,
+    /// Whether it's your default model for some kind (`default_for`).
     pub default: bool,
+    /// The kinds it's your default for (`chat`, `image-generation`, …).
+    pub default_for: Vec<String>,
     /// Aliases that resolve to this model id.
     pub aliases: Vec<String>,
     /// The model's full metadata entry (name, description, max_tokens, …).
@@ -642,10 +645,7 @@ pub fn load_models(provider: &str) -> Result<Vec<ModelInfo>, HostError> {
 
 fn load_models_in(home: &Path, provider: &str) -> Result<Vec<ModelInfo>, HostError> {
     let models = read_provider_file(home, provider, "configured-models.yaml")?;
-    let default = read_provider_file(home, provider, "default-model.yaml")?
-        .get("default_model")
-        .and_then(Value::as_str)
-        .map(str::to_string);
+    let defaults = default_models_in(home, provider)?;
     let aliases = read_provider_file(home, provider, "model-aliases.yaml")?;
     let aliases = aliases.get("aliases").and_then(Value::as_object);
 
@@ -672,7 +672,12 @@ fn load_models_in(home: &Path, provider: &str) -> Result<Vec<ModelInfo>, HostErr
                     .get("description")
                     .and_then(Value::as_str)
                     .map(str::to_string),
-                default: default.as_deref() == Some(id.as_str()),
+                default: defaults.values().any(|m| m.as_str() == Some(id.as_str())),
+                default_for: defaults
+                    .iter()
+                    .filter(|(_, m)| m.as_str() == Some(id.as_str()))
+                    .map(|(k, _)| k.clone())
+                    .collect(),
                 aliases: alias_list,
                 metadata: meta.clone(),
             }
@@ -694,29 +699,81 @@ fn write_yaml(path: &Path, value: &Value) -> Result<(), HostError> {
     Ok(())
 }
 
-/// The provider's current default model id, if set.
-pub fn default_model(provider: &str) -> Result<Option<String>, HostError> {
+/// Your default model for each kind (`default-model.yaml`), as `{chat: …,
+/// image-generation: …}`. The chat default is the file's `default_model` (as
+/// earlier versions wrote it, which they still read); other kinds are under
+/// `defaults:`. Defaults you haven't set come from the provider (see
+/// `models::defaults`).
+pub fn default_models(provider: &str) -> Result<Map, HostError> {
+    default_models_in(&lexi_home(), provider)
+}
+
+fn default_models_in(home: &Path, provider: &str) -> Result<Map, HostError> {
+    let data = read_provider_file(home, provider, "default-model.yaml")?;
+    let mut out = Map::new();
+    if let Some(m) = data.get("default_model").and_then(Value::as_str) {
+        out.insert("chat".into(), Value::from(m));
+    }
+    if let Some(kinds) = data.get("defaults").and_then(Value::as_object) {
+        for (kind, m) in kinds {
+            if let Some(m) = m.as_str() {
+                out.entry(kind.clone()).or_insert_with(|| Value::from(m));
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Your default chat model, if you set one.
+pub(crate) fn default_model(provider: &str) -> Result<Option<String>, HostError> {
     default_model_in(&lexi_home(), provider)
 }
 
 fn default_model_in(home: &Path, provider: &str) -> Result<Option<String>, HostError> {
-    Ok(read_provider_file(home, provider, "default-model.yaml")?
-        .get("default_model")
+    Ok(default_models_in(home, provider)?
+        .get("chat")
         .and_then(Value::as_str)
         .map(str::to_string))
 }
 
-/// Set (or clear, with `None`) the provider's default model.
-pub fn set_default_model(provider: &str, model: Option<&str>) -> Result<(), HostError> {
-    set_default_model_in(&lexi_home(), provider, model)
+/// Set (or clear, with `None`) your default model for `kind`. The model isn't
+/// checked here; `models::set_default` checks it and finds its kind.
+pub(crate) fn set_kind_default(
+    provider: &str,
+    kind: &str,
+    model: Option<&str>,
+) -> Result<(), HostError> {
+    set_kind_default_in(&lexi_home(), provider, kind, model)
 }
 
-fn set_default_model_in(home: &Path, provider: &str, model: Option<&str>) -> Result<(), HostError> {
-    let data = match model {
-        Some(m) => serde_json::json!({ "default_model": m }),
-        None => Value::Object(Map::new()),
-    };
-    write_yaml(&provider_file(home, provider, "default-model.yaml"), &data)
+fn set_kind_default_in(
+    home: &Path,
+    provider: &str,
+    kind: &str,
+    model: Option<&str>,
+) -> Result<(), HostError> {
+    lexi_core::validate_tag(&format!("kind:{kind}")).map_err(HostError::Invalid)?;
+    let mut all = default_models_in(home, provider)?;
+    match model {
+        Some(m) => {
+            all.insert(kind.to_string(), Value::from(m));
+        }
+        None => {
+            all.shift_remove(kind);
+        }
+    }
+    let mut data = Map::new();
+    if let Some(chat) = all.get("chat") {
+        data.insert("default_model".into(), chat.clone());
+    }
+    let others: Map = all.into_iter().filter(|(k, _)| k != "chat").collect();
+    if !others.is_empty() {
+        data.insert("defaults".into(), Value::Object(others));
+    }
+    write_yaml(
+        &provider_file(home, provider, "default-model.yaml"),
+        &Value::Object(data),
+    )
 }
 
 /// The provider's `alias -> model` map (empty if none configured).
@@ -784,23 +841,29 @@ fn delete_model_alias_in(home: &Path, provider: &str, alias: &str) -> Result<(),
 }
 
 /// Add or update a model's metadata (merging over any existing entry), optionally
-/// making it the default. Returns whether the model already existed. Mirrors the
-/// CLI's `models add`/`set` (both upsert-merge).
+/// making it the default for its kind (`models::set_default`). Returns whether
+/// the model already existed. Mirrors the CLI's `models add`/`set` (both
+/// upsert-merge).
 pub fn upsert_model(
     provider: &str,
     model: &str,
     meta: &Map,
     set_default: bool,
 ) -> Result<bool, HostError> {
-    upsert_model_in(&lexi_home(), provider, model, meta, set_default)
+    let existed = upsert_model_in(&lexi_home(), provider, model, meta, None)?;
+    if set_default {
+        crate::models::set_default(provider, model, None)?;
+    }
+    Ok(existed)
 }
 
+/// `default_kind`: make it your default for that kind.
 fn upsert_model_in(
     home: &Path,
     provider: &str,
     model: &str,
     meta: &Map,
-    set_default: bool,
+    default_kind: Option<&str>,
 ) -> Result<bool, HostError> {
     let mut data = match read_provider_file(home, provider, "configured-models.yaml")? {
         Value::Object(m) => m,
@@ -828,24 +891,35 @@ fn upsert_model_in(
         &provider_file(home, provider, "configured-models.yaml"),
         &Value::Object(data),
     )?;
-    if set_default {
-        set_default_model_in(home, provider, Some(model))?;
+    if let Some(kind) = default_kind {
+        set_kind_default_in(home, provider, kind, Some(model))?;
     }
     Ok(existed)
 }
 
-/// Remove a model. Errors if absent. If it was the default, the default falls to
-/// the first remaining model (or is cleared when none remain).
+/// Remove a model. Errors if absent. If it was your default for a kind, that
+/// default falls to the first remaining model of the same kind (or is cleared,
+/// so the provider's default applies, when there's none).
 pub fn delete_model(provider: &str, model: &str) -> Result<(), HostError> {
-    delete_model_in(&lexi_home(), provider, model)
+    delete_model_in(&lexi_home(), provider, model, |m| {
+        crate::models::classify(provider, m)
+            .ok()
+            .and_then(|c| c["kind"].as_str().map(String::from))
+    })
 }
 
-fn delete_model_in(home: &Path, provider: &str, model: &str) -> Result<(), HostError> {
+/// `kind_of`: a model's kind (read after the model is gone).
+fn delete_model_in(
+    home: &Path,
+    provider: &str,
+    model: &str,
+    kind_of: impl Fn(&str) -> Option<String>,
+) -> Result<(), HostError> {
     let mut data = match read_provider_file(home, provider, "configured-models.yaml")? {
         Value::Object(m) => m,
         _ => Map::new(),
     };
-    let new_default;
+    let remaining: Vec<String>;
     {
         let models = data
             .get_mut("models")
@@ -858,15 +932,22 @@ fn delete_model_in(home: &Path, provider: &str, model: &str) -> Result<(), HostE
                 "model {model:?} not found for {provider}"
             )));
         }
-        new_default = models.keys().next().cloned();
+        remaining = models.keys().cloned().collect();
     }
-    let was_default = default_model_in(home, provider)?.as_deref() == Some(model);
     write_yaml(
         &provider_file(home, provider, "configured-models.yaml"),
         &Value::Object(data),
     )?;
-    if was_default {
-        set_default_model_in(home, provider, new_default.as_deref())?;
+    let was_default_for: Vec<String> = default_models_in(home, provider)?
+        .into_iter()
+        .filter(|(_, m)| m.as_str() == Some(model))
+        .map(|(k, _)| k)
+        .collect();
+    for kind in was_default_for {
+        let next = remaining
+            .iter()
+            .find(|m| kind_of(m).as_deref() == Some(kind.as_str()));
+        set_kind_default_in(home, provider, &kind, next.map(String::as_str))?;
     }
     Ok(())
 }
@@ -1894,7 +1975,7 @@ mod tests {
         meta.insert("max_tokens".into(), json!(4096));
 
         // First upsert creates the entry and sets it default.
-        let existed = upsert_model_in(dir.path(), "openai", "gpt-4o", &meta, true).unwrap();
+        let existed = upsert_model_in(dir.path(), "openai", "gpt-4o", &meta, Some("chat")).unwrap();
         assert!(!existed);
         assert_eq!(
             default_model_in(dir.path(), "openai").unwrap().as_deref(),
@@ -1904,7 +1985,7 @@ mod tests {
         // Second upsert merges new fields over the existing entry.
         let mut meta2 = Map::new();
         meta2.insert("context_window".into(), json!(128000));
-        let existed = upsert_model_in(dir.path(), "openai", "gpt-4o", &meta2, false).unwrap();
+        let existed = upsert_model_in(dir.path(), "openai", "gpt-4o", &meta2, None).unwrap();
         assert!(existed);
         let models = load_models_in(dir.path(), "openai").unwrap();
         assert_eq!(models.len(), 1);
@@ -1916,21 +1997,65 @@ mod tests {
     fn delete_model_fixes_default_and_errors_when_absent() {
         let dir = tempfile::tempdir().unwrap();
         let empty = Map::new();
-        upsert_model_in(dir.path(), "openai", "a", &empty, true).unwrap();
-        upsert_model_in(dir.path(), "openai", "b", &empty, false).unwrap();
+        let kind_of = |m: &str| {
+            Some(
+                if m.starts_with("img") {
+                    "image-generation"
+                } else {
+                    "chat"
+                }
+                .to_string(),
+            )
+        };
+        upsert_model_in(dir.path(), "openai", "a", &empty, Some("chat")).unwrap();
+        upsert_model_in(
+            dir.path(),
+            "openai",
+            "img-1",
+            &empty,
+            Some("image-generation"),
+        )
+        .unwrap();
+        upsert_model_in(dir.path(), "openai", "b", &empty, None).unwrap();
 
-        // Deleting the default promotes the first remaining model.
-        delete_model_in(dir.path(), "openai", "a").unwrap();
+        // Deleting the chat default promotes the first remaining chat model.
+        delete_model_in(dir.path(), "openai", "a", kind_of).unwrap();
         assert_eq!(
             default_model_in(dir.path(), "openai").unwrap().as_deref(),
             Some("b")
         );
-
-        // Deleting the last model clears the default.
-        delete_model_in(dir.path(), "openai", "b").unwrap();
+        // Deleting the last chat model clears the chat default only.
+        delete_model_in(dir.path(), "openai", "b", kind_of).unwrap();
         assert_eq!(default_model_in(dir.path(), "openai").unwrap(), None);
+        assert_eq!(
+            default_models_in(dir.path(), "openai").unwrap()["image-generation"],
+            "img-1"
+        );
+        delete_model_in(dir.path(), "openai", "img-1", kind_of).unwrap();
+        assert!(default_models_in(dir.path(), "openai").unwrap().is_empty());
 
-        assert!(delete_model_in(dir.path(), "openai", "gone").is_err());
+        assert!(delete_model_in(dir.path(), "openai", "gone", kind_of).is_err());
+    }
+
+    #[test]
+    fn kind_defaults_keep_the_chat_default_where_earlier_versions_read_it() {
+        let dir = tempfile::tempdir().unwrap();
+        set_kind_default_in(dir.path(), "openai", "chat", Some("gpt-4o")).unwrap();
+        set_kind_default_in(dir.path(), "openai", "image-generation", Some("img")).unwrap();
+        let text = std::fs::read_to_string(dir.path().join("providers/openai/default-model.yaml"))
+            .unwrap();
+        let data: Value = serde_yaml::from_str(&text).unwrap();
+        assert_eq!(
+            data,
+            json!({ "default_model": "gpt-4o", "defaults": { "image-generation": "img" } })
+        );
+        let models = default_models_in(dir.path(), "openai").unwrap();
+        assert_eq!(models["chat"], "gpt-4o");
+        assert_eq!(models["image-generation"], "img");
+
+        set_kind_default_in(dir.path(), "openai", "chat", None).unwrap();
+        assert_eq!(default_model_in(dir.path(), "openai").unwrap(), None);
+        assert!(set_kind_default_in(dir.path(), "openai", "pictures", Some("x")).is_err());
     }
 
     #[test]

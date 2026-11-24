@@ -24,14 +24,28 @@ def hosted(
     return call("models.hosted", provider=provider, tags=[*tags], cached=cached)
 
 
-def default(provider: str) -> Dict[str, Any]:
-    """``{provider, default_model}`` (``None`` when unset)."""
-    return call("models.default", provider=provider)
+def default(provider: str, kind: Optional[str] = None) -> Dict[str, Any]:
+    """The provider's default model for each kind: ``{provider, default_model,
+    defaults: [{kind, model, source}]}`` (``default_model`` is the chat
+    default; ``source`` is ``"user"`` for yours, ``"binding"`` or
+    ``"provider"`` for the provider's). With ``kind``
+    (``"image-generation"``, …), just that one: ``{provider, kind, model,
+    source}``."""
+    return call("models.default", provider=provider, kind=kind)
 
 
-def set_default(provider: str, model: Optional[str]) -> Dict[str, Any]:
-    """Make ``model`` the default (``None`` clears it)."""
-    return call("models.set_default", provider=provider, model=model)
+def set_default(provider: str, model: Optional[str], kind: Optional[str] = None) -> Dict[str, Any]:
+    """Make ``model`` your default for its kind (from its tags):
+    ``{provider, kind, model}``. With ``kind``, the model must be of that kind.
+    ``None`` clears your default for ``kind`` (chat when not given), as
+    :func:`clear_default`."""
+    return call("models.set_default", provider=provider, model=model, kind=kind)
+
+
+def clear_default(provider: str, kind: str) -> Dict[str, Any]:
+    """Clear your default ``kind`` model, so the provider's applies again:
+    ``{provider, kind, cleared, model, source}`` (the default now in effect)."""
+    return call("models.clear_default", provider=provider, kind=kind)
 
 
 def add(

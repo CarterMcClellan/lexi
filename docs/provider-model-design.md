@@ -250,7 +250,7 @@ the user's file once and never updated. Instead:
 |---|---|
 | `api: X` + `default_model: M` | `apis: [{api: X, default_model: M}]` |
 | `hosted_models: P` + `hosted_model_fields: F` | `catalog: {path: P, fields: F}` |
-| `default-model.yaml` | the catch-all binding's default model |
+| `default-model.yaml` | your default model per kind: `default_model` (chat) and `defaults: {<kind>: M}` |
 
 No file is rewritten automatically; `lexi providers upgrade <name>` converts an
 entry to the template form, showing the diff first.
