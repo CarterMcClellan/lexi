@@ -21,7 +21,12 @@ pub(crate) async fn run(io: &mut Io<'_>, cmd: ModelsCmd) -> u8 {
             tags,
             cached,
         } => hosted(io, &provider, raw, table, &tags, cached).await,
-        ModelsCmd::Default { provider, model } => default(io, &provider, model.as_deref()),
+        ModelsCmd::Default {
+            provider,
+            model,
+            kind,
+            clear,
+        } => default(io, &provider, model.as_deref(), kind.as_deref(), clear),
         ModelsCmd::Alias { cmd } => match cmd {
             ModelAliasCmd::List { provider, raw } => alias_list(io, &provider, raw),
             ModelAliasCmd::Set {
@@ -144,7 +149,7 @@ fn list(
             .map(|m| {
                 let name = m.name.clone().unwrap_or_else(|| m.id.clone());
                 let label = if m.default {
-                    format!("{name} (default)")
+                    format!("{name} (default {})", m.default_for.join(", "))
                 } else {
                     name
                 };
@@ -172,7 +177,7 @@ fn list(
         for m in &models {
             let mut extra = Vec::new();
             if m.default {
-                extra.push("default".to_string());
+                extra.push(format!("default {}", m.default_for.join(", ")));
             }
             if !m.aliases.is_empty() {
                 let mut a = m.aliases.clone();
@@ -293,39 +298,70 @@ async fn hosted(
     io.result(human, json)
 }
 
-fn default(io: &mut Io<'_>, provider: &str, model: Option<&str>) -> u8 {
+/// `gpt-4o (yours)`, `gpt-4o (the provider's)`, `none`.
+fn default_label(row: &Value) -> String {
+    match row["model"].as_str() {
+        Some(m) if row["source"] == "user" => format!("{m} (yours)"),
+        Some(m) => format!("{m} (the provider's)"),
+        None => "none".into(),
+    }
+}
+
+fn default(
+    io: &mut Io<'_>,
+    provider: &str,
+    model: Option<&str>,
+    kind: Option<&str>,
+    clear: bool,
+) -> u8 {
     if let Err(code) = require_provider(io, provider) {
         return code;
     }
-    let Some(model) = model else {
-        return match lexi_host::config::default_model(provider) {
-            Ok(Some(m)) => io.result(
-                format!("Default model for {provider}: {m}"),
-                json!({ "provider": provider, "default_model": m }),
-            ),
-            Ok(None) => io.result(
-                format!("No default model set for {provider}."),
-                json!({ "provider": provider, "default_model": null }),
+    if clear {
+        let kind = kind.unwrap_or("chat");
+        return match lexi_host::models::clear_default(provider, kind) {
+            Ok(v) => {
+                let now = default_label(&v);
+                let msg = if v["cleared"] == true {
+                    format!("Cleared your default {kind} model for {provider}; it's {now} now.")
+                } else {
+                    format!("You had no default {kind} model for {provider}; it's {now}.")
+                };
+                io.result(msg, v)
+            }
+            Err(e) => io.fail(e),
+        };
+    }
+    if let Some(model) = model {
+        return match lexi_host::models::set_default(provider, model, kind) {
+            Ok(v) => io.result(
+                format!(
+                    "{} is now the default {} model for {provider}.",
+                    scalar(v.get("model")),
+                    scalar(v.get("kind"))
+                ),
+                v,
             ),
             Err(e) => io.fail(e),
         };
-    };
-    match lexi_host::config::load_models(provider) {
-        Ok(models) if models.iter().any(|m| m.id == model) => {}
-        Ok(_) => {
-            return io.fail(format_args!(
-                "model {model:?} not found for provider {provider:?}"
-            ))
-        }
+    }
+    let v = match lexi_host::models::defaults(provider, kind) {
+        Ok(v) => v,
         Err(e) => return io.fail(e),
+    };
+    if let Some(kind) = kind {
+        let msg = format!("Default {kind} model for {provider}: {}", default_label(&v));
+        return io.result(msg, v);
     }
-    match lexi_host::config::set_default_model(provider, Some(model)) {
-        Ok(()) => io.result(
-            format!("Set default model for {provider} to {model}."),
-            json!({ "provider": provider, "default_model": model }),
-        ),
-        Err(e) => io.fail(e),
-    }
+    let mut lines = vec![format!("Default models for {provider}:")];
+    lines.extend(
+        v["defaults"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|r| format!("  {}: {}", scalar(r.get("kind")), default_label(r))),
+    );
+    io.result(lines.join("\n"), v)
 }
 
 fn alias_list(io: &mut Io<'_>, provider: &str, raw: bool) -> u8 {

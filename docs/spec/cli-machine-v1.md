@@ -54,12 +54,12 @@ API keys are never included in any result except `providers api-key show`
 | `providers api list` | `[{"api", "for"?, "default_model"?, "url"?, "enabled", "source"}]`; `source` ∈ `"template" \| "user" \| "config"` |
 | `providers api add` / `rm` | `{"provider", "api", "existed"}` / `{"provider", "removed"}` |
 | `providers api-key set` / `show` / `remove` | `{"provider"}` / `{"provider", "source", "key"}` / `{"removed": bool}` |
-| `models list` | `[{"id", "name", "description", "default", "aliases", "metadata", "kind", "api", "tags"}]` — `api` serves the model; `tags` its effective tags |
+| `models list` | `[{"id", "name", "description", "default", "default_for", "aliases", "metadata", "kind", "api", "tags"}]` — `default_for` the kinds it's your default for; `api` serves the model; `tags` its effective tags |
 | `models tag` | `{"provider", "model", "tags": ["+tag" \| "-tag", …]}` (your ops on that id/glob) · with `--clear`: `{"provider", "model", "cleared": bool}` |
 | `models tags` | `{"provider", "model", "kind", "api", "binding", "tags": [{"tag", "source"}], "in_catalog", "limits"?, "name"?, "error"?}` (`limits`/`name` from the cached catalog) — `api`/`binding` null and `error` set when no API serves the model; `source` ∈ `api:<name>`, `rule:<glob>`, `catalog`, `user`, `kind` |
 | `tags` | `{"namespaces": {"in", "out", "kind", "feature", "status"}, "kinds": {"<kind>": {"in", "out"}}, "labels"}` |
 | `models hosted` | the provider's model entries, as a flat array, each with Lexi's `"kind"`, `"api"` and `"tags"` added; `--tag T` keeps entries having every given tag; `--cached` reads the last fetch |
-| `models default` | `{"provider", "default_model"}` (`null` when unset) |
+| `models default` | `{"provider", "default_model", "defaults": [{"kind", "model", "source"}]}` — `default_model` is the chat default; `source` ∈ `user` (yours), `binding`, `provider`; `model`/`source` null when there's none · with `--kind K`: `{"provider", "kind", "model", "source"}` · setting: `{"provider", "kind", "model"}` · `--clear`: `{"provider", "kind", "cleared": bool, "model", "source"}` (the default now in effect) |
 | `models add` / `set` / `rm` | `{"provider", "model", "existed"}` / same / `{"provider", "removed"}` |
 | `models alias list` | `[{"alias", "model"}]` |
 | `models alias set` / `rm` | `{"provider", "alias", "model"}` / `{"provider", "removed"}` |

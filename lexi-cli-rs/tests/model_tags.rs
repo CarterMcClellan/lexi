@@ -100,6 +100,16 @@ async fn one_provider_serves_chat_and_images_by_tags() {
         "gpt-image-9"
     );
 
+    // Your default image model is used when none is named; chat keeps its own.
+    let o = go(h, &["models", "default", "openai", "gpt-image-9"]).await;
+    assert!(o.status.success(), "{}", stderr(&o));
+    let o = go(h, &["generate", "openai", "y", "--out", dir]).await;
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(
+        sent(&server, "/images/generations").await[2]["model"],
+        "gpt-image-9"
+    );
+
     // Asked for text, an image model is refused before any call. (Named
     // without --output, it would make images: its tags pick the API.)
     let o = go(
@@ -135,6 +145,12 @@ async fn one_provider_serves_chat_and_images_by_tags() {
         "{}",
         stderr(&o)
     );
+
+    // Chat keeps its default after the image default changed.
+    let o = go(h, &["respond", "openai", "--text", "hi"]).await;
+    assert!(o.status.success(), "{}", stderr(&o));
+    let chat = sent(&server, "/responses").await;
+    assert_eq!(chat.last().unwrap()["model"], chat[0]["model"]);
 }
 
 #[tokio::test]

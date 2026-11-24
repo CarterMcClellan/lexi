@@ -262,9 +262,20 @@ models hosted openai --table        # All models from the provider's API
 
 ### Set a Default Model
 
+Each provider has a default model for each kind of model it serves (chat,
+image-generation, embedding, …). A request that doesn't name a model uses the
+default for the kind of output it asks for: `respond` the chat default,
+`generate` the image default, `embed` the embedding default.
+
 ```bash
-models default anthropic claude-sonnet-4-5-20250929
+models default openai                              # the default for each kind
+models default anthropic claude-sonnet-4-5-20250929   # the chat default
+models default openai gpt-image-2                  # the image default (a model is the default for its own kind)
+models default openai --clear --kind image-generation   # back to the provider's default
 ```
+
+Defaults you set are kept in `providers/<provider>/default-model.yaml`; the
+rest come from the provider's template.
 
 ### Use Model Aliases
 

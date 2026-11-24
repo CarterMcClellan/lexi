@@ -440,11 +440,22 @@ pub enum ModelsCmd {
         #[arg(long)]
         cached: bool,
     },
-    /// Show a provider's default model, or set it.
+    /// Show a provider's default model for each kind, or set one.
+    ///
+    /// A model becomes the default for its own kind — chat, image-generation,
+    /// embedding, … (`models tags` shows a model's kind). Requests that don't
+    /// name a model use the default for the kind of output they ask for.
     Default {
         provider: String,
-        /// The model to make the default (must be configured).
+        /// The model to make the default for its kind.
         model: Option<String>,
+        /// Only this kind (chat, image-generation, embedding, …); with MODEL,
+        /// the model must be of this kind.
+        #[arg(long)]
+        kind: Option<String>,
+        /// Clear your default for --kind, so the provider's default applies.
+        #[arg(long, requires = "kind", conflicts_with = "model")]
+        clear: bool,
     },
     /// Manage a provider's model aliases.
     Alias {

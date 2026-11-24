@@ -193,9 +193,10 @@ impl ResolvedModel {
 
 /// Resolve which model a request uses and which binding serves it.
 ///
-/// - `model`: an alias or id; `None` picks the default model of the first
-///   binding whose API produces `output` (default `text`; for the catch-all
-///   binding: `default-model.yaml`, then its `default_model`).
+/// - `model`: an alias or id; `None` picks the default for the kind of model
+///   the first binding whose API produces `output` (default `text`) serves:
+///   your default for that kind (`models default`), else the binding's
+///   `default_model`, else (the catch-all binding) the provider's.
 /// - `output` (`text`, `image`, `vector`, …): what the request asks for. With
 ///   a named model and no `output`, the model's API decides (an image model
 ///   makes images); with both, a model whose API doesn't produce `output` is
@@ -231,25 +232,11 @@ pub fn resolve_model(
                     "provider {provider:?} has no API configured that produces {want}"
                 ))
             })?;
-            let catch_all = bindings.iter().position(|b| b.get("for").is_none());
-            let binding_default = bindings[idx]
-                .get("default_model")
-                .and_then(Value::as_str)
-                .map(String::from);
-            let m = if Some(idx) == catch_all {
-                config::default_model(provider)?
-                    .or(binding_default)
-                    .or_else(|| {
-                        pcfg.get("default_model")
-                            .and_then(Value::as_str)
-                            .map(String::from)
-                    })
-            } else {
-                binding_default
-            };
-            let m = m.ok_or_else(|| {
+            let kind = binding_kind(&defs, &bindings[idx]);
+            let mine = config::default_models(provider)?;
+            let (m, _) = kind_default(&pcfg, &bindings, idx, &kind, &mine).ok_or_else(|| {
                 HostError::Config(format!(
-                    "no {want} model (pass --model or set a default model)"
+                    "no default {kind} model for {provider} (pass --model, or set one with `lexi models default {provider} MODEL`)"
                 ))
             })?;
             (m, false)
@@ -386,6 +373,148 @@ impl ResolvedModel {
         }
         (errors, warnings)
     }
+}
+
+/// The kind of model a binding's API serves (`chat` when it can't be told).
+fn binding_kind(defs: &Map<String, Value>, binding: &Value) -> String {
+    binding["api"]
+        .as_str()
+        .and_then(|a| defs.get(a))
+        .map(lexi_core::api_kind)
+        .unwrap_or_else(|| "chat".into())
+}
+
+/// The default model of binding `idx`, which serves `kind`: yours for the
+/// kind (`mine`, from `config::default_models`), else the binding's
+/// `default_model`, else — the catch-all binding — the provider's. With where
+/// it came from: `user`, `binding` or `provider`.
+fn kind_default(
+    pcfg: &Value,
+    bindings: &[Value],
+    idx: usize,
+    kind: &str,
+    mine: &Map<String, Value>,
+) -> Option<(String, &'static str)> {
+    let s = |v: Option<&Value>| v.and_then(Value::as_str).map(String::from);
+    if let Some(m) = s(mine.get(kind)) {
+        return Some((m, "user"));
+    }
+    if let Some(m) = s(bindings[idx].get("default_model")) {
+        return Some((m, "binding"));
+    }
+    let catch_all = bindings.iter().position(|b| b.get("for").is_none());
+    if Some(idx) == catch_all {
+        return s(pcfg.get("default_model")).map(|m| (m, "provider"));
+    }
+    None
+}
+
+fn check_kind(kind: &str) -> Result<(), HostError> {
+    lexi_core::validate_tag(&format!("kind:{kind}")).map_err(HostError::Invalid)
+}
+
+/// The provider's default model for each kind:
+/// `{provider, default_model, defaults: [{kind, model, source}]}` — a row per
+/// kind its APIs serve (in binding order), then any other kind you set a
+/// default for; `default_model` is the chat default. `source` is `user`
+/// (yours, set with `models default`), `binding` (the API binding's
+/// `default_model`, usually from the provider's template) or `provider` (the
+/// provider's `default_model`); `model` and `source` are null when there's
+/// none. With `kind`, just that one: `{provider, kind, model, source}`.
+pub fn defaults(provider: &str, kind: Option<&str>) -> Result<Value, HostError> {
+    let rows = default_rows(provider)?;
+    if let Some(kind) = kind {
+        check_kind(kind)?;
+        let row = rows.into_iter().find(|r| r["kind"] == kind);
+        let field = |k: &str| row.as_ref().map(|r| r[k].clone()).unwrap_or(Value::Null);
+        return Ok(json!({
+            "provider": provider,
+            "kind": kind,
+            "model": field("model"),
+            "source": field("source"),
+        }));
+    }
+    let chat = rows
+        .iter()
+        .find(|r| r["kind"] == "chat")
+        .map(|r| r["model"].clone())
+        .unwrap_or(Value::Null);
+    Ok(json!({ "provider": provider, "default_model": chat, "defaults": rows }))
+}
+
+fn default_rows(provider: &str) -> Result<Vec<Value>, HostError> {
+    let pcfg = require_provider(provider)?;
+    let mine = config::default_models(provider)?;
+    let bindings = lexi_core::provider_bindings(&pcfg);
+    let row = |kind: &str, found: Option<(String, &'static str)>| match found {
+        Some((m, source)) => json!({ "kind": kind, "model": m, "source": source }),
+        None => json!({ "kind": kind, "model": null, "source": null }),
+    };
+    let mut rows: Vec<Value> = Vec::new();
+    if bindings.is_empty() {
+        let found = mine
+            .get("chat")
+            .and_then(Value::as_str)
+            .map(|m| (m.to_string(), "user"))
+            .or_else(|| {
+                pcfg.get("default_model")
+                    .and_then(Value::as_str)
+                    .map(|m| (m.to_string(), "provider"))
+            });
+        rows.push(row("chat", found));
+    } else {
+        let defs = binding_defs(&pcfg, None)?;
+        for (i, b) in bindings.iter().enumerate() {
+            let kind = binding_kind(&defs, b);
+            if rows.iter().all(|r| r["kind"] != kind.as_str()) {
+                rows.push(row(&kind, kind_default(&pcfg, &bindings, i, &kind, &mine)));
+            }
+        }
+    }
+    for (kind, m) in &mine {
+        if rows.iter().all(|r| r["kind"] != kind.as_str()) {
+            rows.push(row(kind, m.as_str().map(|m| (m.to_string(), "user"))));
+        }
+    }
+    Ok(rows)
+}
+
+/// Make `model` (an id or alias) your default for its kind — the kind its tags
+/// give it, as `models tags` shows. With `kind`, the model must be of that
+/// kind. The model must be one Lexi can use (configured, an alias, in the
+/// cached catalog, or recognized by a tag). `{provider, kind, model}`.
+pub fn set_default(provider: &str, model: &str, kind: Option<&str>) -> Result<Value, HostError> {
+    if let Some(k) = kind {
+        check_kind(k)?;
+    }
+    let r = resolve_model(provider, Some(model), None)?;
+    let model_kind = r.kind.clone().unwrap_or_else(|| "chat".into());
+    if let Some(k) = kind.filter(|k| *k != model_kind) {
+        return Err(HostError::Invalid(format!(
+            "{} is a {model_kind} model, not {k} (its kind comes from its tags: `lexi models tags {provider} {}`)",
+            r.model, r.model
+        )));
+    }
+    config::set_kind_default(provider, &model_kind, Some(&r.model))?;
+    Ok(json!({ "provider": provider, "kind": model_kind, "model": r.model }))
+}
+
+/// Clear your default for `kind`, so the provider's applies again.
+/// `{provider, kind, cleared, model, source}`: `cleared` is whether you had
+/// one; `model` / `source` the default now in effect (as `defaults`).
+pub fn clear_default(provider: &str, kind: &str) -> Result<Value, HostError> {
+    require_provider(provider)?;
+    check_kind(kind)?;
+    let had = config::default_models(provider)?.contains_key(kind);
+    config::set_kind_default(provider, kind, None)?;
+    let now = defaults(provider, Some(kind))?;
+    Ok(json!({
+        "provider": provider,
+        "kind": kind,
+        "cleared": had,
+        "model": now["model"],
+        "source": now["source"],
+    }))
 }
 
 /// A provider that defines its API inline (`request:` / `response:`, no `api`):

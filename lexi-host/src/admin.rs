@@ -99,7 +99,7 @@ pub fn create_provider(
     if let Some(key) = api_key {
         config::set_api_key(name, None, key)?;
     }
-    config::set_default_model(name, Some(default_model))
+    config::set_kind_default(name, "chat", Some(default_model))
 }
 
 fn mask(key: &str) -> String {
