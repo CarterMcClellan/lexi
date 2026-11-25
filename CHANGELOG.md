@@ -32,6 +32,7 @@ go under **Unreleased**; at release time that heading becomes the version
 - **New Lexi logo** for the app icon and the header.
 
 ### Fixes
+- **Chat shows formatted answers.** Headings, lists, tables, code blocks and links now display formatted instead of as plain Markdown text (the formatting libraries had been left out of the app). Links in answers open in your browser.
 - The **Show CLI Commands** panel at the bottom of the app is gone. It had shown nothing since the app stopped running the CLI behind the scenes.
 - The Providers tab's API key panel can save, show and remove keys again.
 - The Providers tab's **Show** button opens `providers-config.yaml` again.
