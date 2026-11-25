@@ -1281,7 +1281,7 @@ fn images_reveal(body: Value) -> Result<Value, String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::{percent_decode, query_param};
 
     #[test]
@@ -1436,7 +1436,7 @@ mod tests {
     /// provider is found, its settings listed, and a generation sends the
     /// chosen settings and saves the images to `images_dir`.
     /// Tests that point `$LEXI_HOME` somewhere take turns.
-    static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    pub(crate) static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
     #[tokio::test]
     async fn images_generate_against_a_mock_provider() {
@@ -1596,19 +1596,31 @@ mod tests {
             let Some(rest) = line.strip_prefix("    ") else {
                 continue;
             };
+            if rest.starts_with(' ') {
+                continue;
+            }
+            // `function f(`, `async function f(`, `const f =`, `let f =` — a
+            // repeated name either replaces the first or (const/let) stops
+            // the whole script with a SyntaxError.
             let rest = rest.strip_prefix("async ").unwrap_or(rest);
-            let Some(decl) = rest.strip_prefix("function ") else {
+            let Some(decl) = ["function ", "const ", "let "]
+                .iter()
+                .find_map(|kw| rest.strip_prefix(kw))
+            else {
                 continue;
             };
             let name: String = decl
                 .chars()
                 .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$')
                 .collect();
+            if name.is_empty() {
+                continue; // destructuring
+            }
             if let Some(first) = seen.insert(name.clone(), i + 1) {
                 dups.push(format!("{name} (lines {first} and {})", i + 1));
             }
         }
-        assert!(dups.is_empty(), "duplicate top-level functions: {dups:?}");
+        assert!(dups.is_empty(), "duplicate top-level names: {dups:?}");
     }
 
     #[test]

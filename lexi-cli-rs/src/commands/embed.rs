@@ -1,7 +1,5 @@
 //! `embed` — texts in, vectors out, via the provider's embedding binding.
 
-use std::io::Read;
-
 use serde_json::{Map, Value};
 
 use crate::coerce::{coerce_typed, parse_set_arg};
@@ -14,6 +12,8 @@ struct Plan {
     set_paths: Vec<(String, Value)>,
     unset_paths: Vec<String>,
     no_validate: bool,
+    /// Where `-` (texts from stdin) goes among `inputs`.
+    stdin_at: Option<usize>,
 }
 
 fn normalize(tok: &str) -> String {
@@ -58,11 +58,7 @@ fn parse(args: &[String], flag_specs: &[Value]) -> Result<Plan, String> {
                 step = 1;
             }
             "-" => {
-                let mut text = String::new();
-                std::io::stdin()
-                    .read_to_string(&mut text)
-                    .map_err(|e| format!("could not read stdin: {e}"))?;
-                plan.inputs.extend(lines(&text));
+                plan.stdin_at = Some(plan.inputs.len());
                 step = 1;
             }
             _ if !raw.starts_with('-') => {
@@ -122,10 +118,20 @@ pub(crate) async fn embed(io: &mut Io<'_>, provider: &str, args: &[String]) -> u
         Ok(r) => r.effective,
         Err(e) => return io.fail(e),
     };
-    let plan = match parse(&args, &lexi_core::cli_flags(&eff)) {
+    let mut plan = match parse(&args, &lexi_core::cli_flags(&eff)) {
         Ok(p) => p,
         Err(e) => return io.fail(e),
     };
+    if let Some(at) = plan.stdin_at {
+        match io.read_text("Text to embed: ") {
+            Ok(text) => {
+                let tail = plan.inputs.split_off(at);
+                plan.inputs.extend(lines(&text));
+                plan.inputs.extend(tail);
+            }
+            Err(e) => return io.fail(e),
+        }
+    }
     let req = lexi_host::EmbedRequest {
         inputs: plan.inputs.clone(),
         model: plan.model,

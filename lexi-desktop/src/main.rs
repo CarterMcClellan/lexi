@@ -8,6 +8,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod backend;
+mod console;
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -61,9 +62,42 @@ async fn api_stream(
     cancellable(request_id, backend::stream(body, on_event)).await
 }
 
+/// The CLI tab: run one `lexi` command line, streaming its events (see
+/// [`console`]) through `on_event`. Stop cancels it like any request.
+#[tauri::command]
+async fn cli_run(
+    line: String,
+    on_event: tauri::ipc::Channel<String>,
+    request_id: String,
+) -> Result<(), String> {
+    let emit = move |v: serde_json::Value| {
+        let _ = on_event.send(v.to_string());
+    };
+    let id = request_id.clone();
+    cancellable(Some(request_id), async move {
+        console::run(&line, &id, emit).await;
+        Ok(())
+    })
+    .await
+}
+
+/// The CLI tab: answer the question a running command asked (`None`: declined).
+#[tauri::command]
+fn cli_input(request_id: String, value: Option<String>) -> bool {
+    console::give_input(&request_id, value)
+}
+
+/// The CLI tab: the shell history, oldest first.
+#[tauri::command]
+fn cli_history() -> Vec<String> {
+    console::history()
+}
+
 /// Stop a running request (the Stop button); whether it was still running.
+/// A command waiting for an answer is answered "no" first, so it can stop.
 #[tauri::command]
 fn cancel_request(request_id: String) -> bool {
+    console::give_input(&request_id, None);
     let handle = running()
         .lock()
         .unwrap_or_else(|p| p.into_inner())
@@ -77,7 +111,14 @@ fn main() {
         eprintln!("warning: could not prepare the Lexi home: {e}");
     }
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![api, api_stream, cancel_request])
+        .invoke_handler(tauri::generate_handler![
+            api,
+            api_stream,
+            cancel_request,
+            cli_run,
+            cli_input,
+            cli_history
+        ])
         .run(tauri::generate_context!())
         .expect("error while running the Lexi desktop app");
 }

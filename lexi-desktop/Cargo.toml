@@ -13,6 +13,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 lexi-core = { path = "../lexi-core" }
 lexi-host = { path = "../lexi-host" }
+lexi-cli = { package = "lexi-cli-rs", path = "../lexi-cli-rs" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 futures-util = "0.3"

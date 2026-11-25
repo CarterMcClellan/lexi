@@ -157,6 +157,7 @@ The structured face other programs (and agents) drive:
   CLAUDE.md, getting-started.
 
 ### C9 — GUI CLI console
+*Done:* the desktop app's **CLI** tab (`lexi-desktop/src/console.rs`).
 - A "CLI" tab in the desktop app: a terminal-style prompt that runs `lexi`
   commands **in-process** through the CLI library (no subprocess, no second
   binary to bundle). Streams output live; shares `~/.lexi-cli/history` and

@@ -21,8 +21,15 @@ use std::ffi::OsString;
 use clap::Parser;
 
 pub use cli::Cli;
+pub use output::InputFn;
 pub use output::{Io, RunOptions, Writer, EXIT_FAILURE, EXIT_OK, EXIT_USAGE};
 pub use shell::{execute_line, LineOutcome};
+
+/// The shell history (`~/.lexi-cli/history`), oldest first — what ↑ walks
+/// through in the terminal shell and the desktop app's CLI console.
+pub fn history_entries() -> Vec<String> {
+    history::load()
+}
 
 /// Parse `args` (argv, including the program name) and run the command,
 /// writing to `out`/`err`. With no command, runs the interactive shell.

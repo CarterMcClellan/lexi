@@ -1574,6 +1574,78 @@
       display: flex;
       flex-direction: column;
     }
+    /* --- CLI tab: a terminal-style console --- */
+    #tab-cli.active {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .cli-console {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--input-bg);
+      overflow: hidden;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 0.86rem;
+      line-height: 1.45;
+    }
+    .cli-output {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      padding: 10px 14px;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+      user-select: text;
+      outline: none;
+    }
+    .cli-block { margin-bottom: 8px; }
+    .cli-echo { color: var(--accent); }
+    .cli-echo.failed::after { content: '  ✗'; color: var(--danger); }
+    .cli-err { color: var(--warning); }
+    .cli-err.error { color: var(--danger); }
+    .cli-note { color: var(--muted); }
+    .cli-ask { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
+    .cli-ask input {
+      flex: 0 1 320px;
+      font: inherit;
+      padding: 3px 8px;
+    }
+    .cli-ask .hint { color: var(--muted); font-size: 0.78rem; }
+    .cli-inputrow {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px 10px 8px 14px;
+      border-top: 1px solid var(--border);
+    }
+    .cli-prompt { color: var(--accent); padding-top: 4px; white-space: nowrap; }
+    #cliInput {
+      flex: 1 1 auto;
+      width: auto;
+      min-width: 0;
+      min-height: 0;
+      height: 1.9em;
+      line-height: 1.45;
+      resize: none;
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      padding: 4px 0;
+      outline: none;
+      max-height: 40vh;
+      overflow-y: auto;
+    }
+    .cli-inputrow .btn { padding: 4px 10px; font-size: 0.8rem; }
     .img-settings { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
     .img-settings:empty { display: none; }
     .img-settings .respond-controls { margin-top: 0; gap: 8px 14px; }
@@ -2074,6 +2146,7 @@
         <div class="tab" data-tab="providers">Providers</div>
         <div class="tab" data-tab="models">Models</div>
         <div class="tab" data-tab="apis">APIs</div>
+        <div class="tab" data-tab="cli">CLI</div>
         <div class="tab" data-tab="configure">Configure</div>
       </div>
     <div class="content" id="tab-prompts">
@@ -2292,6 +2365,18 @@
           </div>
         </div>
         <div class="img-gallery" id="imgGallery"></div>
+      </div>
+    </div>
+
+    <div class="content" id="tab-cli">
+      <div class="cli-console">
+        <div class="cli-output" id="cliOutput" tabindex="-1" aria-live="polite"></div>
+        <div class="cli-inputrow">
+          <span class="cli-prompt" id="cliPrompt">lexi&gt;</span>
+          <textarea id="cliInput" rows="1" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="lexi command" placeholder="Type a lexi command or paste one (try: help)"></textarea>
+          <button class="btn btn-danger" id="cliStopBtn" type="button" data-cmd="none" data-tip="Stop the running command (Ctrl-C)" hidden>Stop</button>
+          <button class="btn btn-ghost" id="cliClearBtn" type="button" data-cmd="none" data-tip="Clear the screen (⌘K); your history is kept">Clear</button>
+        </div>
       </div>
     </div>
 
@@ -4208,6 +4293,15 @@
             setStatus(`Copied the ${label.toLowerCase()}.`, 'success');
           });
           head.appendChild(copy);
+          if (label === 'Command line') {
+            const run = document.createElement('button');
+            run.type = 'button';
+            run.className = 'tip-copy';
+            run.textContent = '▶ CLI';
+            run.setAttribute('aria-label', 'Open in the CLI tab');
+            run.addEventListener('click', () => { hide(); openInCli(text); });
+            head.insertBefore(run, copy);
+          }
           const pre = document.createElement('pre');
           pre.textContent = text;
           box.append(head, pre);
@@ -6393,6 +6487,272 @@
     fetchProvidersList();
     fetchConfig();
 
+    // --- CLI tab: run lexi commands in the app ---
+    // Each line runs in-process through the CLI library, exactly as in the
+    // terminal shell (aliases, #N, the shared history); output streams in as
+    // it's written. A pasted `lexi …` command (a tooltip's ">_") runs as is.
+    const cliOutputEl = document.getElementById('cliOutput');
+    const cliInputEl = document.getElementById('cliInput');
+    const cliPromptEl = document.getElementById('cliPrompt');
+    const cliStopBtn = document.getElementById('cliStopBtn');
+    const cliClearBtn = document.getElementById('cliClearBtn');
+    let cliPromptStr = 'lexi>';
+    let cliRunningId = null;     // the request id of the command running
+    let cliStopRest = false;     // Stop also drops the lines still queued
+    let cliHistory = null;       // loaded on first use; ↑ / ↓ walk it
+    let cliHistPos = 0;
+    let cliDraft = '';
+    let cliWelcomed = false;
+    let cliSeq = 0;
+
+    function cliScroll() { cliOutputEl.scrollTop = cliOutputEl.scrollHeight; }
+    function cliPrint(cls, text) {
+      const div = document.createElement('div');
+      div.className = cls;
+      div.textContent = text;
+      cliOutputEl.appendChild(div);
+      cliScroll();
+      return div;
+    }
+
+    async function cliActivate() {
+      try {
+        const cfg = await api('/api/config', { method: 'GET' });
+        cliPromptStr = `${cfg.prompt || 'lexi'}${cfg.prompt_delimiter || '>'}`;
+      } catch {}
+      cliPromptEl.textContent = cliPromptStr;
+      cliResize();
+      if (!cliWelcomed) {
+        cliWelcomed = true;
+        cliPrint('cli-note', "Run lexi commands here, just as in a terminal: try help, or paste a command from a tooltip's >_ panel.\n↑ / ↓ your history · Shift-Return a new line · Ctrl-C stops · ⌘K clears the screen");
+      }
+      cliInputEl.focus();
+    }
+
+    // Commands in pasted or typed text: one per line, except that a newline
+    // inside quotes belongs to the command. A leading `$ `, the prompt, or
+    // `lexi` is dropped; blank lines and `# comments` are skipped.
+    function cliSplit(text) {
+      const cmds = [];
+      let cur = '';
+      let quote = null;
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        if (quote) {
+          if (c === '\\' && quote === '"' && i + 1 < text.length) { cur += c + text[++i]; continue; }
+          if (c === quote) quote = null;
+          cur += c;
+        } else if (c === '\\' && i + 1 < text.length) {
+          if (text[i + 1] === '\n') { i++; cur += ' '; } else { cur += c + text[++i]; }
+        } else if (c === "'" || c === '"') {
+          quote = c;
+          cur += c;
+        } else if (c === '\n') {
+          cmds.push(cur);
+          cur = '';
+        } else {
+          cur += c;
+        }
+      }
+      cmds.push(cur);
+      const promptRe = new RegExp(`^${cliPromptStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`);
+      return cmds
+        .map((c) => c.trim().replace(/^\$\s+/, '').replace(promptRe, '').replace(/^lexi(\s+|$)/, '').trim())
+        .filter((c) => c && !/^#(\s|$)/.test(c));
+    }
+
+    const cliIsPython = (c) => /^(import\s+lexi|from\s+lexi\b|lexi\.\w|print\(|for\s+\w+\s+in\s+lexi\.|\s*print\()/.test(c);
+
+    async function cliSubmit() {
+      if (cliRunningId) return;
+      const text = cliInputEl.value;
+      cliInputEl.value = '';
+      cliResize();
+      cliHistPos = cliHistory ? cliHistory.length : 0;
+      cliDraft = '';
+      const cmds = cliSplit(text);
+      if (!cmds.length) { cliPrint('cli-echo', `${cliPromptStr} `); return; }
+      cliStopRest = false;
+      let saidPython = false;
+      for (const cmd of cmds) {
+        if (cliStopRest) break;
+        if (cliIsPython(cmd)) {
+          if (!saidPython) {
+            cliPrint('cli-err', "That's Python (the lexi library), not a command line. Copy the Command line version from the tooltip instead.");
+            saidPython = true;
+          }
+          continue;
+        }
+        if (/^(clear|cls)$/.test(cmd)) { cliClear(); continue; }
+        await cliRun(cmd);
+      }
+      cliInputEl.focus();
+    }
+
+    async function cliRun(line) {
+      const block = document.createElement('div');
+      block.className = 'cli-block';
+      cliOutputEl.appendChild(block);
+      const echo = document.createElement('div');
+      echo.className = 'cli-echo';
+      echo.textContent = `${cliPromptStr} ${line}`;
+      block.appendChild(echo);
+      let outEl = null;
+      let errEl = null;
+      let outText = '';
+      const add = (kind, text) => {
+        if (kind === 'out') {
+          if (!outEl || block.lastChild !== outEl) { outEl = document.createElement('div'); block.appendChild(outEl); }
+          outText += text;
+          outEl.textContent += text;
+        } else {
+          if (!errEl || block.lastChild !== errEl) { errEl = document.createElement('div'); errEl.className = 'cli-err'; block.appendChild(errEl); }
+          errEl.textContent += text;
+          if (/(^|\n)error:/.test(errEl.textContent)) errEl.classList.add('error');
+        }
+        cliScroll();
+      };
+      const requestId = `cli${Date.now()}-${++cliSeq}`;
+      cliRunningId = requestId;
+      cliStopBtn.hidden = false;
+      let code = null;
+      const channel = new window.__TAURI__.core.Channel();
+      channel.onmessage = (msg) => {
+        let ev;
+        try { ev = JSON.parse(msg); } catch { return; }
+        if (ev.type === 'out' || ev.type === 'err') add(ev.type, ev.text);
+        else if (ev.type === 'input') cliAsk(block, requestId, ev);
+        else if (ev.type === 'done') {
+          code = ev.code;
+          if (ev.exit) add('err', 'exit and quit leave the terminal shell; here, just switch tabs.\n');
+        }
+      };
+      try {
+        await window.__TAURI__.core.invoke('cli_run', { line, onEvent: channel, requestId });
+      } catch (e) {
+        const msg = (e && e.message) || String(e);
+        if (msg === 'stopped') { add('err', '^C (stopped)\n'); code = 130; }
+        else { add('err', `error: ${msg}\n`); code = 1; }
+      }
+      block.querySelectorAll('.cli-ask').forEach((row) => row.remove());
+      // `--json` results, pretty-printed.
+      if (outEl && /(^|\s)--json(\s|$)/.test(line)) {
+        const pretty = outText.split('\n').filter((l) => l.trim()).map((l) => {
+          try { return JSON.stringify(JSON.parse(l), null, 2); } catch { return l; }
+        });
+        outEl.textContent = pretty.join('\n') + '\n';
+      }
+      if (code) echo.classList.add('failed');
+      if (cliHistory) cliHistory.push(line);
+      cliHistPos = cliHistory ? cliHistory.length : 0;
+      cliRunningId = null;
+      cliStopBtn.hidden = true;
+      cliScroll();
+    }
+
+    // A command asks for something (an API key): a field in the output.
+    // Return sends it; Esc declines. A secret is never shown or kept.
+    function cliAsk(block, requestId, ev) {
+      const row = document.createElement('div');
+      row.className = 'cli-ask';
+      const label = document.createElement('span');
+      label.textContent = ev.prompt.trim();
+      const input = document.createElement('input');
+      input.type = ev.secret ? 'password' : 'text';
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      const hint = document.createElement('span');
+      hint.className = 'hint';
+      hint.textContent = 'Return to send · Esc to cancel';
+      row.append(label, input, hint);
+      block.appendChild(row);
+      cliScroll();
+      input.focus();
+      const answer = (value) => {
+        const shown = value === null ? '(cancelled)' : ev.secret ? '•'.repeat(Math.min(value.length, 12)) : value;
+        const done = document.createElement('div');
+        done.className = 'cli-note';
+        done.textContent = `${ev.prompt.trim()} ${shown}`;
+        row.replaceWith(done);
+        window.__TAURI__.core.invoke('cli_input', { requestId, value }).catch(() => {});
+        cliInputEl.focus();
+      };
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); answer(input.value); }
+        else if (e.key === 'Escape') { e.preventDefault(); answer(null); }
+      });
+    }
+
+    function cliStop() {
+      if (!cliRunningId) return;
+      cliStopRest = true;
+      window.__TAURI__.core.invoke('cancel_request', { requestId: cliRunningId }).catch(() => {});
+    }
+
+    function cliClear() {
+      cliOutputEl.innerHTML = '';
+      cliInputEl.focus();
+    }
+
+    function cliResize() {
+      cliInputEl.style.height = 'auto';
+      cliInputEl.style.height = `${cliInputEl.scrollHeight}px`;
+    }
+
+    async function cliLoadHistory() {
+      if (cliHistory) return;
+      try { cliHistory = await window.__TAURI__.core.invoke('cli_history'); } catch { cliHistory = []; }
+      cliHistPos = cliHistory.length;
+    }
+
+    async function cliWalkHistory(step) {
+      await cliLoadHistory();
+      if (!cliHistory.length) return;
+      if (cliHistPos === cliHistory.length) cliDraft = cliInputEl.value;
+      const next = Math.max(0, Math.min(cliHistory.length, cliHistPos + step));
+      if (next === cliHistPos) return;
+      cliHistPos = next;
+      cliInputEl.value = next === cliHistory.length ? cliDraft : cliHistory[next];
+      cliResize();
+      cliInputEl.setSelectionRange(cliInputEl.value.length, cliInputEl.value.length);
+    }
+
+    // Put a command (from a tooltip's ▶) in the CLI tab's prompt, to run with Return.
+    function openInCli(text) {
+      document.querySelector('.tab[data-tab="cli"]').click();
+      cliInputEl.value = cliSplit(text).join('\n');
+      cliResize();
+      cliInputEl.focus();
+      cliInputEl.setSelectionRange(cliInputEl.value.length, cliInputEl.value.length);
+    }
+
+    cliInputEl.addEventListener('input', cliResize);
+    cliInputEl.addEventListener('keydown', (e) => {
+      const v = cliInputEl.value;
+      const atStart = cliInputEl.selectionStart === cliInputEl.selectionEnd && !v.slice(0, cliInputEl.selectionStart).includes('\n');
+      const atEnd = cliInputEl.selectionStart === cliInputEl.selectionEnd && !v.slice(cliInputEl.selectionEnd).includes('\n');
+      if (e.key === 'Enter' && !e.shiftKey && !e.altKey) { e.preventDefault(); cliSubmit(); }
+      else if (e.key === 'ArrowUp' && atStart) { e.preventDefault(); cliWalkHistory(-1); }
+      else if (e.key === 'ArrowDown' && atEnd) { e.preventDefault(); cliWalkHistory(1); }
+      else if (e.key === 'c' && e.ctrlKey) {
+        e.preventDefault();
+        if (cliRunningId) cliStop();
+        else { if (v) cliPrint('cli-echo', `${cliPromptStr} ${v}^C`); cliInputEl.value = ''; cliResize(); }
+      } else if (e.key === 'k' && e.metaKey) { e.preventDefault(); cliClear(); }
+    });
+    document.getElementById('tab-cli').addEventListener('keydown', (e) => {
+      if (e.target === cliInputEl) return;
+      if (e.key === 'c' && e.ctrlKey && cliRunningId) { e.preventDefault(); cliStop(); }
+      if (e.key === 'k' && e.metaKey) { e.preventDefault(); cliClear(); }
+    });
+    // A click in the output (not a text selection) goes back to the prompt.
+    cliOutputEl.addEventListener('mouseup', (e) => {
+      if (e.target.closest('.cli-ask') || String(window.getSelection())) return;
+      cliInputEl.focus();
+    });
+    cliStopBtn.addEventListener('click', cliStop);
+    cliClearBtn.addEventListener('click', cliClear);
+
     const tabs = document.querySelectorAll('.tab');
     const contents = document.querySelectorAll('.content');
     tabs.forEach((tab) => {
@@ -6421,6 +6781,9 @@
         if (target === 'configure') {
           fetchConfig();
           loadThemes();   // picks up edits to themes.json
+        }
+        if (target === 'cli') {
+          cliActivate();
         }
       });
     });
