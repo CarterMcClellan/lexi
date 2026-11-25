@@ -14,14 +14,25 @@ stable Rust:
 ```bash
 ./install.sh                         # = cargo install --path lexi-cli-rs
 
-lexi                                 # interactive shell
-lexi providers list                  # or one-off commands
+lexi providers api-key set anthropic # give Lexi a key (asked for, not echoed)
+lexi providers status anthropic      # check it works (lists models; nothing billed)
 lexi respond anthropic "Explain quicksort in one paragraph"
+lexi                                 # or the interactive shell
 ```
 
 On first run, Lexi seeds `~/.lexi-cli/` (or `$LEXI_HOME`) with provider configs,
 model metadata, and default command aliases. It only fills in missing files;
 your edits are never overwritten.
+
+### API keys
+
+Each provider looks for its key in order: an environment variable
+(`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `NVIDIA_API_KEY`), then a key file Lexi
+saved. `lexi providers api-key set <provider>` (or the desktop app's Setup
+Wizard) saves the key in an owner-only file under `~/.lexi-cli/providers/<provider>/`,
+never in `providers-config.yaml`; `providers api-key show <provider>` lists
+where Lexi looked and which key is used. The CLI, the desktop app and the
+Python library all read the same places.
 
 ## Core Commands
 
@@ -39,7 +50,7 @@ and add `--json` to any command for machine-readable output ([spec](docs/spec/cl
 | `models list\|hosted\|add\|set\|rm\|default\|alias` | Manage models for a provider |
 | `api list\|show\|create\|edit\|save\|rm\|validate\|preview` | Manage API definitions |
 | `alias list\|add\|rm\|reset` | Manage command aliases |
-| `config list\|set\|rm` | View or update settings |
+| `config list\|set\|rm` | View or update settings (e.g. `request_timeout`) |
 | `help`, `history`, `sh`, `version`, `exit` | General commands |
 
 ### Examples
@@ -68,6 +79,9 @@ models hosted nvidia --table
 models default anthropic claude-sonnet-4-5-20250929
 models default openai gpt-image-2
 
+# Give one slow request 15 minutes (the default limit is request_timeout, 5 minutes)
+respond openai "Write a detailed design doc for …" --timeout 900
+
 # Check a provider's status and API key validity
 providers status openai
 
@@ -83,7 +97,7 @@ api create my-api --from chat-completions
 | Shortcut | Action |
 |---|---|
 | `?` | Help |
-| `!<cmd>` | Run shell command |
+| `!<cmd>` | Run shell command (terminal only, not the desktop app's CLI tab) |
 | `#<N>` | Re-run history entry |
 | Arrow keys | Navigate command history |
 
@@ -95,50 +109,59 @@ All persistent configuration lives in `~/.lexi-cli/`:
 ~/.lexi-cli/
 ├── apis/                              # Custom API definitions (shipped ones are built in)
 ├── providers/
-│   ├── providers-config.yaml          # Provider URLs, API key refs, API bindings
+│   ├── providers-config.yaml          # Providers: template, where each key comes from, overrides
 │   ├── anthropic/
+│   │   ├── api-key                    # The key Lexi saved (owner-only), if any
 │   │   ├── configured-models.yaml     # Model metadata
-│   │   ├── default-model.yaml         # Default model selection
-│   │   └── model-aliases.yaml         # Shorthand aliases (e.g., "sonnet")
+│   │   ├── default-model.yaml         # Your default model for each kind (chat, image, …)
+│   │   ├── model-aliases.yaml         # Shorthand aliases (e.g., "sonnet")
+│   │   ├── model-tags.yaml            # Your model tags
+│   │   └── catalog.json               # Cached list of the provider's models
 │   ├── openai/
 │   │   └── ...
 │   └── nvidia/
 │       └── ...
 ├── prompts/                           # Saved prompts as JSON files
 ├── aliases.json                       # Command aliases
-├── history                            # Shell history
-└── config.json                        # CLI settings
+├── history                            # Shell history (shared with the app's CLI tab)
+├── themes.json                        # Desktop app themes
+└── config.json                        # Settings (request_timeout, images_dir, theme, …)
 ```
 
 ### API Definitions
 
-Each LLM API style (Chat Completions, Messages, Responses, Image Generations) is defined in a standalone YAML file. The shipped definitions are built into the binary (`lexi api list`, `lexi api show <name>`); custom ones live in `~/.lexi-cli/apis/` (`lexi api create mine --from messages`). An API definition specifies:
+Each LLM API style (Chat Completions, Messages, Responses, Image Generations, Embeddings, NVIDIA's image API) is defined in a standalone YAML file. The shipped definitions are built into the binary (`lexi api list`, `lexi api show <name>`); custom ones live in `~/.lexi-cli/apis/` (`lexi api create mine --from messages`). An API definition specifies:
 
 - **`auth`** — Header name, value prefix, and any extra headers
 - **`request`** — HTTP method, path, body template with `{{model}}`/`{{role}}`/`{{prompt}}` variables, typed parameters with ranges and defaults, and optional tools config
 - **`response`** — `text_path` for extracting response text, plus `metadata` paths for token counts, model, and stop reason
 
-Providers reference an API definition by name:
+The three shipped providers build on templates that come with Lexi (their URL,
+key variable, the APIs they offer and which models each API serves), so
+`providers-config.yaml` starts out short; anything you add to an entry wins:
 
 ```yaml
 providers:
   openai:
-    url: https://api.openai.com/v1
-    api_key: ${OPENAI_API_KEY}
-    api: responses
-
+    template: openai       # Responses for chat, Images, Embeddings
   anthropic:
-    url: https://api.anthropic.com/v1
-    api_key: ${ANTHROPIC_API_KEY}
-    api: messages
-
+    template: anthropic    # Messages
   nvidia:
-    url: https://integrate.api.nvidia.com/v1
-    api_key: ${NVIDIA_API_KEY}
-    api: chat-completions
+    template: nvidia       # Chat Completions, Embeddings, NVIDIA's image API
 ```
 
-Adding a new provider that uses an existing API style requires only a new entry in `providers-config.yaml` (or `lexi providers add`). Adding a new API style requires only a new YAML file in `apis/` — no code changes needed.
+A provider of your own names its URL, the API it speaks and where its key comes
+from:
+
+```yaml
+  mine:
+    url: https://api.example.com/v1
+    api: chat-completions
+    api_key: [{env: MINE_API_KEY}, {file: providers/mine/api-key}]
+    default_model: some-model
+```
+
+Adding a new provider that uses an existing API style requires only a new entry in `providers-config.yaml` (or `lexi providers add`). Adding a new API style requires only a new YAML file in `apis/` — no code changes needed. See [docs/provider-model-design.md](docs/provider-model-design.md).
 
 Providers can also include inline `auth`, `request`, or `response` overrides that are deep-merged on top of the referenced API definition.
 
@@ -146,10 +169,20 @@ Providers can also include inline `auth`, `request`, or `response` overrides tha
 
 `lexi-desktop` is a native [Tauri](https://tauri.app) app — a thin webview shell
 over the Rust `lexi-host` runtime and `lexi-core` engine. No Node, no Python, no
-localhost server; a native build is ~4 MB. It reuses the same `~/.lexi-cli/`
-config as the CLI, and every feature (multi-provider chat, buffered + streaming,
-and the full admin surface: providers, models, prompts, config, API definitions)
-is served in-process by `lexi-host`.
+localhost server. It reuses the same `~/.lexi-cli/` config as the CLI, and
+everything is served in-process by `lexi-host`:
+
+- **Chat** — one prompt to several providers at once, answers side by side
+  (formatted Markdown), streamed or not; Stop cancels.
+- **Images** — generate with several providers at once, each with its own model
+  and settings; images are saved to a folder you choose.
+- **Providers, Models, Prompts, APIs, Configure** — the full admin surface:
+  keys (with a step-by-step Setup Wizard), models and a default per kind,
+  saved prompts, API definitions, settings and themes.
+- **CLI** — run `lexi` commands inside the app, with your history.
+- **The command for any action** — hover a button and click **>_** to see the
+  `lexi` command and the Python that do the same thing (Copy, or **▶ CLI** to
+  run it in the CLI tab).
 
 ```bash
 cargo install tauri-cli --version '^2'   # once
@@ -172,6 +205,7 @@ print(lexi.respond("openai", "Say hello")["text"])
 for ev in lexi.stream("anthropic", "Count to five"):
     if ev["event"] == "delta":
         print(ev["text"], end="")
+lexi.generate("openai", "a lighthouse at dusk", out_dir="images", timeout=600)
 ```
 
 It also manages that config — `lexi.providers`, `lexi.models`, `lexi.prompts`,
