@@ -16,11 +16,13 @@ the global `--json` flag (machine-readable output; see
 
 Send a prompt to a provider; get back text, images, or both.
 
-respond <provider> [TEXT…|-] [--prompt NAME] [--model M] [--output KIND] [--out DIR] [--role R] [--stream] [--background [--detach]] [--image URL|PATH]... [<schema flags>] [--set path=value]... [--unset path]... [--tool preset[,preset]]... [--params FILE] [--cite] [--raw|-r] [--verbose|-v] [--no-validate]
+respond <provider> [TEXT…|-] [--prompt NAME] [--model M] [--output KIND] [--out DIR] [--role R] [--stream] [--background [--detach]] [--image URL|PATH]... [<schema flags>] [--set path=value]... [--unset path]... [--tool preset[,preset]]... [--params FILE] [--cite] [--raw|-r] [--verbose|-v] [--no-validate] [--timeout SECS]
 
 The words are the prompt (`-` reads stdin); with none, the saved prompt --prompt NAME, else the active one. The model's tags pick the API; --output image picks the provider's image API and default image model. Images are saved to --out (default: here), never overwriting a file.
 
 Schema flags (e.g. --temperature, --size) come from the selected API's definition: see `lexi api show <api>` (the cli= entries).
+
+--timeout SECS sets this request's time limit (0 = none) instead of request_timeout in config.json: the whole wait, or with --stream the longest silence.
 
 ```
 lexi respond <PROVIDER> [ARGS]...
@@ -43,6 +45,7 @@ lexi generate [OPTIONS] <PROVIDER> <PROMPT>
 - `<PROMPT>` — The image prompt
 - `--model` — Override the provider's default model
 - `--out` — Directory to write images into
+- `--timeout` — This request's time limit in seconds (0 = none), instead of request_timeout in config.json
 
 ## `embed`
 
@@ -51,11 +54,12 @@ lexi generate [OPTIONS] <PROVIDER> <PROMPT>
 Embed texts as vectors (one per text) with a provider's embedding model.
 
 embed <provider> TEXT... [--file FILE] [-] [--model M] [<schema flags>]
-[--set path=value]... [--unset path]... [--no-validate]
+[--set path=value]... [--unset path]... [--no-validate] [--timeout SECS]
 
 Each argument is one text; --file adds one text per line, `-` reads
 lines from stdin. Schema flags (e.g. --dimensions, --input-type) come
 from the embedding API's definition. Use --json for the vectors.
+--timeout SECS sets this request's time limit (0 = none).
 
 ```
 lexi embed <PROVIDER> [ARGS]...

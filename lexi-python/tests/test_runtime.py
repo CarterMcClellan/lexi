@@ -256,3 +256,25 @@ def test_named_model_picks_its_output(mock, tmp_path):
     assert lexi.models.resolve("oa", "gpt-image-9")["api"] == "image-generations"
     with pytest.raises(lexi.LexiError, match="doesn't produce text"):
         lexi.models.resolve("oa", "gpt-image-9", output="text")
+
+
+def test_timeout_limits_one_request(mock):
+    import time
+
+    def slow(_body):
+        time.sleep(2)
+        return 200, "application/json", json.dumps(RESPONSE).encode()
+
+    mock.routes[("POST", "/responses")] = slow
+    started = time.monotonic()
+    with pytest.raises(lexi.LexiError, match="within 1 seconds.*timeout given for this request"):
+        lexi.respond("p", "hi", timeout=1)
+    assert time.monotonic() - started < 1.9
+    with pytest.raises(lexi.LexiError, match="sent nothing for 1 seconds"):
+        list(lexi.stream("p", "hi", timeout=1))
+    # 0 means no limit for this request; config.json is left alone.
+    assert lexi.respond("p", "hi", timeout=0)["text"]
+    cfg = mock.home / "config.json"
+    assert not cfg.exists() or "request_timeout" not in cfg.read_text()
+    with pytest.raises(ValueError, match="whole number of seconds"):
+        lexi.respond("p", "hi", timeout=-1)

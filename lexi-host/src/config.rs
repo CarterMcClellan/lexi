@@ -1023,11 +1023,39 @@ fn timeout_secs(v: &Value) -> Option<u64> {
         .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
 }
 
-/// How long a provider request may wait: config.json's `request_timeout`
-/// in seconds (default [`DEFAULT_REQUEST_TIMEOUT`]; 0 = no limit). A
-/// buffered request must finish within it; a streamed one may run as long as
-/// it keeps sending, but stops after that long with nothing received.
+tokio::task_local! {
+    /// The time limit set for one operation by [`with_request_timeout`].
+    static TIMEOUT_OVERRIDE: Option<std::time::Duration>;
+}
+
+/// Run `fut` with its own time limit for provider requests: `secs` seconds
+/// (0 = no limit) instead of config.json's `request_timeout`, meaning the
+/// same thing (a buffered request's whole wait, a stream's longest silence).
+/// Every request `fut` makes is covered, including a background job's polls.
+/// The CLI's `--timeout` and Python's `timeout=`.
+pub async fn with_request_timeout<F: std::future::Future>(secs: u64, fut: F) -> F::Output {
+    let limit = (secs > 0).then(|| std::time::Duration::from_secs(secs));
+    TIMEOUT_OVERRIDE.scope(limit, fut).await
+}
+
+/// Where the time limit in force comes from, for messages.
+pub(crate) fn timeout_source() -> &'static str {
+    if TIMEOUT_OVERRIDE.try_with(|_| ()).is_ok() {
+        "the timeout given for this request"
+    } else {
+        "request_timeout in config.json"
+    }
+}
+
+/// How long a provider request may wait: the limit [`with_request_timeout`]
+/// set, else config.json's `request_timeout` in seconds (default
+/// [`DEFAULT_REQUEST_TIMEOUT`]; 0 = no limit). A buffered request must finish
+/// within it; a streamed one may run as long as it keeps sending, but stops
+/// after that long with nothing received.
 pub(crate) fn request_timeout() -> Option<std::time::Duration> {
+    if let Ok(limit) = TIMEOUT_OVERRIDE.try_with(|l| *l) {
+        return limit;
+    }
     let secs = load_config()
         .ok()
         .and_then(|c| c.get("request_timeout").and_then(timeout_secs))

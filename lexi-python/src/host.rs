@@ -105,6 +105,16 @@ struct ChatOpts {
     output: Option<String>,
     out_dir: Option<String>,
     inputs: Vec<String>,
+    /// This operation's time limit in seconds (0 = none).
+    timeout: Option<u64>,
+}
+
+/// Run `fut` with `timeout` as its time limit for provider requests, if given.
+async fn timed<F: Future>(timeout: Option<u64>, fut: F) -> F::Output {
+    match timeout {
+        Some(secs) => lexi_host::with_request_timeout(secs, fut).await,
+        None => fut.await,
+    }
 }
 
 /// `set` as `{path: value}` or `[(path, value), …]`.
@@ -203,11 +213,14 @@ fn _respond<'py>(
     let chat = prepare(provider, &opts, mode)?;
     let (cite, raw) = (opts.cite, opts.raw);
     let out_dir = PathBuf::from(opts.out_dir.as_deref().unwrap_or("."));
-    let out = block_on(py, async move {
-        let res = lexi_host::run_chat(&chat, |_| {}).await?;
-        let saved = lexi_host::generate::save_artifacts(&chat, &res, &out_dir).await?;
-        Ok(chat.result_value(&res, cite, raw, &saved))
-    })?;
+    let out = block_on(
+        py,
+        timed(opts.timeout, async move {
+            let res = lexi_host::run_chat(&chat, |_| {}).await?;
+            let saved = lexi_host::generate::save_artifacts(&chat, &res, &out_dir).await?;
+            Ok(chat.result_value(&res, cite, raw, &saved))
+        }),
+    )?;
     to_py(py, &out)
 }
 
@@ -323,7 +336,8 @@ fn _stream(provider: &str, opts: &Bound<'_, PyAny>) -> PyResult<ChatStream> {
     let (cite, raw) = (opts.cite, opts.raw);
     let out_dir = PathBuf::from(opts.out_dir.as_deref().unwrap_or("."));
     let (tx, rx) = mpsc::channel();
-    let task = runtime().spawn(async move {
+    let timeout = opts.timeout;
+    let task = runtime().spawn(timed(timeout, async move {
         let res = lexi_host::run_chat(&chat, |ev| {
             let _ = tx.send(match ev {
                 StreamEvent::Delta(t) => Event::Delta(t.to_string()),
@@ -350,7 +364,7 @@ fn _stream(provider: &str, opts: &Bound<'_, PyAny>) -> PyResult<ChatStream> {
                 let _ = tx.send(Event::Failed(e.to_string()));
             }
         }
-    });
+    }));
     Ok(ChatStream {
         provider: provider.to_string(),
         rx: Mutex::new(Some(rx)),
@@ -413,7 +427,13 @@ fn _embed<'py>(
         unset_paths: o.unset.clone(),
         skip_validation: !o.validate.unwrap_or(true),
     };
-    let out = block_on(py, async move { lexi_host::embed(&provider, &req).await })?;
+    let out = block_on(
+        py,
+        timed(
+            o.timeout,
+            async move { lexi_host::embed(&provider, &req).await },
+        ),
+    )?;
     to_py(py, &out)
 }
 

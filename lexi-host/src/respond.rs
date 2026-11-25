@@ -143,8 +143,9 @@ pub(crate) async fn within_limit<T>(
         None => fut.await,
         Some(limit) => tokio::time::timeout(limit, fut).await.unwrap_or_else(|_| {
             Err(HostError::RequestTimeout(format!(
-                "no answer from the provider within {} seconds, so Lexi stopped waiting (request_timeout in config.json; 0 = no limit)",
-                limit.as_secs()
+                "no answer from the provider within {} seconds, so Lexi stopped waiting ({}; 0 = no limit)",
+                limit.as_secs(),
+                config::timeout_source()
             )))
         }),
     }
@@ -153,8 +154,9 @@ pub(crate) async fn within_limit<T>(
 /// A stream that went quiet for longer than `request_timeout`.
 fn silent_for(limit: std::time::Duration) -> HostError {
     HostError::RequestTimeout(format!(
-        "the provider sent nothing for {} seconds, so Lexi stopped the stream (request_timeout in config.json; 0 = no limit)",
-        limit.as_secs()
+        "the provider sent nothing for {} seconds, so Lexi stopped the stream ({}; 0 = no limit)",
+        limit.as_secs(),
+        config::timeout_source()
     ))
 }
 

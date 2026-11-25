@@ -72,6 +72,7 @@ def _opts(
     raw: bool,
     output: Optional[str] = None,
     out_dir: Optional[Union[str, "os.PathLike[str]"]] = None,
+    timeout: Optional[int] = None,
 ) -> Dict[str, Any]:
     opts: Dict[str, Any] = {
         "text": text,
@@ -90,8 +91,17 @@ def _opts(
         "raw": raw,
         "output": output,
         "out_dir": os.fspath(out_dir) if out_dir is not None else None,
+        "timeout": _timeout(timeout),
     }
     return {k: v for k, v in opts.items() if v is not None}
+
+
+def _timeout(timeout: Optional[int]) -> Optional[int]:
+    if timeout is None:
+        return None
+    if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout < 0:
+        raise ValueError("timeout is a whole number of seconds (0 = no limit)")
+    return timeout
 
 
 def respond(
@@ -112,6 +122,7 @@ def respond(
     raw: bool = False,
     output: Optional[str] = None,
     out_dir: Union[str, "os.PathLike[str]"] = ".",
+    timeout: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Send a prompt and wait for the reply (``lexi respond``).
 
@@ -132,6 +143,9 @@ def respond(
       A model's tags pick its API either way.
     * ``out_dir`` — where images and other artifacts are saved (never
       overwriting a file).
+    * ``timeout`` — this request's time limit in seconds (0 = none), instead
+      of ``request_timeout`` in config.json: the whole wait (for a stream, the
+      longest silence). Raises :class:`LexiError` when it runs out.
 
     Returns ``{"provider", "model", "api", "text", "artifacts": [{path, type,
     media_type, revised_prompt}], "metadata", "activity"?, "sources"?, "raw"?}``
@@ -139,7 +153,7 @@ def respond(
     response with ``raw``.
     """
     o = _opts(text, prompt, role, model, images, params, tools, set, unset, validate, cite, raw,
-              output, out_dir)
+              output, out_dir, timeout)
     return _lexi._respond(provider, o, background)
 
 
@@ -160,6 +174,7 @@ def stream(
     raw: bool = False,
     output: Optional[str] = None,
     out_dir: Union[str, "os.PathLike[str]"] = ".",
+    timeout: Optional[int] = None,
 ) -> Iterator[Dict[str, Any]]:
     """Send a prompt and stream the reply (``lexi respond --stream --json``).
 
@@ -177,7 +192,7 @@ def stream(
     is called; ``close()`` the iterator (or drop it) to stop early.
     """
     o = _opts(text, prompt, role, model, images, params, tools, set, unset, validate, cite, raw,
-              output, out_dir)
+              output, out_dir, timeout)
     return _lexi._stream(provider, o)
 
 
@@ -242,7 +257,8 @@ def generate(
     """Generate images: :func:`respond` with ``output="image"`` (``lexi
     generate``). Images are saved under ``out_dir``; returns the
     :func:`respond` result — ``result["artifacts"]`` lists the files. Other
-    keyword arguments (``set={"size": "1024x1024"}``, …) pass through.
+    keyword arguments (``set={"size": "1024x1024"}``, ``timeout=600``, …)
+    pass through.
     """
     return respond(provider, prompt, model=model, output="image", out_dir=out_dir, **options)
 
@@ -256,11 +272,13 @@ def embed(
     set: Optional[SetPaths] = None,
     unset: Optional[Iterable[str]] = None,
     validate: bool = True,
+    timeout: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Embed texts as vectors, one per text (``lexi embed``).
 
     ``model`` defaults to the provider's embedding model. API options go in
     ``set`` (``{"dimensions": 256}``, NVIDIA's ``{"input_type": "passage"}``).
+    ``timeout`` is this request's time limit in seconds (0 = none).
     Returns ``{"provider", "model", "api", "count", "dimensions",
     "embeddings": [[float, …], …], "metadata"}``.
     """
@@ -274,6 +292,8 @@ def embed(
         o["set"] = dict(set) if isinstance(set, Mapping) else [[*p] for p in set]
     if unset is not None:
         o["unset"] = [*unset]
+    if timeout is not None:
+        o["timeout"] = _timeout(timeout)
     return _lexi._embed(provider, o)
 
 

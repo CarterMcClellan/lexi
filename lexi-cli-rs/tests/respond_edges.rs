@@ -286,3 +286,57 @@ fn api_raw_output_preview_inputs_and_not_found() {
         Some(1)
     );
 }
+
+/// `--timeout SECS` limits this request only; 0 means no limit; config.json
+/// is left alone.
+#[tokio::test]
+async fn timeout_flag_limits_one_request() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_delay(std::time::Duration::from_secs(2))
+                .set_body_json(
+                    json!({ "model": "m", "content": [{"type": "text", "text": "late"}] }),
+                ),
+        )
+        .mount(&server)
+        .await;
+    let home = home_for(&server, "");
+    let h = home.path();
+
+    let mut cmd = lexi(h);
+    cmd.args(["respond", "p", "hi", "--timeout", "1"]);
+    let started = std::time::Instant::now();
+    let o = run(cmd).await;
+    assert_eq!(o.status.code(), Some(1));
+    assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    assert!(
+        stderr(&o).contains("within 1 seconds")
+            && stderr(&o).contains("the timeout given for this request"),
+        "{}",
+        stderr(&o)
+    );
+
+    let mut cmd = lexi(h);
+    cmd.args(["respond", "p", "hi", "--timeout=0"]);
+    let o = run(cmd).await;
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(stdout(&o), "late\n");
+    assert!(
+        !h.join("config.json").exists()
+            || !std::fs::read_to_string(h.join("config.json"))
+                .unwrap()
+                .contains("request_timeout")
+    );
+
+    let o = lexi_out(h, &["respond", "p", "hi", "--timeout", "soon"]);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(
+        stderr(&o).contains("whole number of seconds"),
+        "{}",
+        stderr(&o)
+    );
+    let o = lexi_out(h, &["generate", "p", "x", "--timeout", "-3"]);
+    assert_eq!(o.status.code(), Some(2), "clap refuses a negative number");
+}

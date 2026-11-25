@@ -75,6 +75,37 @@ async fn requests_stop_waiting_after_request_timeout() {
         .expect("no limit");
     assert_eq!(res.text, "late");
 
+    // One operation's own limit wins over config.json, either way.
+    let started = Instant::now();
+    let err = lexi_host::with_request_timeout(
+        1,
+        respond_with_effective(&client, &eff, "k", "hi", "user", "m", &[]),
+    )
+    .await
+    .unwrap_err();
+    assert!(started.elapsed() < Duration::from_secs(3));
+    assert!(
+        err.to_string()
+            .contains("the timeout given for this request"),
+        "{err}"
+    );
+    set_timeout(json!(1)).unwrap();
+    let res = lexi_host::with_request_timeout(
+        0,
+        respond_with_effective(&client, &eff, "k", "hi", "user", "m", &[]),
+    )
+    .await
+    .expect("no limit for this one");
+    assert_eq!(res.text, "late");
+    // … and only for that operation.
+    let err = respond_with_effective(&client, &eff, "k", "hi", "user", "m", &[])
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("request_timeout in config.json"),
+        "{err}"
+    );
+
     // Unset, the default is 5 minutes: a reply well within it is fine.
     config::delete_config("request_timeout").unwrap();
     assert_eq!(config::DEFAULT_REQUEST_TIMEOUT, 300);

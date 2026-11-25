@@ -326,7 +326,7 @@ Default settings:
 | `prompt` | `cmd` | Prompt label |
 | `prompt_delimiter` | `>` | Character after the prompt label |
 | `edit_mode` | `vi` | Input editing mode (`vi` or `emacs`) |
-| `request_timeout` | `300` | How long to wait for a provider, in seconds (0 = no limit). A request that isn't streamed must finish within it; a streamed one may run as long as it keeps sending, and stops after this long with nothing arriving. Used by the CLI, the Python library and the desktop app (Configure → Requests). |
+| `request_timeout` | `300` | How long to wait for a provider, in seconds (0 = no limit). A request that isn't streamed must finish within it; a streamed one may run as long as it keeps sending, and stops after this long with nothing arriving. Used by the CLI, the Python library and the desktop app (Configure → Requests). For one request, `--timeout SECS` on `respond` / `generate` / `embed` (Python: `timeout=`) sets its own limit instead. |
 
 ## Shell Integration
 

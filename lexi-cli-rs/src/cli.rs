@@ -38,7 +38,7 @@ pub enum Cmd {
     /// [--out DIR] [--role R] [--stream] [--background [--detach]]
     /// [--image URL|PATH]... [<schema flags>] [--set path=value]...
     /// [--unset path]... [--tool preset[,preset]]... [--params FILE] [--cite]
-    /// [--raw|-r] [--verbose|-v] [--no-validate]
+    /// [--raw|-r] [--verbose|-v] [--no-validate] [--timeout SECS]
     ///
     /// The words are the prompt (`-` reads stdin); with none, the saved prompt
     /// --prompt NAME, else the active one. The model's tags pick the API;
@@ -47,6 +47,10 @@ pub enum Cmd {
     ///
     /// Schema flags (e.g. --temperature, --size) come from the selected API's
     /// definition: see `lexi api show <api>` (the cli= entries).
+    ///
+    /// --timeout SECS sets this request's time limit (0 = none) instead of
+    /// request_timeout in config.json: the whole wait, or with --stream the
+    /// longest silence.
     Respond {
         /// Provider name, as in providers-config.yaml.
         provider: String,
@@ -70,15 +74,20 @@ pub enum Cmd {
         /// Directory to write images into.
         #[arg(long, default_value = ".")]
         out: PathBuf,
+        /// This request's time limit in seconds (0 = none), instead of
+        /// request_timeout in config.json.
+        #[arg(long, value_name = "SECS")]
+        timeout: Option<u64>,
     },
     /// Embed texts as vectors (one per text) with a provider's embedding model.
     ///
     /// embed <provider> TEXT... [--file FILE] [-] [--model M] [<schema flags>]
-    /// [--set path=value]... [--unset path]... [--no-validate]
+    /// [--set path=value]... [--unset path]... [--no-validate] [--timeout SECS]
     ///
     /// Each argument is one text; --file adds one text per line, `-` reads
     /// lines from stdin. Schema flags (e.g. --dimensions, --input-type) come
     /// from the embedding API's definition. Use --json for the vectors.
+    /// --timeout SECS sets this request's time limit (0 = none).
     #[command(verbatim_doc_comment)]
     Embed {
         /// Provider name, as in providers-config.yaml.
