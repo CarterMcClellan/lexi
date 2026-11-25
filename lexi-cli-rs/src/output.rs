@@ -37,6 +37,11 @@ impl Default for RunOptions {
     }
 }
 
+/// Asks the person running a command for input: `(prompt, secret)` → what
+/// they typed, or `None` when they declined. In-process hosts with no terminal
+/// (the desktop app's CLI console) set one on [`Io::input`].
+pub type InputFn<'a> = &'a mut (dyn FnMut(&str, bool) -> Option<String> + Send);
+
 pub struct Io<'a> {
     pub out: Writer<'a>,
     pub err: Writer<'a>,
@@ -44,6 +49,8 @@ pub struct Io<'a> {
     pub json: bool,
     /// ANSI styling on stderr notes (a terminal that allows color).
     pub color: bool,
+    /// How to ask for input; `None` reads the terminal or stdin.
+    pub input: Option<InputFn<'a>>,
 }
 
 impl<'a> Io<'a> {
@@ -53,7 +60,37 @@ impl<'a> Io<'a> {
             err,
             json,
             color: false,
+            input: None,
         }
+    }
+
+    /// A secret (an API key): from [`Io::input`], else typed at the terminal
+    /// without echo, else one line of piped stdin.
+    pub fn read_secret(&mut self, prompt: &str) -> Result<String, String> {
+        if let Some(ask) = self.input.as_mut() {
+            return ask(prompt, true).ok_or_else(|| "nothing was entered".to_string());
+        }
+        use std::io::IsTerminal;
+        if std::io::stdin().is_terminal() {
+            rpassword::prompt_password(prompt).map_err(|e| e.to_string())
+        } else {
+            let mut line = String::new();
+            std::io::stdin()
+                .read_line(&mut line)
+                .map_err(|e| format!("could not read stdin: {e}"))?;
+            Ok(line)
+        }
+    }
+
+    /// Text for `-` arguments: from [`Io::input`] (one line), else all of stdin.
+    pub fn read_text(&mut self, prompt: &str) -> Result<String, String> {
+        if let Some(ask) = self.input.as_mut() {
+            return ask(prompt, false).ok_or_else(|| "nothing was entered".to_string());
+        }
+        let mut text = String::new();
+        std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
+            .map_err(|e| format!("could not read stdin: {e}"))?;
+        Ok(text)
     }
 
     /// Emit a command result: `json` in machine mode, else the `human` text

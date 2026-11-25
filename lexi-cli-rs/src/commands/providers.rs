@@ -94,18 +94,6 @@ fn add(
     io.result(format!("Added provider {name}."), json!({ "added": name }))
 }
 
-/// Read a key interactively (no echo) or from piped stdin.
-fn read_key() -> std::io::Result<String> {
-    use std::io::IsTerminal;
-    if std::io::stdin().is_terminal() {
-        rpassword::prompt_password("Enter API key: ")
-    } else {
-        let mut line = String::new();
-        std::io::stdin().read_line(&mut line)?;
-        Ok(line)
-    }
-}
-
 /// What a saved key means for messages: where it went, whether the config
 /// gained that source, and a warning when an earlier source wins.
 fn saved_message(lead: &str, saved: &lexi_host::config::SavedKey) -> String {
@@ -128,7 +116,7 @@ fn key_set(io: &mut Io<'_>, name: &str, value: Option<String>, api: Option<&str>
     }
     let key = match value {
         Some(v) => v,
-        None => match read_key() {
+        None => match io.read_secret("Enter API key: ") {
             Ok(k) => k,
             Err(e) => return io.fail(e),
         },

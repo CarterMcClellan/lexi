@@ -16,8 +16,6 @@
 //! rather than declared to clap. Images and other artifacts are saved to
 //! `--out` (default: the current directory) and never overwrite a file.
 
-use std::io::Read;
-
 use serde_json::{json, Map, Value};
 
 use crate::coerce::{coerce_typed, parse_set_arg};
@@ -178,13 +176,10 @@ fn parse(args: &[String], flag_specs: &[Value], presets: &[String]) -> Result<Pl
 
 /// The prompt payload: the text (stdin for `-`), else the `--prompt` or active
 /// saved prompt; `--role` overrides its role.
-fn prompt_payload(plan: &Plan) -> Result<Value, String> {
+fn prompt_payload(io: &mut Io<'_>, plan: &Plan) -> Result<Value, String> {
     let mut payload = match &plan.text {
         Some(t) if t == "-" => {
-            let mut text = String::new();
-            std::io::stdin()
-                .read_to_string(&mut text)
-                .map_err(|e| format!("could not read stdin: {e}"))?;
+            let text = io.read_text("Prompt: ")?;
             json!({ "prompt": text.trim_end(), "role": "user" })
         }
         Some(t) => json!({ "prompt": t, "role": "user" }),
@@ -266,7 +261,7 @@ pub(crate) async fn respond(io: &mut Io<'_>, provider: &str, args: &[String]) ->
         Err(e) => return io.fail(e),
     };
 
-    let payload = match prompt_payload(&plan) {
+    let payload = match prompt_payload(io, &plan) {
         Ok(p) => p,
         Err(e) => return io.fail(e),
     };
