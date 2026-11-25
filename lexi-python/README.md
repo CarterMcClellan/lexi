@@ -112,7 +112,7 @@ sdist are attached to each [GitHub Release](https://github.com/badscooter23/lexi
 Download the wheel for your platform and:
 
 ```sh
-pip install ./lexi-0.2.0-cp39-abi3-<platform>.whl
+pip install ./lexi-0.3.0-cp39-abi3-<platform>.whl
 ```
 
 Or build from source (needs a Rust toolchain):
