@@ -30,6 +30,7 @@ go under **Unreleased**; at release time that heading becomes the version
 - **New Lexi logo** for the app icon and the header.
 
 ### Fixes
+- The **Show CLI Commands** panel at the bottom of the app is gone. It had shown nothing since the app stopped running the CLI behind the scenes.
 - The Providers tab's API key panel can save, show and remove keys again.
 - The Providers tab's **Show** button opens `providers-config.yaml` again.
 - A provider whose key comes from an unset environment variable no longer shows as having a key.

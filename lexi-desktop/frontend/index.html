@@ -703,78 +703,6 @@
       flex: 1;
       overflow-y: auto;
     }
-    /* --- CLI Bottom Panel --- */
-    .cli-panel {
-      flex-shrink: 0;
-      border-top: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      min-height: 36px;
-      overflow: hidden;
-    }
-    .cli-panel.expanded {
-      height: var(--cli-panel-height, 96px);
-    }
-    .cli-panel-resize {
-      display: none;
-      height: 5px;
-      cursor: ns-resize;
-      background: transparent;
-      position: relative;
-    }
-    .cli-panel-resize::after {
-      content: '';
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      width: 40px;
-      height: 3px;
-      border-radius: 2px;
-      background: var(--border);
-      transition: background 150ms ease;
-    }
-    .cli-panel-resize:hover::after {
-      background: var(--accent-2);
-    }
-    .cli-panel.expanded .cli-panel-resize {
-      display: block;
-    }
-    .cli-panel-bar {
-      display: flex;
-      align-items: stretch;
-      flex: 1;
-      min-height: 0;
-      overflow: hidden;
-    }
-    .cli-panel-toggle {
-      white-space: nowrap;
-      align-self: center;
-      flex-shrink: 0;
-      margin: 4px 8px;
-      font-size: 0.85rem;
-      padding: 6px 12px;
-      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-    }
-    .cli-panel-output {
-      flex: 1;
-      min-width: 0;
-      overflow-y: auto;
-      overflow-x: hidden;
-      padding: 6px 12px;
-      background: var(--bg);
-      color: var(--muted);
-      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-      font-size: 0.85rem;
-      line-height: 1.5;
-      white-space: pre-wrap;
-      word-break: break-all;
-      display: none;
-      border-left: 1px solid var(--border);
-    }
-    .cli-panel.expanded .cli-panel-output {
-      display: block;
-    }
     .badge-ready {
       display: inline-block;
       padding: 3px 10px;
@@ -2385,15 +2313,6 @@
           <pre id="genericModalBody"></pre>
         </div>
       </div>
-
-      <!-- CLI Commands Bottom Panel -->
-      <div class="cli-panel" id="cliPanel">
-        <div class="cli-panel-resize" id="cliPanelResize" data-tip="Drag to resize"></div>
-        <div class="cli-panel-bar">
-          <button class="btn btn-ghost cli-panel-toggle" id="toggleCliLog" data-tip="Show the lexi CLI command for each thing you do in the app">Show CLI Commands</button>
-          <div class="cli-panel-output" id="cliLog"></div>
-        </div>
-      </div>
   </div>
 
   <script>
@@ -2481,13 +2400,6 @@
     let PROVIDERS = [];
     let CHAT_PROVIDERS = [];  // the providers that can chat (the Chat tab lists only these)
     let providerConfigured = {};
-    const cliLogEl = document.getElementById('cliLog');
-    const toggleCliLogBtn = document.getElementById('toggleCliLog');
-    const cliPanelEl = document.getElementById('cliPanel');
-    const cliPanelResizeEl = document.getElementById('cliPanelResize');
-    let showCliLog = false;
-    let lexiPrompt = 'lexi>';
-    let cliCommands = [];
 
     function escapeHtml(str) {
       const div = document.createElement('div');
@@ -2820,21 +2732,6 @@
         delete init.body;
       }
       const res = await fetch(path, init);
-      const cliHeader = res.headers.get('X-Lexi-Command');
-      const promptHeader = res.headers.get('X-Lexi-Prompt');
-      if (promptHeader) {
-        lexiPrompt = promptHeader;
-        if (showCliLog) {
-          toggleCliLogBtn.textContent = lexiPrompt;
-        }
-      }
-      if (cliHeader) {
-        cliCommands.push(lexiPrompt + ' ' + cliHeader);
-        if (showCliLog) {
-          cliLogEl.textContent = cliCommands.join('\n');
-          cliLogEl.scrollTop = cliLogEl.scrollHeight;
-        }
-      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const msg = data.error || res.statusText || 'Request failed';
@@ -3517,51 +3414,6 @@
     }
     initPromptResize('chatResizeBar', 'chatPromptSection', 'tab-chat');
     initPromptResize('imgResizeBar', 'imgPromptSection', 'tab-images');
-
-    toggleCliLogBtn.addEventListener('click', () => {
-      showCliLog = !showCliLog;
-      if (showCliLog) {
-        cliPanelEl.classList.add('expanded');
-        toggleCliLogBtn.textContent = lexiPrompt;
-        if (!cliCommands.length) {
-          cliLogEl.textContent = '(no commands yet)';
-        }
-      } else {
-        cliPanelEl.classList.remove('expanded');
-        toggleCliLogBtn.textContent = 'Show CLI Commands';
-      }
-    });
-
-    // --- CLI Panel Resize ---
-    (function initResize() {
-      let startY = 0;
-      let startH = 0;
-      const MIN_H = 48;
-      const MAX_H = 400;
-
-      cliPanelResizeEl.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        startY = e.clientY;
-        startH = cliPanelEl.offsetHeight;
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
-        document.body.style.cursor = 'ns-resize';
-        document.body.style.userSelect = 'none';
-      });
-
-      function onMove(e) {
-        const delta = startY - e.clientY;
-        const newH = Math.min(MAX_H, Math.max(MIN_H, startH + delta));
-        cliPanelEl.style.setProperty('--cli-panel-height', newH + 'px');
-      }
-
-      function onUp() {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-      }
-    })();
 
     // --- API Key Management ---
     const apiKeyTestBtn = document.getElementById('apiKeyTestBtn');
@@ -6172,16 +6024,6 @@
     renderProviderSelector();
     fetchProvidersList();
     fetchConfig();
-
-    // Fetch CLI prompt string
-    (async () => {
-      try {
-        const cfg = await api('/api/config', { method: 'GET' });
-        const p = cfg.prompt || 'lexi';
-        const d = cfg.prompt_delimiter || '>';
-        lexiPrompt = p + d;
-      } catch {}
-    })();
 
     const tabs = document.querySelectorAll('.tab');
     const contents = document.querySelectorAll('.content');
