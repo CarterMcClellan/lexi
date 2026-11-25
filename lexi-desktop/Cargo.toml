@@ -1,6 +1,6 @@
 [package]
 name = "lexi-desktop"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Lexi desktop app (Tauri) — a thin webview shell over lexi-host."
 license = "MIT"

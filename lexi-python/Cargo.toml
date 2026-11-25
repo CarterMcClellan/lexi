@@ -1,6 +1,6 @@
 [package]
 name = "lexi-python"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Python bindings (PyO3) for Lexi: the engine (lexi-core) and the runtime (lexi-host)."
 license = "MIT"

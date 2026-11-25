@@ -8,20 +8,18 @@ go under **Unreleased**; at release time that heading becomes the version
 
 ## Unreleased
 
+## 0.3.0 — 2026-11-25
+
+Lexi 0.3.0 brings an Images tab and a CLI tab to the desktop app, shows the command behind every button, keeps your API keys in files only you can read, and gives each provider a default model for each kind.
+
 ### Desktop app
 - **Startup screen.** When Lexi opens, it checks which providers have API keys. It shows a welcome screen the first time you run a new version (with these notes), or when no provider has a key yet.
 - **Setup wizard.** For each provider, the wizard explains how to get a key and saves it for you. It can also test the key.
-- **You choose where each key comes from.** A provider's `api_key` in providers-config.yaml is now a list of places tried in order: an environment variable or a file at any path. Only a missing key moves on to the next place; a file that can't be read stops with an error instead of quietly using a different key. The API Key panel shows each place and which one is in use.
-- **Saved keys stay in a file only you can read.** A key you save goes in the provider's key file in `~/.lexi-cli`, never in providers-config.yaml, and the config lists where it is. A key file saved by an earlier version keeps working. The CLI and Python library read the same places.
-- **Chat's model lists stay current.** Models you add or remove on the Models tab show up in Chat's pickers when you go back to it.
-- **A key per API or model.** An API (say, OpenAI's image generation) or a model can have its own `api_key`, for example to bill images to a different project.
 - **Images tab.** Generate images from several providers at once. Each provider has its own model and settings, and images are saved to a folder you choose.
-- **A time limit for slow providers.** Lexi gives up on a provider that hasn't answered within 5 minutes and says so, instead of waiting forever. When streaming, the limit is on silence, so a long answer that keeps coming is never cut off. Change it on the Configure tab (Requests), or with `lexi config set request_timeout <seconds>` (0 = no limit).
-- **Stop really stops.** In Chat, Stop cancels the requests still waiting (a provider that never answers no longer leaves Chat stuck), and each provider's answer shows as soon as it arrives instead of waiting for the slowest.
-- **A time limit for one request.** `lexi respond`, `generate` and `embed` take `--timeout SECS` (Python: `timeout=`), which sets that request's own time limit instead of the saved `request_timeout`, for example more time for a slow reasoning model or a quick check that a provider answers at all. 0 means no limit.
 - **CLI tab.** Run `lexi` commands right in the app, just as in a terminal: output appears as it's written, ↑ / ↓ go through your command history (shared with the terminal), and Ctrl-C or Stop cancels a long command. Paste commands from a tooltip's **>_** panel (several at once run in order), or click its **▶ CLI** to put one in the prompt, ready to run. A command that needs your API key asks for it in a hidden field; the key never appears on screen or in the history.
 - **See the command for any action.** Hover over a button and click **>_** in its help (or hold ⌥ while hovering) to see the `lexi` command and the Python that do the same thing, filled in with what's on screen, with a Copy button for each. Chat and Images show one command per ticked provider. This replaces the old "Show CLI Commands" panel.
-- **A default model for each kind.** Each provider can have its own default for chat, for images and for embeddings. On the Models tab, ☆ makes a model the default for its kind (an image model becomes the default image model; chat keeps its own), and ★ on a default you chose clears it, so the provider's default applies again. Chat's and Images' model pickers show which default they'll use. From the command line: `lexi models default openai gpt-image-2` sets the image default; `lexi models default openai` lists them all; `--clear --kind image-generation` clears one. In Python: `lexi.models.default`, `set_default` and `clear_default`.
+- **Stop really stops.** In Chat, Stop cancels the requests still waiting (a provider that never answers no longer leaves Chat stuck), and each provider's answer shows as soon as it arrives instead of waiting for the slowest.
+- **Chat's model lists stay current.** Models you add or remove on the Models tab show up in Chat's pickers when you go back to it.
 - **Chat and Images list only the right models.** Chat lists only chat models, and Images lists only image models. Providers with no suitable model are hidden.
 - **Prompt editing.** Chat and Images share one way of handling prompts:
   - *Load* lights up when you pick a saved prompt.
@@ -31,6 +29,17 @@ go under **Unreleased**; at release time that heading becomes the version
 - **Themes.** The new themes are System (it follows your macOS accent colour and Light/Dark setting), NVIDIA Dark and NVIDIA Light. Your choice is remembered, and every theme's colours can be edited in `~/.lexi-cli/themes.json`.
 - **Models tab.** Tables can be sorted and filtered, edits open in dialogs, and every control has hover help.
 - **New Lexi logo** for the app icon and the header.
+
+
+### API keys
+- **You choose where each key comes from.** A provider's `api_key` in providers-config.yaml is now a list of places tried in order: an environment variable or a file at any path. Only a missing key moves on to the next place; a file that can't be read stops with an error instead of quietly using a different key. The API Key panel shows each place and which one is in use.
+- **Saved keys stay in a file only you can read.** A key you save goes in the provider's key file in `~/.lexi-cli`, never in providers-config.yaml, and the config lists where it is. A key file saved by an earlier version keeps working. The CLI and Python library read the same places.
+- **A key per API or model.** An API (say, OpenAI's image generation) or a model can have its own `api_key`, for example to bill images to a different project.
+
+### Models and requests (CLI, Python and the app)
+- **A default model for each kind.** Each provider can have its own default for chat, for images and for embeddings. On the Models tab, ☆ makes a model the default for its kind (an image model becomes the default image model; chat keeps its own), and ★ on a default you chose clears it, so the provider's default applies again. Chat's and Images' model pickers show which default they'll use. From the command line: `lexi models default openai gpt-image-2` sets the image default; `lexi models default openai` lists them all; `--clear --kind image-generation` clears one. In Python: `lexi.models.default`, `set_default` and `clear_default`.
+- **A time limit for slow providers.** Lexi gives up on a provider that hasn't answered within 5 minutes and says so, instead of waiting forever. When streaming, the limit is on silence, so a long answer that keeps coming is never cut off. Change it on the Configure tab (Requests), or with `lexi config set request_timeout <seconds>` (0 = no limit).
+- **A time limit for one request.** `lexi respond`, `generate` and `embed` take `--timeout SECS` (Python: `timeout=`), which sets that request's own time limit instead of the saved `request_timeout`, for example more time for a slow reasoning model or a quick check that a provider answers at all. 0 means no limit.
 
 ### Fixes
 - **Chat shows formatted answers.** Headings, lists, tables, code blocks and links now display formatted instead of as plain Markdown text (the formatting libraries had been left out of the app). Links in answers open in your browser.
