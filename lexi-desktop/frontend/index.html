@@ -1526,6 +1526,49 @@
       white-space: normal;
     }
     .lexi-tip.show { opacity: 1; }
+    /* A tip with commands stays open while the pointer is on it. */
+    .lexi-tip.has-cmd { pointer-events: auto; }
+    .lexi-tip.expanded { max-width: min(560px, calc(100vw - 16px)); }
+    .tip-cmd-toggle {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 0 5px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 4px;
+      background: transparent;
+      color: #67e8f9;
+      font: 600 0.72rem 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      line-height: 1.5;
+      cursor: pointer;
+      vertical-align: baseline;
+    }
+    .tip-cmd-toggle:hover { background: rgba(103, 232, 249, 0.14); }
+    .tip-cmds { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+    .tip-cmds-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #94a3b8; font-size: 0.72rem; }
+    .tip-cmds pre {
+      margin: 0;
+      padding: 6px 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.06);
+      color: #e2e8f0;
+      font: 0.74rem/1.45 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+      user-select: text;
+      max-height: 220px;
+      overflow: auto;
+    }
+    .tip-copy {
+      padding: 1px 7px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 4px;
+      background: transparent;
+      color: #e2e8f0;
+      font-size: 0.7rem;
+      cursor: pointer;
+    }
+    .tip-copy:hover { background: rgba(255, 255, 255, 0.1); }
+    .tip-cmds-note { color: #94a3b8; font-size: 0.72rem; }
     /* --- Images tab (laid out like Chat: prompt, drag bar, providers + results) --- */
     #tab-images.active {
       display: flex;
@@ -2020,7 +2063,7 @@
           <img class="brand-logo" id="brandLogo" src="lexi-mark.png" alt="Lexi" width="174" height="180" data-tip="About Lexi: what's new in this version, and your providers' keys">
         </h1>
         <div class="msg-area">
-          <button class="status" id="status" type="button" data-tone="muted" aria-live="polite" data-tip="Lexi's messages: what it just did. Click to see the recent ones.">Ready</button>
+          <button class="status" id="status" data-cmd="none" type="button" data-tone="muted" aria-live="polite" data-tip="Lexi's messages: what it just did. Click to see the recent ones.">Ready</button>
           <div class="msg-log" id="msgLog" hidden></div>
         </div>
       </header>
@@ -2059,15 +2102,15 @@
           </div>
 
           <div class="actions">
-            <button class="btn btn-primary" id="saveActive" data-tip="Save these settings as the active prompt ($$), the one used when you don't name a prompt">Save as Active ($$)</button>
-            <button class="btn btn-ghost" id="saveNamed" data-tip="Save these settings as a named prompt you can load later">Save Named Prompt</button>
+            <button class="btn btn-primary" id="saveActive" data-cmd="prompt-save-active" data-tip="Save these settings as the active prompt ($$), the one used when you don't name a prompt">Save as Active ($$)</button>
+            <button class="btn btn-ghost" id="saveNamed" data-cmd="prompt-save-named" data-tip="Save these settings as a named prompt you can load later">Save Named Prompt</button>
           </div>
         </section>
 
         <section class="panel">
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <h2>Saved Prompts</h2>
-            <button class="btn btn-ghost" id="refresh" data-tip="Reload the saved prompts from disk">Refresh</button>
+            <button class="btn btn-ghost" id="refresh" data-cmd="prompts-list" data-tip="Reload the saved prompts from disk">Refresh</button>
           </div>
           <div class="inline-field">
             <input type="checkbox" id="showDetails">
@@ -2085,13 +2128,13 @@
         <textarea id="chatPrompt" placeholder="Enter prompt"></textarea>
         <div class="inline-field" style="justify-content: space-between; align-items: center;">
           <div style="display:flex; align-items:center; gap:8px;">
-            <button class="btn btn-ghost" id="loadPromptBtn" data-tip="Put the selected saved prompt's text in the box above">Load Prompt</button>
+            <button class="btn btn-ghost" id="loadPromptBtn" data-cmd="chat-load-prompt" data-tip="Put the selected saved prompt's text in the box above">Load Prompt</button>
             <select id="chatPromptSelect" style="width:auto; min-width:180px; max-width:300px;">
               <option value="">-- select prompt --</option>
             </select>
           </div>
           <div style="display:flex; gap:8px; align-items:center;">
-            <button class="btn btn-ghost" id="saveChatNamed" data-tip="Save this prompt text as a named prompt">Save</button>
+            <button class="btn btn-ghost" id="saveChatNamed" data-cmd="chat-save-prompt" data-tip="Save this prompt text as a named prompt">Save</button>
           </div>
         </div>
       </div>
@@ -2102,8 +2145,8 @@
             <span class="muted" style="font-size:0.95rem;">Providers:</span>
           </div>
           <div style="display:flex; gap:8px;">
-            <button class="btn btn-ghost" id="generateResponseBtn" disabled data-tip="Send the prompt to each ticked provider">Generate Response</button>
-            <button class="btn btn-ghost" id="stopResponseBtn" disabled data-tip="Stop the responses in progress">Stop</button>
+            <button class="btn btn-ghost" id="generateResponseBtn" data-cmd="chat-respond" disabled data-tip="Send the prompt to each ticked provider">Generate Response</button>
+            <button class="btn btn-ghost" id="stopResponseBtn" data-cmd="none" disabled data-tip="Stop the responses in progress">Stop</button>
           </div>
         </div>
         <div class="respond-controls" id="respondControls">
@@ -2134,7 +2177,7 @@
       <section class="panel api-key-panel">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
           <h2 style="margin:0;">API Key Management</h2>
-          <button class="btn btn-primary" id="apiKeyWizardBtn" type="button" data-tip="Step-by-step help getting a key from a provider and adding it to Lexi">Setup Wizard…</button>
+          <button class="btn btn-primary" id="apiKeyWizardBtn" data-cmd="key-set" type="button" data-tip="Step-by-step help getting a key from a provider and adding it to Lexi">Setup Wizard…</button>
         </div>
         <div class="field-row">
           <label style="margin:0; white-space:nowrap;">Provider:</label>
@@ -2142,16 +2185,16 @@
         </div>
         <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-top:10px;">
           <span>Current API Key</span>
-          <button class="btn btn-ghost" id="apiKeyRevealBtn" type="button" disabled data-tip="Show or hide the saved key">Redacted</button>
-          <button class="btn btn-ghost" id="apiKeyTestBtn" type="button" disabled data-tip="Ask the provider whether it accepts this key (lists its models; nothing is generated or billed)">Test</button>
-          <button class="btn btn-danger" id="apiKeyRemoveBtn" type="button" disabled data-tip="Delete the saved API key for this provider (providers-config.yaml is left as it is)">Remove</button>
+          <button class="btn btn-ghost" id="apiKeyRevealBtn" data-cmd="key-show" type="button" disabled data-tip="Show or hide the saved key">Redacted</button>
+          <button class="btn btn-ghost" id="apiKeyTestBtn" data-cmd="key-test" type="button" disabled data-tip="Ask the provider whether it accepts this key (lists its models; nothing is generated or billed)">Test</button>
+          <button class="btn btn-danger" id="apiKeyRemoveBtn" data-cmd="key-remove" type="button" disabled data-tip="Delete the saved API key for this provider (providers-config.yaml is left as it is)">Remove</button>
         </div>
         <div class="api-key-status api-key-box" id="apiKeyStatus"></div>
         <div class="key-sources" id="apiKeySource"></div>
         <label for="apiKeyInput">New API Key</label>
         <input type="password" id="apiKeyInput" placeholder="Paste an API key…" autocomplete="off" spellcheck="false">
         <div class="btn-row">
-          <button class="btn btn-primary" id="apiKeySaveBtn" data-tip="Save this key for the selected provider">Save</button>
+          <button class="btn btn-primary" id="apiKeySaveBtn" data-cmd="key-set" data-tip="Save this key for the selected provider">Save</button>
         </div>
       </section>
     </div>
@@ -2160,7 +2203,7 @@
         <div class="models-top-bar">
           <label for="modelsProvider" style="margin:0; white-space:nowrap;">Provider:</label>
           <select id="modelsProvider"></select>
-          <button class="btn btn-ghost" id="hostedRefreshBtn" type="button" data-tip="Fetch this provider's model list again">Refresh</button>
+          <button class="btn btn-ghost" id="hostedRefreshBtn" data-cmd="models-hosted" type="button" data-tip="Fetch this provider's model list again">Refresh</button>
         </div>
       </section>
 
@@ -2179,7 +2222,7 @@
         <section class="models-split-pane panel" id="configuredPane">
           <div class="pane-head">
             <h2>Configured Models</h2>
-            <button class="link-btn" id="modelsAddByIdBtn" type="button" data-tip="Add a model by its id, for one that isn't in the hosted list">Add by ID…</button>
+            <button class="link-btn" id="modelsAddByIdBtn" data-cmd="model-add" type="button" data-tip="Add a model by its id, for one that isn't in the hosted list">Add by ID…</button>
           </div>
           <div class="pane-meta" id="modelsDefaultLine"></div>
           <div class="pane-notice warn" id="orphanAliases"></div>
@@ -2195,8 +2238,8 @@
             <div class="muted">Loading...</div>
           </div>
           <div style="display:flex; gap:8px; margin-top:10px;">
-            <button class="btn btn-primary" id="apiNewBtn" data-tip="Create a new API definition" style="padding:6px 12px;font-size:0.85rem;">+ New</button>
-            <button class="btn btn-ghost" id="apiCloneBtn" data-tip="Start a new API definition from a copy of the selected one" style="padding:6px 12px;font-size:0.85rem;" disabled>Clone</button>
+            <button class="btn btn-primary" id="apiNewBtn" data-cmd="api-create" data-tip="Create a new API definition" style="padding:6px 12px;font-size:0.85rem;">+ New</button>
+            <button class="btn btn-ghost" id="apiCloneBtn" data-cmd="api-clone" data-tip="Start a new API definition from a copy of the selected one" style="padding:6px 12px;font-size:0.85rem;" disabled>Clone</button>
           </div>
         </section>
 
@@ -2217,13 +2260,13 @@
         <textarea id="imgPrompt" placeholder="Describe the image you want"></textarea>
         <div class="inline-field" style="justify-content: space-between; align-items: center;">
           <div style="display:flex; align-items:center; gap:8px;">
-            <button class="btn btn-ghost" id="imgLoadPromptBtn" type="button" data-tip="Put the selected saved prompt's text in the box above">Load Prompt</button>
+            <button class="btn btn-ghost" id="imgLoadPromptBtn" data-cmd="img-load-prompt" type="button" data-tip="Put the selected saved prompt's text in the box above">Load Prompt</button>
             <select id="imgPromptSelect" aria-label="Saved prompt" style="width:auto; min-width:180px; max-width:300px;">
               <option value="">-- select prompt --</option>
             </select>
           </div>
           <div style="display:flex; gap:8px; align-items:center;">
-            <button class="btn btn-ghost" id="imgSavePromptBtn" type="button" data-tip="Save this prompt text as a named prompt">Save</button>
+            <button class="btn btn-ghost" id="imgSavePromptBtn" data-cmd="img-save-prompt" type="button" data-tip="Save this prompt text as a named prompt">Save</button>
           </div>
         </div>
       </div>
@@ -2232,7 +2275,7 @@
         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
           <div class="provider-list" id="imgProviders" style="margin:0;"></div>
           <div style="display:flex; gap:8px;">
-            <button class="btn btn-ghost" id="imgGenerateBtn" type="button" disabled data-tip="Send the prompt to each ticked provider's image API; every image is saved to the images folder">Generate Images</button>
+            <button class="btn btn-ghost" id="imgGenerateBtn" data-cmd="img-generate" type="button" disabled data-tip="Send the prompt to each ticked provider's image API; every image is saved to the images folder">Generate Images</button>
           </div>
         </div>
         <div class="pane-notice warn" id="imgProviderNote"></div>
@@ -2242,9 +2285,9 @@
           <div class="img-folder">
             <span class="muted">Saved to</span> <code id="imgDir"></code>
             <span class="img-folder-actions">
-              <button class="link-btn" id="imgDirChangeBtn" type="button" data-tip="Choose the folder generated images are saved to">Change…</button>
-              <button class="link-btn" id="imgDirOpenBtn" type="button" data-tip="Open the images folder">Open folder</button>
-              <button class="link-btn" id="imgClearBtn" type="button" data-tip="Clear this list (the saved files stay in the folder)">Clear</button>
+              <button class="link-btn" id="imgDirChangeBtn" data-cmd="img-dir" type="button" data-tip="Choose the folder generated images are saved to">Change…</button>
+              <button class="link-btn" id="imgDirOpenBtn" data-cmd="none" type="button" data-tip="Open the images folder">Open folder</button>
+              <button class="link-btn" id="imgClearBtn" data-cmd="none" type="button" data-tip="Clear this list (the saved files stay in the folder)">Clear</button>
             </span>
           </div>
         </div>
@@ -2269,7 +2312,7 @@
             <label for="cfgRequestTimeout">Time limit (seconds)</label>
             <input id="cfgRequestTimeout" type="number" min="0" step="1" placeholder="300" data-tip="How long Lexi waits for a provider before giving up; 0 means no limit">
             <div class="config-actions">
-              <button class="btn btn-primary" id="cfgTimeoutSaveBtn" type="button">Save</button>
+              <button class="btn btn-primary" id="cfgTimeoutSaveBtn" data-cmd="config-timeout" type="button" data-tip="Save the time limit">Save</button>
             </div>
           </div>
           <p class="panel-hint">How long Lexi waits for a provider before it stops and says so. Without <em>Stream</em>, the whole answer must arrive within this time. With <em>Stream</em>, it's the longest Lexi waits with nothing arriving (before the answer starts, or between its pieces), so a long answer that keeps coming is never cut off. 0 means no limit; the default is 300 (5 minutes). The <code>lexi</code> command line and the Python library use the same setting (<code>lexi config set request_timeout 120</code>).</p>
@@ -2295,8 +2338,8 @@
             </select>
 
             <div class="config-actions">
-              <button class="btn btn-primary" id="cfgSaveBtn">Save</button>
-              <button class="btn btn-ghost" id="cfgResetBtn" data-tip="Put every CLI setting on this page back to its default">Reset to Defaults</button>
+              <button class="btn btn-primary" id="cfgSaveBtn" data-cmd="config-cli" data-tip="Save these CLI settings">Save</button>
+              <button class="btn btn-ghost" id="cfgResetBtn" data-cmd="config-reset" data-tip="Put every CLI setting on this page back to its default">Reset to Defaults</button>
             </div>
           </div>
         </section>
@@ -2307,7 +2350,7 @@
       <div class="float-window" id="genericModal" role="dialog" aria-hidden="true">
         <div class="float-window-header" id="genericModalHeader">
           <div class="float-window-title" id="genericModalTitle" title=""></div>
-          <button class="modal-close" id="genericModalCloseBtn" type="button" aria-label="Close" data-tip="Close">&times;</button>
+          <button class="modal-close" id="genericModalCloseBtn" data-cmd="none" type="button" aria-label="Close" data-tip="Close">&times;</button>
         </div>
         <div class="float-window-body">
           <pre id="genericModalBody"></pre>
@@ -2708,6 +2751,7 @@
         showBtn.style.cssText = 'padding:4px 10px; font-size:0.8rem;';
         showBtn.textContent = 'Show';
         showBtn.setAttribute('data-tip', 'Show the providers config file');
+        showBtn.setAttribute('data-cmd', 'providers-show');
         showBtn.addEventListener('click', showProvidersConfigSource);
         heading.appendChild(showBtn);
       }
@@ -2773,11 +2817,15 @@
         activateBtn.className = 'btn btn-ghost';
         activateBtn.textContent = 'Set Active';
         activateBtn.setAttribute('data-tip', 'Make this the active prompt ($$)');
+        activateBtn.setAttribute('data-cmd', 'prompt-activate');
+        activateBtn.dataset.name = p.name;
         activateBtn.onclick = () => setActive(p.name);
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'btn btn-danger';
         deleteBtn.textContent = 'Delete';
         deleteBtn.setAttribute('data-tip', 'Delete this saved prompt');
+        deleteBtn.setAttribute('data-cmd', 'prompt-delete');
+        deleteBtn.dataset.name = p.name;
         deleteBtn.onclick = () => deletePrompt(p.name);
         actions.appendChild(activateBtn);
         if (!p.isActive) actions.appendChild(deleteBtn);
@@ -3826,7 +3874,7 @@
         <form method="dialog" novalidate>
           <div class="lexi-dialog-head">
             <h3>Set up a provider</h3>
-            <button type="button" class="modal-close dlg-x" aria-label="Close" data-tip="Close the wizard (Esc)">&times;</button>
+            <button type="button" class="modal-close dlg-x" data-cmd="none" aria-label="Close" data-tip="Close the wizard (Esc)">&times;</button>
           </div>
           <div class="lexi-dialog-body">
             <ol class="wizard-steps">${STEPS.map((t) => `<li>${esc(t)}</li>`).join('')}</ol>
@@ -3932,7 +3980,7 @@
                 <div class="choice-detail" data-for="save">
                   <div class="key-row">
                     <input type="password" id="wzKey" placeholder="Paste your ${esc(p.display)} API key" autocomplete="off" spellcheck="false">
-                    <button type="button" class="btn btn-ghost" id="wzShow" data-tip="Show or hide the key">Show</button>
+                    <button type="button" class="btn btn-ghost" id="wzShow" data-cmd="none" data-tip="Show or hide the key">Show</button>
                   </div>
                   <div class="warn-text" id="wzKeyWarn"></div>
                 </div>
@@ -4082,6 +4130,13 @@
     // delay. Drawn by the page itself (native `title` tooltips don't reliably
     // show in the app's web view). Inside an open dialog the tip moves into the
     // dialog so it renders above it.
+    //
+    // An element whose `data-cmd` names a key of CLI_COMMANDS also gets a
+    // ">_" in its tip that shows the `lexi` command line and Python for that
+    // action, filled in with what's on screen; holding ⌥ (Alt) shows them
+    // straight away. Such a tip stays open while the pointer is on it, so it
+    // can be clicked and its text selected or copied. `data-cmd="none"` marks
+    // an action with no command-line equivalent.
     (function initHoverHelp() {
       const tip = document.createElement('div');
       tip.className = 'lexi-tip';
@@ -4089,22 +4144,17 @@
       document.body.appendChild(tip);
       let target = null;
       let timer = null;
+      let leaveTimer = null;
 
       function hide() {
         clearTimeout(timer);
+        clearTimeout(leaveTimer);
         timer = null;
+        leaveTimer = null;
         target = null;
-        tip.classList.remove('show');
+        tip.classList.remove('show', 'has-cmd', 'expanded');
       }
-      function show(el) {
-        const text = el.getAttribute('data-tip');
-        if (!text || !el.isConnected) return;
-        const host = el.closest('dialog[open]') || document.body;
-        if (tip.parentNode !== host) host.appendChild(tip);
-        tip.textContent = text;
-        tip.style.left = '0px';
-        tip.style.top = '0px';
-        tip.classList.add('show');
+      function place(el) {
         const r = el.getBoundingClientRect();
         const t = tip.getBoundingClientRect();
         let left = r.left + r.width / 2 - t.width / 2;
@@ -4114,26 +4164,343 @@
         tip.style.left = `${Math.round(left)}px`;
         tip.style.top = `${Math.round(Math.max(8, top))}px`;
       }
+      function show(el, expand) {
+        const text = el.getAttribute('data-tip');
+        if (!text || !el.isConnected) return;
+        const host = el.closest('dialog[open]') || document.body;
+        if (tip.parentNode !== host) host.appendChild(tip);
+        tip.textContent = text;
+        tip.classList.remove('has-cmd', 'expanded');
+        const cmds = actionCommands(el);
+        if (cmds) {
+          tip.classList.add('has-cmd');
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'tip-cmd-toggle';
+          btn.textContent = '>_';
+          btn.setAttribute('aria-label', 'Show the command line and Python for this');
+          btn.addEventListener('click', () => { renderCommands(cmds); place(el); });
+          tip.appendChild(btn);
+          if (expand) renderCommands(cmds);
+        }
+        tip.style.left = '0px';
+        tip.style.top = '0px';
+        tip.classList.add('show');
+        place(el);
+      }
+      function renderCommands({ cli, py, note }) {
+        tip.querySelector('.tip-cmd-toggle')?.remove();
+        tip.querySelector('.tip-cmds')?.remove();
+        tip.classList.add('expanded');
+        const box = document.createElement('div');
+        box.className = 'tip-cmds';
+        const section = (label, text) => {
+          const head = document.createElement('div');
+          head.className = 'tip-cmds-head';
+          head.innerHTML = `<span>${esc(label)}</span>`;
+          const copy = document.createElement('button');
+          copy.type = 'button';
+          copy.className = 'tip-copy';
+          copy.textContent = 'Copy';
+          copy.addEventListener('click', async () => {
+            await copyText(text);
+            copy.textContent = 'Copied';
+            setStatus(`Copied the ${label.toLowerCase()}.`, 'success');
+          });
+          head.appendChild(copy);
+          const pre = document.createElement('pre');
+          pre.textContent = text;
+          box.append(head, pre);
+        };
+        section('Command line', cli.join('\n'));
+        section('Python', ['import lexi', ...py].join('\n'));
+        if (note) {
+          const n = document.createElement('div');
+          n.className = 'tip-cmds-note';
+          n.textContent = note;
+          box.appendChild(n);
+        }
+        tip.appendChild(box);
+      }
+      // Leaving the element for its tip (across the small gap) keeps it open.
+      function leaveSoon() {
+        clearTimeout(leaveTimer);
+        leaveTimer = setTimeout(hide, tip.classList.contains('has-cmd') ? 250 : 0);
+      }
+      tip.addEventListener('mouseover', () => clearTimeout(leaveTimer));
+      tip.addEventListener('mouseout', (e) => {
+        if (!tip.contains(e.relatedTarget) && !(target && target.contains(e.relatedTarget))) leaveSoon();
+      });
       document.addEventListener('mouseover', (e) => {
+        if (tip.contains(e.target)) return;
         const el = e.target.closest ? e.target.closest('[data-tip]') : null;
-        if (el === target) return;
+        if (el === target) { clearTimeout(leaveTimer); return; }
+        if (tip.classList.contains('has-cmd') && tip.classList.contains('show') && !el) return; // crossing the gap
         hide();
         if (!el) return;
         target = el;
-        timer = setTimeout(() => show(el), 450);
+        timer = setTimeout(() => show(el, e.altKey), 450);
       });
       document.addEventListener('mouseout', (e) => {
-        if (target && !target.contains(e.relatedTarget)) hide();
+        if (target && !target.contains(e.relatedTarget) && !tip.contains(e.relatedTarget)) leaveSoon();
       });
       document.addEventListener('focusin', (e) => {
+        if (tip.contains(e.target)) return;
         const el = e.target.closest ? e.target.closest('[data-tip]') : null;
-        if (el && e.target.matches(':focus-visible')) { hide(); target = el; show(el); }
+        if (el && e.target.matches(':focus-visible')) { hide(); target = el; show(el, false); }
       });
-      document.addEventListener('focusout', hide);
-      document.addEventListener('mousedown', hide, true);
-      document.addEventListener('keydown', hide, true);
-      document.addEventListener('scroll', hide, true);
+      document.addEventListener('focusout', (e) => {
+        if (!tip.contains(e.relatedTarget) && !tip.contains(e.target)) hide();
+      });
+      document.addEventListener('mousedown', (e) => { if (!tip.contains(e.target)) hide(); }, true);
+      document.addEventListener('keydown', (e) => {
+        if (tip.contains(e.target) && e.key !== 'Escape') return;
+        if (e.key === 'Alt' && target && tip.classList.contains('show')) {
+          const cmds = actionCommands(target);
+          if (cmds && !tip.classList.contains('expanded')) { renderCommands(cmds); place(target); }
+          return;
+        }
+        hide();
+      }, true);
+      document.addEventListener('scroll', (e) => { if (!tip.contains(e.target)) hide(); }, true);
     })();
+
+    async function copyText(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+    }
+
+    // --- The command line and Python for an action (">_" in its hover help) ---
+
+    // A value for the shell: bare when it's safe, else single-quoted.
+    function shq(v) {
+      const s = String(v);
+      return /^[A-Za-z0-9_@%+=:,./~-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`;
+    }
+    // A Python literal (a placeholder, `{ph: 'NAME'}`, is written as-is).
+    function pyv(v) {
+      if (v === null || v === undefined) return 'None';
+      if (typeof v === 'object' && 'ph' in v) return v.ph;
+      if (v === true) return 'True';
+      if (v === false) return 'False';
+      if (typeof v === 'number') return String(v);
+      if (Array.isArray(v)) return `[${v.map(pyv).join(', ')}]`;
+      if (typeof v === 'object') return `{${Object.entries(v).map(([k, x]) => `${pyv(k)}: ${pyv(x)}`).join(', ')}}`;
+      return JSON.stringify(String(v));
+    }
+    // `lexi A B C` from already-quoted parts (empty ones dropped).
+    const cliLine = (...parts) => ['lexi', ...parts.filter((x) => x !== '' && x !== null && x !== undefined && x !== false)].join(' ');
+    // `lexi.fn(a, b, k=v)`; keyword arguments that are undefined, null, false or empty are left out.
+    function pyCall(fn, args = [], kwargs = {}) {
+      const kw = Object.entries(kwargs)
+        .filter(([, v]) => v !== undefined && v !== null && v !== false && v !== '' && !(Array.isArray(v) && !v.length) && !(typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length))
+        .map(([k, v]) => `${k}=${pyv(v)}`);
+      return `lexi.${fn}(${[...args.map(pyv), ...kw].join(', ')})`;
+    }
+    // A placeholder for a value that isn't known yet, written as-is (NAME, MODEL).
+    const PH = (v, name) => (v === undefined || v === null || v === '' ? { ph: name } : v);
+    const shArg = (v) => (v && typeof v === 'object' ? v.ph : shq(v));
+    const promptText = (el) => el.value.trim();
+
+    function promptSave(name, text, { max_tokens, temperature, role } = {}) {
+      const opts = [max_tokens !== undefined ? `-m ${max_tokens}` : '', temperature !== undefined ? `-t ${temperature}` : '', role ? `-r ${shq(role)}` : ''];
+      return {
+        cli: [cliLine('prompts set', shArg(name), shArg(PH(text, 'TEXT')), ...opts)],
+        py: [pyCall('prompts.save', [name.ph ? name : (name === '$$' ? { ph: 'lexi.prompts.ACTIVE' } : name), PH(text, 'TEXT')], { max_tokens, temperature, role })],
+      };
+    }
+
+    // Each `data-cmd` name → (element) => {cli: [lines], py: [lines], note?},
+    // or null when there's nothing to show yet.
+    const CLI_COMMANDS = {
+      // Prompts tab
+      'prompt-save-active': () => {
+        const p = collectPayload(true);
+        return promptSave('$$', p.prompt, p);
+      },
+      'prompt-save-named': () => {
+        const p = collectPayload(false);
+        return promptSave(PH(p.name, 'NAME'), p.prompt, p);
+      },
+      'prompts-list': () => ({ cli: [cliLine('prompts list')], py: [pyCall('prompts.list')] }),
+      'prompt-activate': (el) => ({ cli: [cliLine('prompts activate', shq(el.dataset.name))], py: [pyCall('prompts.activate', [el.dataset.name])] }),
+      'prompt-delete': (el) => ({ cli: [cliLine('prompts rm', shq(el.dataset.name))], py: [pyCall('prompts.remove', [el.dataset.name])] }),
+      // Chat and Images: load / save a saved prompt
+      'chat-load-prompt': () => loadPromptCmd(chatPromptSelectEl.value),
+      'img-load-prompt': () => loadPromptCmd(imgPromptSelectEl.value),
+      'chat-save-prompt': () => promptSave({ ph: 'NAME' }, promptText(chatPromptEl)),
+      'img-save-prompt': () => promptSave({ ph: 'NAME' }, promptText(imgPromptEl)),
+      'chat-respond': () => {
+        const text = PH(promptText(chatPromptEl), 'TEXT');
+        const providers = getSelectedProviders();
+        if (!providers.length) return null;
+        const models = getSelectedModels();
+        const stream = document.getElementById('respondStream').checked;
+        const cite = document.getElementById('respondCite').checked;
+        const verbose = document.getElementById('respondVerbose').checked;
+        const tools = [...respondSelectedTools];
+        return {
+          cli: providers.map((p) => cliLine('respond', shq(p), shArg(text), models[p] ? `--model ${shq(models[p])}` : '',
+            tools.length ? `--tool ${shq(tools.join(','))}` : '', cite && '--cite', stream && '--stream', verbose && '-v')),
+          py: providers.map((p) => {
+            const call = pyCall(stream ? 'stream' : 'respond', [p, text], { model: models[p] || undefined, tools, cite });
+            return stream ? `for event in ${call}:\n    print(event)` : `print(${call}["text"])`;
+          }),
+          note: providers.length > 1 ? 'One command per provider; the app sends them all at once.' : undefined,
+        };
+      },
+      // Images tab
+      'img-generate': () => {
+        const providers = imgChecked();
+        if (!providers.length) return null;
+        const text = PH(promptText(imgPromptEl), 'TEXT');
+        const dir = imgDirEl.textContent.trim() || '~/Pictures/Lexi';
+        return {
+          cli: providers.map((p) => {
+            const opts = imgCollectOptions(p);
+            return cliLine('respond', shq(p), shArg(text), '--output image', imgState[p].model ? `--model ${shq(imgState[p].model)}` : '',
+              ...Object.entries(opts).map(([k, v]) => `--set ${shq(`${k}=${v}`)}`), `--out ${shq(dir)}`);
+          }),
+          py: providers.map((p) => pyCall('generate', [p, text], { model: imgState[p].model || undefined, out_dir: dir, set: imgCollectOptions(p) })),
+          note: providers.length > 1 ? 'One command per provider; the app sends them all at once.' : undefined,
+        };
+      },
+      'img-dir': () => ({
+        cli: [cliLine('config set images_dir', shq(imgDirEl.textContent.trim() || 'PATH'))],
+        py: [pyCall('config.set', ['images_dir', imgDirEl.textContent.trim() || 'PATH'])],
+        note: 'The folder the desktop app saves images to; the command line and Python save to --out / out_dir.',
+      }),
+      // Providers tab
+      'providers-show': () => ({ cli: [cliLine('providers list --raw')], py: [pyCall('providers.list')] }),
+      'key-set': () => {
+        const p = apiKeyProviderEl.value || 'PROVIDER';
+        return {
+          cli: [cliLine('providers api-key set', shq(p))],
+          py: ['import getpass', pyCall('providers.set_key', [p, { ph: 'getpass.getpass("API key: ")' }], {})],
+          note: 'The command line asks for the key (or reads it from stdin), so it never shows in your history.',
+        };
+      },
+      'key-show': () => {
+        const p = apiKeyProviderEl.value || 'PROVIDER';
+        return { cli: [cliLine('providers api-key show', shq(p), '--reveal')], py: [pyCall('providers.show_key', [p], { reveal: true })] };
+      },
+      'key-test': () => {
+        const p = apiKeyProviderEl.value || 'PROVIDER';
+        return { cli: [cliLine('providers status', shq(p))], py: [pyCall('providers.status', [p])] };
+      },
+      'key-remove': () => {
+        const p = apiKeyProviderEl.value || 'PROVIDER';
+        return { cli: [cliLine('providers api-key remove', shq(p))], py: [pyCall('providers.remove_key', [p])] };
+      },
+      // Models tab
+      'models-hosted': () => ({ cli: [cliLine('models hosted', shq(mtProvider))], py: [pyCall('models.hosted', [mtProvider])] }),
+      'model-add': () => ({
+        cli: [cliLine('models add', shq(mtProvider), 'MODEL')],
+        py: [pyCall('models.add', [mtProvider, { ph: 'MODEL' }], {})],
+      }),
+      'model-add-hosted': (el) => ({ cli: [cliLine('models add', shq(mtProvider), shq(el.dataset.id))], py: [pyCall('models.add', [mtProvider, el.dataset.id])] }),
+      'model-edit': (el) => {
+        const m = mtModels.find((x) => x.id === el.dataset.id) || {};
+        const f = { name: m.name || undefined, description: m.description || undefined, max_tokens: m.max_tokens ?? undefined, context_window: m.context_window ?? undefined };
+        return {
+          cli: [cliLine('models set', shq(mtProvider), shq(el.dataset.id), ...Object.entries(f).filter(([, v]) => v !== undefined).map(([k, v]) => `--${k} ${shq(v)}`)),
+            ...aliasesFor(el.dataset.id).map((a) => cliLine('models alias set', shq(mtProvider), shq(a), shq(el.dataset.id)))],
+          py: [pyCall('models.set', [mtProvider, el.dataset.id], f),
+            ...aliasesFor(el.dataset.id).map((a) => pyCall('models.set_alias', [mtProvider, a, el.dataset.id]))],
+        };
+      },
+      'model-rm': (el) => ({ cli: [cliLine('models rm', shq(mtProvider), shq(el.dataset.id))], py: [pyCall('models.remove', [mtProvider, el.dataset.id])] }),
+      'model-default': (el) => ({ cli: [cliLine('models default', shq(mtProvider), shq(el.dataset.id))], py: [pyCall('models.set_default', [mtProvider, el.dataset.id])] }),
+      'model-clear-default': (el) => ({
+        cli: [cliLine('models default', shq(mtProvider), '--clear --kind', shq(el.dataset.kind))],
+        py: [pyCall('models.clear_default', [mtProvider, el.dataset.kind])],
+      }),
+      'alias-rm': (el) => ({ cli: [cliLine('models alias rm', shq(mtProvider), shq(el.dataset.alias))], py: [pyCall('models.remove_alias', [mtProvider, el.dataset.alias])] }),
+      'alias-set': (el) => {
+        const dlg = el.closest('dialog') || document;
+        const alias = PH(dlg.querySelector('#meAliasInput')?.value.trim(), 'ALIAS');
+        const model = PH(dlg.querySelector('#meModelId')?.value.trim(), 'MODEL');
+        return {
+          cli: [cliLine('models alias set', shq(mtProvider), shArg(alias), shArg(model))],
+          py: [pyCall('models.set_alias', [mtProvider, alias, model], {})],
+        };
+      },
+      // APIs tab
+      'api-create': () => {
+        const name = PH(document.getElementById('apiCreateName')?.value.trim(), 'NAME');
+        const from = document.getElementById('apiCreateFrom')?.value || undefined;
+        const path = document.getElementById('apiCreatePath')?.value.trim() || undefined;
+        const textPath = document.getElementById('apiCreateTextPath')?.value.trim() || undefined;
+        return {
+          cli: [cliLine('api create', shArg(name), from && `--from ${shq(from)}`, path && `--path ${shq(path)}`, textPath && `--text-path ${shq(textPath)}`)],
+          py: [pyCall('apis.create', [name], { template: from, path, text_path: textPath })],
+        };
+      },
+      'api-clone': () => (selectedApiName ? {
+        cli: [cliLine('api create NAME --from', shq(selectedApiName))],
+        py: [pyCall('apis.create', [{ ph: 'NAME' }], { template: selectedApiName })],
+      } : null),
+      'api-save': () => (selectedApiName ? {
+        cli: [cliLine('api save', shq(selectedApiName), shq(`${selectedApiName}.yaml`))],
+        py: [pyCall('apis.save', [selectedApiName, `${selectedApiName}.yaml`])],
+        note: 'Saves a YAML file as the definition; it is checked first, and errors are listed.',
+      } : null),
+      'api-show': () => (selectedApiName ? { cli: [cliLine('api show', shq(selectedApiName))], py: [pyCall('apis.show', [selectedApiName])] } : null),
+      'api-rm': () => (selectedApiName ? { cli: [cliLine('api rm', shq(selectedApiName))], py: [pyCall('apis.remove', [selectedApiName])] } : null),
+      'api-preview': () => (selectedApiName ? { cli: [cliLine('api preview', shq(selectedApiName))], py: [pyCall('apis.preview', [selectedApiName])] } : null),
+      // Configure tab
+      'theme': (el) => ({ cli: [cliLine('config set theme', shq(el.dataset.theme))], py: [pyCall('config.set', ['theme', el.dataset.theme])] }),
+      'config-timeout': () => {
+        const raw = cfgRequestTimeoutEl.value.trim();
+        const v = /^\d+$/.test(raw) ? Number(raw) : { ph: 'SECONDS' };
+        return { cli: [cliLine('config set request_timeout', shArg(v))], py: [pyCall('config.set', ['request_timeout', v], {})] };
+      },
+      'config-cli': () => {
+        const vals = {
+          cli_name: cfgCliNameEl.value.trim() || CONFIG_DEFAULTS.cli_name,
+          prompt: cfgPromptEl.value.trim() || CONFIG_DEFAULTS.prompt,
+          prompt_delimiter: cfgPromptDelimiterEl.value || CONFIG_DEFAULTS.prompt_delimiter,
+          edit_mode: cfgEditModeEl.value,
+        };
+        return {
+          cli: Object.entries(vals).map(([k, v]) => cliLine('config set', k, shq(v))),
+          py: Object.entries(vals).map(([k, v]) => pyCall('config.set', [k, v])),
+        };
+      },
+      'config-reset': () => ({
+        cli: Object.entries(CONFIG_DEFAULTS).map(([k, v]) => cliLine('config set', k, shq(v))),
+        py: Object.entries(CONFIG_DEFAULTS).map(([k, v]) => pyCall('config.set', [k, v])),
+      }),
+    };
+
+    function loadPromptCmd(name) {
+      const n = PH(name, 'NAME');
+      return { cli: [cliLine('prompts list', shArg(n), '--raw')], py: [pyCall('prompts.get', [n], {})] };
+    }
+
+    // The commands for an element's action, or null (no `data-cmd`, `none`,
+    // or nothing to show yet).
+    function actionCommands(el) {
+      const name = el.getAttribute('data-cmd');
+      const make = name && name !== 'none' ? CLI_COMMANDS[name] : null;
+      if (!make) return null;
+      try {
+        return make(el) || null;
+      } catch (err) {
+        console.error(`data-cmd ${name}:`, err);
+        return null;
+      }
+    }
 
     // A modal dialog. `body` is HTML or a Node; `onOk(dialog)` runs on OK and
     // may throw to keep the dialog open with the error shown. Resolves with
@@ -4146,7 +4513,7 @@
           <form method="dialog" novalidate>
             <div class="lexi-dialog-head">
               <h3></h3>
-              <button type="button" class="modal-close dlg-x" aria-label="Close" data-tip="Close without saving (Esc)">&times;</button>
+              <button type="button" class="modal-close dlg-x" data-cmd="none" aria-label="Close" data-tip="Close without saving (Esc)">&times;</button>
             </div>
             <div class="lexi-dialog-body"></div>
             <div class="lexi-dialog-error" role="alert"></div>
@@ -4604,9 +4971,9 @@
       columns: [
         {
           key: '_actions', label: '', sortable: false, filterable: false, sticky: true, cls: 'dt-actions',
-          render: (m) => `<button type="button" class="btn-icon mt-edit" data-id="${esc(m.id)}" aria-label="Edit ${esc(m.id)}" data-tip="Edit this model's name, limits and aliases">&#9998;</button>`
+          render: (m) => `<button type="button" class="btn-icon mt-edit" data-cmd="model-edit" data-id="${esc(m.id)}" aria-label="Edit ${esc(m.id)}" data-tip="Edit this model's name, limits and aliases">&#9998;</button>`
             + defaultStar(m)
-            + `<button type="button" class="btn-icon danger mt-rm" data-id="${esc(m.id)}" aria-label="Remove ${esc(m.id)}" data-tip="Remove this model from your configured models">&#10005;</button>`,
+            + `<button type="button" class="btn-icon danger mt-rm" data-cmd="model-rm" data-id="${esc(m.id)}" aria-label="Remove ${esc(m.id)}" data-tip="Remove this model from your configured models">&#10005;</button>`,
         },
         {
           key: 'id', label: 'Model ID', sticky: true,
@@ -4675,7 +5042,7 @@
           const id = m.id || m.model;
           return mtModels.some((c) => c.id === id)
             ? '<span class="badge-exists" data-tip="Already in your configured models">added</span>'
-            : `<button type="button" class="btn-icon hosted-add" data-id="${esc(id)}" aria-label="Add ${esc(id)}" data-tip="Add this hosted model to your configured models, making it usable for chat, image generation, etc.">+</button>`;
+            : `<button type="button" class="btn-icon hosted-add" data-cmd="model-add-hosted" data-id="${esc(id)}" aria-label="Add ${esc(id)}" data-tip="Add this hosted model to your configured models, making it usable for chat, image generation, etc.">+</button>`;
         },
       });
       return cols;
@@ -4688,10 +5055,10 @@
       const kind = esc(d ? d.kind : (m.kind || 'chat'));
       const prov = esc(mtProvider);
       if (!d) {
-        return `<button type="button" class="btn-icon mt-setdef" data-id="${esc(m.id)}" aria-label="Make ${esc(m.id)} the default ${kind} model" data-tip="Make this the default ${kind} model for ${prov}">&#9734;</button>`;
+        return `<button type="button" class="btn-icon mt-setdef" data-cmd="model-default" data-id="${esc(m.id)}" aria-label="Make ${esc(m.id)} the default ${kind} model" data-tip="Make this the default ${kind} model for ${prov}">&#9734;</button>`;
       }
       if (d.source === 'user') {
-        return `<button type="button" class="btn-icon mt-cleardef" data-id="${esc(m.id)}" data-kind="${kind}" aria-label="Stop using ${esc(m.id)} as the default ${kind} model" data-tip="Your default ${kind} model for ${prov}. Click to clear it, so the provider's default applies">&#9733;</button>`;
+        return `<button type="button" class="btn-icon mt-cleardef" data-cmd="model-clear-default" data-id="${esc(m.id)}" data-kind="${kind}" aria-label="Stop using ${esc(m.id)} as the default ${kind} model" data-tip="Your default ${kind} model for ${prov}. Click to clear it, so the provider's default applies">&#9733;</button>`;
       }
       return `<span class="btn-icon-slot" data-tip="The provider's default ${kind} model (you haven't chosen one); ☆ on another ${kind} model makes that the default">&#9733;</span>`;
     }
@@ -4720,7 +5087,7 @@
         + orphans.map(([alias, target]) => `
           <div class="notice-row">
             <span class="alias-tag error">${esc(alias)}</span> → <code>${esc(target)}</code>
-            <button type="button" class="btn-icon danger orphan-rm" data-alias="${esc(alias)}" aria-label="Remove alias ${esc(alias)}" data-tip="Remove this alias">&#10005;</button>
+            <button type="button" class="btn-icon danger orphan-rm" data-cmd="alias-rm" data-alias="${esc(alias)}" aria-label="Remove alias ${esc(alias)}" data-tip="Remove this alias">&#10005;</button>
           </div>`).join('');
     }
 
@@ -4826,7 +5193,7 @@
             <div class="alias-editor" id="meAliasList"></div>
             <div class="alias-add">
               <input id="meAliasInput" type="text" placeholder="New alias, e.g. sonnet" autocomplete="off" spellcheck="false">
-              <button type="button" class="btn btn-ghost" id="meAliasAdd" data-tip="Add this alias (saved when you press ${isEdit ? 'Save' : 'Add model'})">Add alias</button>
+              <button type="button" class="btn btn-ghost" id="meAliasAdd" data-cmd="alias-set" data-tip="Add this alias (saved when you press ${isEdit ? 'Save' : 'Add model'})">Add alias</button>
             </div>
             <div class="hint">Short names you can use in place of the model id.</div>
           </div>
@@ -4839,7 +5206,7 @@
       const renderAliases = (dlg) => {
         const list = dlg.querySelector('#meAliasList');
         list.innerHTML = aliases.length
-          ? aliases.map((a) => `<span class="alias-tag alias-chip">${esc(a)}<button type="button" class="chip-x" data-alias="${esc(a)}" aria-label="Remove alias ${esc(a)}" data-tip="Remove this alias">&times;</button></span>`).join('')
+          ? aliases.map((a) => `<span class="alias-tag alias-chip">${esc(a)}<button type="button" class="chip-x" data-cmd="alias-rm" data-alias="${esc(a)}" aria-label="Remove alias ${esc(a)}" data-tip="Remove this alias">&times;</button></span>`).join('')
           : '<span class="muted" style="font-size:0.85rem;">No aliases.</span>';
       };
       const addAlias = (dlg) => {
@@ -5293,21 +5660,21 @@
         if (r.status === 'failed') {
           cards.push(`<figure class="img-card failed"><div class="img-thumb">${esc(r.error)}</div>
             <figcaption><div class="img-caption">${esc(r.prompt)}</div><div class="img-meta">${meta}</div>
-            <div class="img-actions"><button type="button" class="btn-icon img-retry" data-r="${ri}" data-tip="Put this prompt and provider back in the form to try again">&#8634;</button></div></figcaption></figure>`);
+            <div class="img-actions"><button type="button" class="btn-icon img-retry" data-cmd="none" data-r="${ri}" data-tip="Put this prompt and provider back in the form to try again">&#8634;</button></div></figcaption></figure>`);
           return;
         }
         r.images.forEach((img, ii) => {
           const name = img.path.split(/[\\/]/).pop();
           const notes = (r.warnings || []).map((w) => `<div class="img-note">${esc(w)}</div>`).join('');
           cards.push(`<figure class="img-card">
-            <button type="button" class="img-thumb img-open" data-r="${ri}" data-i="${ii}" data-tip="View larger"><img class="img-thumb" src="${img.data_url || ''}" alt="${esc(r.prompt)}"></button>
+            <button type="button" class="img-thumb img-open" data-cmd="none" data-r="${ri}" data-i="${ii}" data-tip="View larger"><img class="img-thumb" src="${img.data_url || ''}" alt="${esc(r.prompt)}"></button>
             <figcaption>
               <div class="img-caption" ${img.revised_prompt ? `data-tip="Revised prompt: ${esc(img.revised_prompt)}"` : ''}>${esc(r.prompt)}</div>
               <div class="img-meta">${meta} · ${esc(name)}</div>${notes}
               <div class="img-actions">
-                <button type="button" class="btn-icon img-reveal" data-path="${esc(img.path)}" data-tip="Show this file in ${FILE_MANAGER}">&#128193;</button>
-                <button type="button" class="btn-icon img-copy" data-path="${esc(img.path)}" data-tip="Copy this file's path">&#10697;</button>
-                <button type="button" class="btn-icon img-retry" data-r="${ri}" data-tip="Put this prompt, provider and model back in the form">&#8634;</button>
+                <button type="button" class="btn-icon img-reveal" data-cmd="none" data-path="${esc(img.path)}" data-tip="Show this file in ${FILE_MANAGER}">&#128193;</button>
+                <button type="button" class="btn-icon img-copy" data-cmd="none" data-path="${esc(img.path)}" data-tip="Copy this file's path">&#10697;</button>
+                <button type="button" class="btn-icon img-retry" data-cmd="none" data-r="${ri}" data-tip="Put this prompt, provider and model back in the form">&#8634;</button>
               </div>
             </figcaption></figure>`);
         });
@@ -5538,6 +5905,7 @@
         card.className = 'theme-card' + (id === currentTheme ? ' selected' : '');
         card.dataset.theme = id;
         card.setAttribute('data-tip', `Use the ${name} theme`);
+        card.setAttribute('data-cmd', 'theme');
         const swatch = document.createElement('div');
         swatch.className = 'theme-swatch';
         swatch.style.background = themeValue(theme.swatch, 'background') || themeValue(theme.vars['--accent']);
@@ -5729,9 +6097,9 @@
             ${usedBy.length ? `<div class="muted" style="font-size:0.85rem;margin-top:4px;">Used by: ${usedBy.map((p) => `<span class="api-used-by-tag">${escapeHtml(p)}</span>`).join(' ')}</div>` : ''}
           </div>
           <div class="api-actions" style="margin-top:0;">
-            <button class="btn btn-primary" id="apiSaveBtn" data-tip="Save your changes to this definition">Save</button>
-            <button class="btn btn-ghost" id="apiResetBtn" data-tip="Discard your changes and reload the definition from disk">Reset</button>
-            <button class="btn btn-danger" id="apiDeleteBtn" data-tip="Delete this API definition">Delete</button>
+            <button class="btn btn-primary" id="apiSaveBtn" data-cmd="api-save" data-tip="Save your changes to this definition">Save</button>
+            <button class="btn btn-ghost" id="apiResetBtn" data-cmd="api-show" data-tip="Discard your changes and reload the definition from disk">Reset</button>
+            <button class="btn btn-danger" id="apiDeleteBtn" data-cmd="api-rm" data-tip="Delete this API definition">Delete</button>
           </div>
         </div>
         <textarea class="api-yaml-editor" id="apiYamlTextarea">${escapeHtml(yamlText)}</textarea>
@@ -5742,7 +6110,7 @@
           <input id="apiPreviewPrompt" type="text" placeholder="Sample prompt" value="hello world">
           <input id="apiPreviewModel" type="text" placeholder="Model" value="sample-model" style="max-width:180px;">
           <input id="apiPreviewRole" type="text" placeholder="Role" value="user" style="max-width:100px;">
-          <button class="btn btn-ghost" id="apiPreviewRefreshBtn" data-tip="Rebuild the request preview from the definition as it is now" style="padding:6px 12px;font-size:0.85rem;">Refresh Preview</button>
+          <button class="btn btn-ghost" id="apiPreviewRefreshBtn" data-cmd="api-preview" data-tip="Rebuild the request preview from the definition as it is now" style="padding:6px 12px;font-size:0.85rem;">Refresh Preview</button>
         </div>
         <div class="api-preview-block">
           <div class="muted" style="font-size:0.8rem;margin-bottom:4px;">Composed request body</div>
@@ -5930,7 +6298,7 @@
           <label for="apiCreateTextPath">Response Text Path</label>
           <input id="apiCreateTextPath" type="text" placeholder="choices[0].message.content">
           <div class="actions" style="display:flex;gap:8px;">
-            <button class="btn btn-primary" id="apiCreateSubmitBtn">Create</button>
+            <button class="btn btn-primary" id="apiCreateSubmitBtn" data-cmd="api-create" data-tip="Create the API definition">Create</button>
             <button class="btn btn-ghost" id="apiCreateCancelBtn">Cancel</button>
           </div>
         </div>
