@@ -1583,6 +1583,27 @@ pub(crate) mod tests {
         assert!(used.len() > 30, "found only {} data-cmd names", used.len());
     }
 
+    /// Every local file the page loads (`src="…"`: scripts, images) is in
+    /// the frontend folder. (The Markdown libraries were once referenced but
+    /// missing, so chat silently showed plain text.)
+    #[test]
+    fn frontend_local_files_exist() {
+        let html = include_str!("../frontend/index.html");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("frontend");
+        let mut missing = Vec::new();
+        for part in html.split("src=\"").skip(1) {
+            let src = &part[..part.find('"').unwrap_or(0)];
+            let dynamic = src.contains("${") || src.contains(':') || src.is_empty();
+            if !dynamic && !dir.join(src.trim_start_matches('/')).is_file() {
+                missing.push(src.to_string());
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "files the page loads but frontend/ lacks: {missing:?}"
+        );
+    }
+
     /// The frontend is one script: a second top-level `function name(` with
     /// the same name silently replaces the first everywhere (a release-notes
     /// `renderMarkdown` once broke chat that way).

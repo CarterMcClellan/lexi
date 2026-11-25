@@ -616,6 +616,7 @@
     /* --- Markdown rendering for response bodies --- */
     .markdown-body {
       line-height: 1.55;
+      white-space: normal; /* the response box is pre-wrap for plain text */
     }
     .markdown-body > :first-child { margin-top: 0; }
     .markdown-body > :last-child { margin-bottom: 0; }
@@ -3282,6 +3283,12 @@
       const div = document.createElement('div');
       div.className = 'markdown-body';
       div.innerHTML = safe;
+      // Web links open in the browser (clicking one must never take the app's
+      // own window away); anything else isn't a link here.
+      div.querySelectorAll('a[href]').forEach((a) => {
+        if (/^https?:\/\//i.test(a.getAttribute('href'))) a.setAttribute('data-external', '');
+        else a.removeAttribute('href');
+      });
       return div;
     }
 
