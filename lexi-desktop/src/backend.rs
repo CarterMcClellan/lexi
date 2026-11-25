@@ -1535,6 +1535,54 @@ mod tests {
         assert!(out.join("a-calm-fox-1.png").exists() && out.join("a-calm-fox-2.png").exists());
     }
 
+    /// Every button with hover help says what its action is on the command
+    /// line: `data-cmd="NAME"` (a key of `CLI_COMMANDS`, whose ">_" shows the
+    /// `lexi` command and Python) or `data-cmd="none"`. And every name used
+    /// is defined.
+    #[test]
+    fn frontend_buttons_with_hover_help_name_their_commands() {
+        let html = include_str!("../frontend/index.html");
+        let line_of = |at: usize| html[..at].lines().count();
+        let mut missing = Vec::new();
+        let mut used = std::collections::BTreeSet::new();
+        let mut at = 0;
+        while let Some(i) = html[at..].find("<button") {
+            let start = at + i;
+            let end = start + html[start..].find('>').expect("an unclosed <button");
+            let tag = &html[start..end];
+            if tag.contains("data-tip") && !tag.contains("data-cmd=") {
+                missing.push(format!(
+                    "line {}: {}",
+                    line_of(start),
+                    tag.chars().take(120).collect::<String>()
+                ));
+            }
+            at = end;
+        }
+        for (pre, quote) in [("data-cmd=\"", '"'), ("'data-cmd', '", '\'')] {
+            for part in html.split(pre).skip(1) {
+                let name = &part[..part.find(quote).unwrap()];
+                if name != "none" {
+                    used.insert(name.to_string());
+                }
+            }
+        }
+        let undefined: Vec<&String> = used
+            .iter()
+            .filter(|n| !html.contains(&format!("\n      '{n}': ")))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "buttons with data-tip but no data-cmd:\n{}",
+            missing.join("\n")
+        );
+        assert!(
+            undefined.is_empty(),
+            "data-cmd names missing from CLI_COMMANDS: {undefined:?}"
+        );
+        assert!(used.len() > 30, "found only {} data-cmd names", used.len());
+    }
+
     /// The frontend is one script: a second top-level `function name(` with
     /// the same name silently replaces the first everywhere (a release-notes
     /// `renderMarkdown` once broke chat that way).
