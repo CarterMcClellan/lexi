@@ -8,6 +8,7 @@
 pub mod admin;
 pub mod auth;
 pub mod bootstrap;
+pub mod chatgpt;
 pub mod config;
 pub mod embed;
 pub mod generate;

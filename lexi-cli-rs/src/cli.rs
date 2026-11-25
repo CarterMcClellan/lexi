@@ -268,6 +268,18 @@ pub enum PromptsCmd {
 
 #[derive(Debug, Subcommand)]
 pub enum ProvidersCmd {
+    /// Sign in with ChatGPT; uses your ChatGPT plan for eligible Responses requests.
+    Login {
+        #[arg(default_value = "personal")]
+        account: String,
+    },
+    /// List saved ChatGPT accounts (no tokens).
+    Accounts,
+    /// Sign out of a ChatGPT account and revoke its renewable session.
+    Logout {
+        #[arg(default_value = "personal")]
+        account: String,
+    },
     /// List configured providers.
     #[command(visible_alias = "ls")]
     List {

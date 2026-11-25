@@ -167,6 +167,9 @@ async fn post_buffered(
     api_key: &str,
     body: &Value,
 ) -> Result<RespondResult, HostError> {
+    if crate::chatgpt::enabled(effective_cfg) {
+        return post_stream(client, effective_cfg, api_key, body, |_| {}).await;
+    }
     let raw: Value = within_limit(async {
         let resp = client
             .post(endpoint_url(effective_cfg))
@@ -193,6 +196,26 @@ async fn post_stream<F: FnMut(StreamEvent)>(
     body: &Value,
     mut on_event: F,
 ) -> Result<RespondResult, HostError> {
+    let plan = crate::chatgpt::enabled(effective_cfg);
+    let mut plan_body = body.clone();
+    let plan_key;
+    let plan_client;
+    let (client, api_key, body) = if plan {
+        if body.get("background") == Some(&Value::Bool(true)) {
+            return Err(HostError::Unsupported(
+                "ChatGPT plan use does not support background requests".into(),
+            ));
+        }
+        plan_key = crate::chatgpt::credential(effective_cfg, &endpoint_url(effective_cfg)).await?;
+        plan_body["store"] = Value::Bool(false);
+        plan_body["stream"] = Value::Bool(true);
+        plan_client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()?;
+        (&plan_client, plan_key.as_str(), &plan_body)
+    } else {
+        (client, api_key, body)
+    };
     let limit = config::request_timeout();
     let send = client
         .post(endpoint_url(effective_cfg))
@@ -252,6 +275,13 @@ async fn post_stream<F: FnMut(StreamEvent)>(
                         .unwrap_or(v);
                 }
             }
+            if plan {
+                let v: Value = serde_json::from_str(data).unwrap_or(Value::Null);
+                let kind = event.or_else(|| v["type"].as_str()).unwrap_or("");
+                if matches!(kind, "response.failed" | "response.incomplete" | "error") {
+                    return Err(HostError::OperationFailed("ChatGPT request failed or was incomplete. Review plan limits at https://chatgpt.com/settings/usage; no API-key fallback was used.".into()));
+                }
+            }
             let cls = lexi_core::classify_event(event, data, &stream_cfg);
             match cls["kind"].as_str() {
                 Some("delta") => {
@@ -270,6 +300,11 @@ async fn post_stream<F: FnMut(StreamEvent)>(
         }
     }
 
+    if plan && final_response.get("status").and_then(Value::as_str) != Some("completed") {
+        return Err(HostError::OperationFailed(
+            "ChatGPT stream ended without response.completed".into(),
+        ));
+    }
     Ok(RespondResult {
         text: accumulated,
         raw: final_response,
@@ -328,6 +363,11 @@ async fn submit_background(
     api_key: &str,
     body: &Value,
 ) -> Result<OperationStatus, HostError> {
+    if crate::chatgpt::enabled(effective_cfg) {
+        return Err(HostError::Unsupported(
+            "ChatGPT plan use does not support background jobs".into(),
+        ));
+    }
     let op_cfg = operation_cfg(effective_cfg)?;
     let response: Value = within_limit(async {
         let resp = client
@@ -349,6 +389,11 @@ async fn poll_operation(
     api_key: &str,
     id: &Value,
 ) -> Result<OperationStatus, HostError> {
+    if crate::chatgpt::enabled(effective_cfg) {
+        return Err(HostError::Unsupported(
+            "ChatGPT plan use does not support background jobs".into(),
+        ));
+    }
     let op_cfg = operation_cfg(effective_cfg)?;
     let base_url = effective_cfg
         .get("url")
@@ -406,6 +451,11 @@ async fn post_background(
     poll_interval: std::time::Duration,
     max_polls: usize,
 ) -> Result<RespondResult, HostError> {
+    if crate::chatgpt::enabled(effective_cfg) {
+        return Err(HostError::Unsupported(
+            "ChatGPT plan use does not support background requests".into(),
+        ));
+    }
     let submitted = submit_background(client, effective_cfg, api_key, body).await?;
     let done = wait_for(
         client,
@@ -881,6 +931,11 @@ pub async fn run_chat<F: FnMut(StreamEvent)>(
 /// Submit a prepared background chat without waiting; returns the operation
 /// (its `id` is what [`operation_status`] / [`wait_operation`] take).
 pub async fn submit_chat(chat: &PreparedChat) -> Result<OperationStatus, HostError> {
+    if crate::chatgpt::enabled(&chat.effective) {
+        return Err(HostError::Unsupported(
+            "ChatGPT plan use does not support detached requests".into(),
+        ));
+    }
     let client = reqwest::Client::new();
     submit_background(&client, &chat.effective, &chat.api_key, &chat.body).await
 }

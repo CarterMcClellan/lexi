@@ -494,6 +494,19 @@ fn _admin<'py>(py: Python<'py>, op: &str, args: &Bound<'py, PyAny>) -> PyResult<
     let e = lexi_err;
     let out: Value = match op {
         // providers
+        "providers.login" => {
+            let account = a.string("account")?;
+            block_on(py, async move {
+                lexi_host::chatgpt::chatgpt_login(&account).await
+            })?
+        }
+        "providers.accounts" => block_on(py, lexi_host::chatgpt::chatgpt_accounts())?,
+        "providers.logout" => {
+            let account = a.string("account")?;
+            block_on(py, async move {
+                lexi_host::chatgpt::chatgpt_logout(&account).await
+            })?
+        }
         "providers.list" => json!(admin::provider_summaries().map_err(e)?),
         "providers.status" => {
             let name = a.string("name")?;

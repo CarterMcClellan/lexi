@@ -23,6 +23,9 @@ not enforced). The wheel's engine functions (`lexi.compose_request_body`, …) w
 
 | Operation | lexi-host | CLI | Python API | GUI |
 |---|---|---|---|---|
+| Continue with ChatGPT | `chatgpt_login` | `providers login` | `lexi.providers.login` | Providers |
+| List ChatGPT accounts | `chatgpt_accounts` | `providers accounts` | `lexi.providers.accounts` | Providers |
+| Sign out of ChatGPT | `chatgpt_logout` | `providers logout` | `lexi.providers.logout` | Providers |
 | Send a saved / inline prompt with full options (model aliases, schema flags, presets, `--set`, params) | `prepare_chat`, `run_chat`, `compose_chat_body`, `resolve_prompt` | `respond` | `lexi.respond`, `lexi.prepare` | — |
 | Send a prompt (buffered) | `respond_text`, `respond_with_effective` | `respond` | `lexi.respond` | Chat |
 | Send a prompt (streaming) | `respond_stream_text`, `respond_stream_with_effective` | `respond` | `lexi.stream` | Chat |

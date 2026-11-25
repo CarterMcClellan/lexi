@@ -231,6 +231,18 @@ pub(crate) fn lookup_api_key(cfg: &Value) -> Result<Lookup, HostError> {
 /// with a key wins; a read error (an unreadable file) stops the lookup and is
 /// the error.
 pub fn resolve_api_key(provider_name: &str, provider_cfg: &Value) -> Result<String, HostError> {
+    if crate::chatgpt::enabled(provider_cfg) {
+        if provider_cfg
+            .pointer("/request/path")
+            .and_then(Value::as_str)
+            != Some("/responses")
+        {
+            return Err(HostError::Unsupported(
+                "ChatGPT plan use supports Responses requests only".into(),
+            ));
+        }
+        return Ok(String::new()); // resolved/refreshed asynchronously immediately before transport
+    }
     let lookup = lookup_api_key(provider_cfg)?;
     if let Some(key) = lookup.key.clone() {
         return Ok(key);
@@ -262,6 +274,9 @@ pub fn api_key_source(
     provider_name: &str,
     provider_cfg: &Value,
 ) -> Result<Option<&'static str>, HostError> {
+    if crate::chatgpt::enabled(provider_cfg) {
+        return Ok(Some("chatgpt"));
+    }
     let lookup = lookup_api_key(provider_cfg)?;
     if let Some((source, err)) = lookup.failure() {
         return Err(read_error(provider_name, source, err));

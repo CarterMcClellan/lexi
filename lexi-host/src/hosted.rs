@@ -91,6 +91,18 @@ pub async fn fetch_hosted_models_with(
     api_key: &str,
 ) -> Result<Vec<Value>, HostError> {
     let endpoint = hosted_endpoint(effective_cfg);
+    let plan_key;
+    let plan_client;
+    let (client, api_key) = if crate::chatgpt::enabled(effective_cfg) {
+        plan_key = crate::chatgpt::credential(effective_cfg, &endpoint).await?;
+        plan_client = reqwest::Client::builder()
+            .timeout(HOSTED_TIMEOUT)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()?;
+        (&plan_client, plan_key.as_str())
+    } else {
+        (client, api_key)
+    };
     let catalog = catalog_cfg(effective_cfg);
     let paginate = catalog.get("paginate").filter(|p| p.is_object());
     let items_path = catalog.get("items_path").and_then(Value::as_str);
@@ -145,6 +157,12 @@ pub async fn fetch_hosted_models_with(
         match (more, last) {
             (true, Some(l)) => after = Some(l),
             _ => break,
+        }
+    }
+    if crate::chatgpt::enabled(effective_cfg) {
+        all.retain(|m| m["visibility"] == "list" && m["slug"].is_string());
+        for m in &mut all {
+            m["id"] = m["slug"].clone();
         }
     }
     Ok(all)
@@ -274,6 +292,17 @@ pub async fn check_api_key(provider: &str) -> Result<KeyStatus, HostError> {
         .cloned()
         .ok_or_else(|| HostError::UnknownProvider(provider.to_string()))?;
     let eff = config::effective_config(provider, &provider_cfg)?;
+    if crate::chatgpt::enabled(&eff) {
+        let ready = fetch_hosted_models_with(&reqwest::Client::new(), &eff, "")
+            .await
+            .is_ok();
+        return Ok(KeyStatus {
+            status: if ready { "ready" } else { "sign in required" },
+            source: Some("chatgpt"),
+            from: eff["chatgpt_account"].as_str().map(str::to_string),
+            verified: ready,
+        });
+    }
     let lookup = config::lookup_api_key(&eff)?;
     if let Some((s, e)) = lookup.failure() {
         return Err(HostError::Config(format!(

@@ -17,6 +17,12 @@ pub fn build_headers(effective_cfg: &Value, api_key: &str) -> HeaderMap {
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
 
+    if crate::chatgpt::enabled(effective_cfg) {
+        if let Ok(value) = HeaderValue::from_str(&format!("Bearer {api_key}")) {
+            headers.insert(reqwest::header::AUTHORIZATION, value);
+        }
+        return headers;
+    }
     let auth = effective_cfg.get("auth");
     let header_name = auth
         .and_then(|a| a.get("header"))

@@ -24,6 +24,10 @@ On first run, Lexi seeds `~/.lexi-cli/` (or `$LEXI_HOME`) with provider configs,
 model metadata, and default command aliases. It only fills in missing files;
 your edits are never overwritten.
 
+### Use your ChatGPT plan
+
+Run `lexi providers login personal`, or choose **Continue with ChatGPT** in the desktop Providers tab. See [ChatGPT sign-in](docs/chatgpt-sign-in.md) for account selection, shared limits, and supported operations.
+
 ### API keys
 
 Each provider looks for its key in order: an environment variable

@@ -2199,6 +2199,7 @@
     <div class="content active" id="tab-chat">
       <div class="chat-prompt-section" id="chatPromptSection">
         <label for="chatPrompt">Prompt</label>
+        <p class="muted">Providers named chatgpt-* use your ChatGPT plan. Manage limits in Providers → Manage usage.</p>
         <textarea id="chatPrompt" placeholder="Enter prompt"></textarea>
         <div class="inline-field" style="justify-content: space-between; align-items: center;">
           <div style="display:flex; align-items:center; gap:8px;">
@@ -2244,6 +2245,16 @@
       </div>
     </div>
     <div class="content" id="tab-providers">
+      <section class="panel">
+        <h2>Use your ChatGPT plan</h2>
+        <p>Eligible responses use your ChatGPT plan and its shared limits. API-key providers are billed separately.</p>
+        <label for="chatgptAccount">Account label</label>
+        <input id="chatgptAccount" value="personal" placeholder="personal or work" maxlength="64">
+        <button class="btn btn-primary" id="chatgptLogin" data-oai-siwc-button data-cmd="none" data-tip="Sign in in your browser; use a new label to add another account">Continue with ChatGPT</button>
+        <button class="btn btn-ghost" id="chatgptLogout" data-cmd="none" data-tip="Sign out of the account named above">Sign out</button>
+        <button class="btn btn-ghost" id="chatgptUsage" data-cmd="none" data-tip="Manage plan usage and optional credits in ChatGPT settings">Manage usage</button>
+        <div id="chatgptAccounts"></div>
+      </section>
       <section class="panel">
         <h2>Providers</h2>
         <div id="providerTable"></div>
@@ -2776,6 +2787,44 @@
         });
         responseBodyEl.textContent = `(${providers[0]}) No response yet.`;
     }
+
+    async function refreshChatgptAccounts() {
+      const accounts = await api('/api/chatgpt/accounts');
+      const container = document.getElementById('chatgptAccounts');
+      container.replaceChildren();
+      for (const a of accounts) {
+        const row = document.createElement('p');
+        row.textContent = `${a.label} — ${a.email || a.client_id} — ${a.signed_in ? 'Using ChatGPT plan' : 'Signed out'} — provider: ${a.provider}`;
+        container.appendChild(row);
+      }
+    }
+    document.getElementById('chatgptLogin').onclick = async () => {
+      const button = document.getElementById('chatgptLogin');
+      button.disabled = true;
+      setStatus('Complete ChatGPT sign-in in your browser. This expires in five minutes.', 'busy');
+      try {
+        const result = await api('/api/chatgpt/login', {method:'POST', body:JSON.stringify({account:document.getElementById('chatgptAccount').value.trim()})});
+        setStatus(result.message, 'success');
+        await refreshChatgptAccounts();
+        await fetchProvidersList();
+        const welcomeKey = 'chatgpt-welcomed-' + result.account;
+        if (!localStorage.getItem(welcomeKey)) {
+          await openDialog({title: "You're using your ChatGPT plan", body:'<p>Eligible requests use your shared ChatGPT plan allowance. Manage app limits and optional credits in ChatGPT Settings → Usage.</p>', okLabel:'Got it'});
+          localStorage.setItem(welcomeKey, '1');
+        }
+      } catch (e) { setStatus(e.message, 'error'); }
+      finally { button.disabled = false; }
+    };
+    document.getElementById('chatgptLogout').onclick = async () => {
+      try {
+        const result = await api('/api/chatgpt/logout', {method:'POST', body:JSON.stringify({account:document.getElementById('chatgptAccount').value.trim()})});
+        setStatus(result.message, result.remote_revocation_confirmed ? 'success' : 'warn');
+        await refreshChatgptAccounts();
+        await fetchProvidersList();
+      } catch (e) { setStatus(e.message, 'error'); }
+    };
+    document.getElementById('chatgptUsage').onclick = () => api('/api/open-url', {method:'POST',body:JSON.stringify({url:'https://chatgpt.com/settings/usage'})}).catch(e => setStatus(e.message, 'error'));
+    refreshChatgptAccounts().catch(e => setStatus(e.message, 'error'));
 
     async function fetchProvidersList() {
       try {

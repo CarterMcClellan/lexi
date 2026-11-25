@@ -315,6 +315,34 @@ lexi prompts activate <NAME>
 
 Manage providers
 
+#### `providers login`
+
+Sign in with ChatGPT; uses your ChatGPT plan for eligible Responses requests
+
+```
+lexi providers login [ACCOUNT]
+```
+
+- `<ACCOUNT>`
+
+#### `providers accounts`
+
+List saved ChatGPT accounts (no tokens)
+
+```
+lexi providers accounts
+```
+
+#### `providers logout`
+
+Sign out of a ChatGPT account and revoke its renewable session
+
+```
+lexi providers logout [ACCOUNT]
+```
+
+- `<ACCOUNT>`
+
 #### `providers list`
 
 Aliases: `ls`

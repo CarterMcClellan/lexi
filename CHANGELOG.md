@@ -8,6 +8,8 @@ go under **Unreleased**; at release time that heading becomes the version
 
 ## Unreleased
 
+- Add Continue with ChatGPT for eligible subscription-backed Responses requests, with separate account providers, browser sign-in, token refresh, and sign-out across desktop, CLI, and Python.
+
 ## 0.3.0 — 2026-11-25
 
 Lexi 0.3.0 brings an Images tab and a CLI tab to the desktop app, shows the command behind every button, keeps your API keys in files only you can read, and gives each provider a default model for each kind.

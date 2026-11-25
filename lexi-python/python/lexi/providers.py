@@ -114,3 +114,18 @@ def add_api(
 def remove_api(name: str, api: str) -> Dict[str, Any]:
     """Remove an API from a provider (a template's API is turned off)."""
     return call("providers.remove_api", name=name, api=api)
+
+
+def login(account: str = "personal") -> Dict[str, Any]:
+    """Continue with ChatGPT in the system browser; save a separate account registration."""
+    return call("providers.login", account=account)
+
+
+def accounts() -> List[Dict[str, Any]]:
+    """List ChatGPT account labels and sign-in state, without credentials."""
+    return call("providers.accounts")
+
+
+def logout(account: str = "personal") -> Dict[str, Any]:
+    """Revoke the ChatGPT session and clear local credentials, keeping its registration."""
+    return call("providers.logout", account=account)

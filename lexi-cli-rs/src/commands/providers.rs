@@ -7,6 +7,23 @@ use crate::output::{scalar, table, Io};
 
 pub(crate) async fn run(io: &mut Io<'_>, cmd: ProvidersCmd) -> u8 {
     match cmd {
+        ProvidersCmd::Login { account } => {
+            io.warn("Opening your browser. Complete ChatGPT sign-in (five-minute timeout).");
+            match lexi_host::chatgpt::chatgpt_login(&account).await {
+                Ok(v) => io.result(v.to_string(), v),
+                Err(e) => io.fail(e),
+            }
+        }
+        ProvidersCmd::Accounts => match lexi_host::chatgpt::chatgpt_accounts().await {
+            Ok(v) => io.result(v.to_string(), v),
+            Err(e) => io.fail(e),
+        },
+        ProvidersCmd::Logout { account } => {
+            match lexi_host::chatgpt::chatgpt_logout(&account).await {
+                Ok(v) => io.result(v.to_string(), v),
+                Err(e) => io.fail(e),
+            }
+        }
         ProvidersCmd::List { raw, table } => list(io, raw, table),
         ProvidersCmd::Status { name, raw } => status(io, &name, raw).await,
         ProvidersCmd::Add {

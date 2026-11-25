@@ -17,7 +17,22 @@ use lexi_host::config;
 pub async fn handle(method: &str, path: &str, body: Option<Value>) -> Result<Value, String> {
     let base = path.split('?').next().unwrap_or(path);
     match (method, base) {
-        ("GET", "/api/providers") | ("GET", "/api/providers/") => providers(),
+        ("GET", "/api/chatgpt/accounts") => lexi_host::chatgpt::chatgpt_accounts()
+            .await
+            .map_err(|e| e.to_string()),
+        ("POST", "/api/chatgpt/login") => {
+            let b = body.unwrap_or(Value::Null);
+            lexi_host::chatgpt::chatgpt_login(b["account"].as_str().unwrap_or("personal"))
+                .await
+                .map_err(|e| e.to_string())
+        }
+        ("POST", "/api/chatgpt/logout") => {
+            let b = body.unwrap_or(Value::Null);
+            lexi_host::chatgpt::chatgpt_logout(b["account"].as_str().unwrap_or("personal"))
+                .await
+                .map_err(|e| e.to_string())
+        }
+        ("GET", "/api/providers") | ("GET", "/api/providers/") => providers().await,
         ("GET", "/api/providers/config-source") => providers_config_source(),
         ("GET", "/api/config") | ("GET", "/api/config/") => Ok(config_get()),
         ("GET", "/api/themes") => Ok(themes()),
@@ -65,7 +80,10 @@ pub async fn handle(method: &str, path: &str, body: Option<Value>) -> Result<Val
 }
 
 /// `GET /api/providers` — the normalized provider list the chat tab renders.
-fn providers() -> Result<Value, String> {
+async fn providers() -> Result<Value, String> {
+    let accounts = lexi_host::chatgpt::chatgpt_accounts()
+        .await
+        .map_err(|e| e.to_string())?;
     let cfg = config::load_providers().map_err(|e| e.to_string())?;
     let empty = Map::new();
     let providers = cfg
@@ -89,7 +107,14 @@ fn providers() -> Result<Value, String> {
         let default_model = field("default_model");
         let api = field("api");
         // A `${VAR}` key counts only when the variable is set.
-        let has_key = config::api_key_source(name, meta).ok().flatten().is_some();
+        let has_key = if let Some(label) = meta["chatgpt_account"].as_str() {
+            accounts.as_array().is_some_and(|rows| {
+                rows.iter()
+                    .any(|a| a["label"] == label && a["signed_in"] == true)
+            })
+        } else {
+            config::api_key_source(name, meta).ok().flatten().is_some()
+        };
         let configured = !url.is_empty() && has_key && !default_model.is_empty();
         // Whether it can chat: a binding that produces text, serving a chat
         // model by default. The Chat tab lists only these providers.
@@ -103,7 +128,7 @@ fn providers() -> Result<Value, String> {
             "hosted_model_fields": summary.and_then(|s| s.get("hosted_model_fields")).filter(|v| !v.is_null()).cloned().unwrap_or(json!([])),
             "default_model": default_model,
             "api": api,
-            "api_key": if has_key { "[set]" } else { "[missing]" },
+            "api_key": if meta.get("chatgpt_account").is_some() { if has_key { "ChatGPT plan" } else { "Sign in required" } } else if has_key { "[set]" } else { "[missing]" },
             "configured": configured,
             "chat": chat,
             "source": "providers-config.yaml",
